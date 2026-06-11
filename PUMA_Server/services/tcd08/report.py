@@ -31,6 +31,7 @@ from services.word_sections import (
     remove_word_sections,
     rewrite_red_paragraph_text,
     rewrite_red_paragraph_text_batch,
+    update_tocs_with_word,
 )
 from utils.file_loader import load_folder_mapping
 
@@ -77,7 +78,7 @@ REPLACE_RED_FONT_WITH_BLACK_ENABLED = True
 # 示例：{"4.1"}
 RED_TO_BLACK_SECTION_WHITELIST: set[str] = {"4.1"}
 # 是否把整条文档处理链路放到本地临时目录执行：
-# - True：先在本机 temp 路径处理，最后统一复制到输出目录。
+# - True：先在本机 temp 路径处理（含 TOC），最后统一复制到输出目录。
 # - False：直接在输出目录原位置处理。
 PROCESS_ALL_STEPS_IN_LOCAL_TEMP = True
 
@@ -342,11 +343,13 @@ async def generate_tcd08_report(
     )
 
     saved_paths = []
+    toc_update_paths: list[Path] = []
     section_delete_results = []
     red_paragraph_delete_results = []
     red_paragraph_text_rewrite_results = []
     instruction_removal_results = []
     color_replacement_results = []
+    toc_update_warning: str | None = None
     local_output_pairs: list[tuple[Path, Path]] = []
     local_runtime_dir = (
         tempfile.TemporaryDirectory(prefix="puma_tcd08_report_")
@@ -586,6 +589,20 @@ async def generate_tcd08_report(
                     len(template_paths),
                 )
 
+            if (
+                sections_to_delete
+                or red_paragraph_deletions
+                or red_paragraph_text_rewrites
+                or instruction_replacements_applied
+                or color_changed_runs
+            ):
+                logger.info(
+                    "[TCD08] (%s/%s) Queued document for batched Word TOC update.",
+                    index,
+                    len(template_paths),
+                )
+                toc_update_paths.append(working_path)
+
             saved_paths.append(str(output_path))
             logger.info(
                 "[TCD08] (%s/%s) Template processing completed in %.2fs.",
@@ -593,6 +610,27 @@ async def generate_tcd08_report(
                 len(template_paths),
                 time.perf_counter() - template_start,
             )
+
+        if toc_update_paths:
+            logger.info(
+                "[TCD08] Updating Word TOC for %s document(s) in one Word session.",
+                len(toc_update_paths),
+            )
+            step_start = time.perf_counter()
+            try:
+                update_tocs_with_word(toc_update_paths)
+                logger.info(
+                    "[TCD08] Batched Word TOC update took %.2fs.",
+                    time.perf_counter() - step_start,
+                )
+            except Exception as exc:
+                # TOC 更新失败不应影响文档生成主流程，降级为告警并继续返回成功。
+                toc_update_warning = str(exc)
+                logger.warning(
+                    "[TCD08] Batched Word TOC update failed but report generation continues. error=%s",
+                    exc,
+                    exc_info=True,
+                )
 
         if local_output_pairs:
             step_start = time.perf_counter()
@@ -617,11 +655,10 @@ async def generate_tcd08_report(
         "message": "TCD08报告已成功生成并保存。",
         "template_paths": [str(path) for path in template_paths],
         "saved_paths": saved_paths,
-        "toc_refresh_paths": saved_paths,
         "section_deletions": section_delete_results,
         "red_paragraph_deletions": red_paragraph_delete_results,
         "red_paragraph_text_rewrites": red_paragraph_text_rewrite_results,
         "instruction_removals": instruction_removal_results,
         "color_replacements": color_replacement_results,
-        "toc_update_warning": None,
+        "toc_update_warning": toc_update_warning,
     }
