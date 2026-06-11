@@ -1,0 +1,964 @@
+{
+  "condition_refs": {
+    "firing_loops_has_batd": {
+      "Fire Loops": {
+        "matches_any": ".*BATD[A-Z0-9]*.*"
+      }
+    },
+    "inertial_no_sma7_no_sma8": {
+      "Inertial Sensor": {
+        "not_matches_any": "SMA(7|8)[A-Z0-9]*"
+      }
+    },
+    "inertial_no_smi7": {
+      "Inertial Sensor": {
+        "not_matches_any": "SMI7[A-Z0-9]*"
+      }
+    },
+    "inertial_no_smi8_no_smi9": {
+      "Inertial Sensor": {
+        "not_matches_any": "SMI(8|9)[A-Z0-9]*"
+      }
+    },
+    "inertial_no_smu3": {
+      "Inertial Sensor": {
+        "not_matches_any": "SMU3[A-Z0-9]*"
+      }
+    },
+    "inertial_not_only_one_sma": {
+      "Inertial Sensor": {
+        "not_only_matches": "SMA\\d+"
+      }
+    },
+    "inertial_only_one_sma": {
+      "Inertial Sensor": {
+        "only_matches": "SMA\\d+"
+      }
+    },
+    "owner_suffix_epd5_cn": {
+      "owner": {
+        "matches_any": ".*EPD5-CN$"
+      }
+    },
+    "owner_suffix_ms_eab_vm": {
+      "owner": {
+        "matches_any": ".*(MS|EAB)-VM$"
+      }
+    },
+    "peripheral_has_pas": {
+      "Peripheral Sensor": {
+        "matches_any": "PAS[A-Z0-9]*"
+      }
+    },
+    "peripheral_has_pas_and_pps": {
+      "Peripheral Sensor": {
+        "matches_all": [
+          "PAS[A-Z0-9]*",
+          "PPS[A-Z0-9]*"
+        ]
+      }
+    },
+    "peripheral_has_pps": {
+      "Peripheral Sensor": {
+        "matches_any": "PPS[A-Z0-9]*"
+      }
+    },
+    "peripheral_has_rcs": {
+      "Peripheral Sensor": {
+        "matches_any": "RCS[A-Z0-9]*"
+      }
+    },
+    "peripheral_has_ufs": {
+      "Peripheral Sensor": {
+        "matches_any": "UFS[A-Z0-9]*"
+      }
+    },
+    "peripheral_has_ufs_and_pas": {
+      "Peripheral Sensor": {
+        "matches_all": [
+          "UFS[A-Z0-9]*",
+          "PAS[A-Z0-9]*"
+        ]
+      }
+    },
+    "peripheral_has_ufs_and_rcs": {
+      "Peripheral Sensor": {
+        "matches_all": [
+          "UFS[A-Z0-9]*",
+          "RCS[A-Z0-9]*"
+        ]
+      }
+    },
+    "peripheral_no_pas": {
+      "Peripheral Sensor": {
+        "not_matches_any": "PAS[A-Z0-9]*"
+      }
+    },
+    "peripheral_no_pas_no_pps": {
+      "Peripheral Sensor": {
+        "not_matches_any": "(PAS|PPS)[A-Z0-9]*"
+      }
+    },
+    "peripheral_no_pps": {
+      "Peripheral Sensor": {
+        "not_matches_any": "PPS[A-Z0-9]*"
+      }
+    },
+    "peripheral_no_pts": {
+      "Peripheral Sensor": {
+        "not_matches_any": "PTS[A-Z0-9]*"
+      }
+    },
+    "peripheral_no_rcs": {
+      "Peripheral Sensor": {
+        "not_matches_any": "RCS[A-Z0-9]*"
+      }
+    },
+    "peripheral_no_rcsy": {
+      "Peripheral Sensor": {
+        "not_matches_any": "RCS-?Y[A-Z0-9-]*"
+      }
+    },
+    "peripheral_no_ufs": {
+      "Peripheral Sensor": {
+        "not_matches_any": "UFS[A-Z0-9]*"
+      }
+    },
+    "peripheral_no_ufs_no_pas": {
+      "Peripheral Sensor": {
+        "not_matches_any": "(UFS|PAS)[A-Z0-9]*"
+      }
+    },
+    "peripheral_no_ufsy": {
+      "Peripheral Sensor": {
+        "not_matches_any": "UFS-?Y[A-Z0-9-]*"
+      }
+    },
+    "scope_no_epp": {
+      "Calibration Scope": {
+        "not_contains": "EPP"
+      }
+    },
+    "scope_no_pitchover": {
+      "Calibration Scope": {
+        "not_contains": "PitchOver"
+      }
+    },
+    "scope_no_rose1": {
+      "Calibration Scope": {
+        "not_contains": "Rose1"
+      }
+    },
+    "scope_no_rose_angle": {
+      "Calibration Scope": {
+        "not_contains": "Rose_Angle"
+      }
+    }
+  },
+  "calibration_scope": {
+    "field_label": "Calibration Scope",
+    "delete_when_missing": [
+      {
+        "required_any": [
+          "FSR",
+          "IDF"
+        ],
+        "sections": [
+          "3.2"
+        ],
+        "description": "Front algorithm"
+      },
+      {
+        "required_any": [
+          "IDF"
+        ],
+        "sections": [
+          "3.2.2"
+        ],
+        "description": "Integrated collision detection front function"
+      },
+      {
+        "required_any": [
+          "FSR"
+        ],
+        "sections": [
+          "3.3"
+        ],
+        "description": "Rear algorithm; Peripheral Sensor RCS check is intentionally not applied yet"
+      },
+      {
+        "required_any": [
+          "FSR"
+        ],
+        "sections": [
+          "3.4"
+        ],
+        "description": "3.4侧碰算法"
+      },
+      {
+        "required_any": [
+          "FSR"
+        ],
+        "sections": [
+          "3.3.1"
+        ],
+        "description": "如果包含 FSR 且 Peripheral Sensor 包含 RCS，则保留 3.3.1 章节",
+        "when_any_ref": "peripheral_no_rcs"
+      },
+      {
+        "required_any": [
+          "Rose1",
+          "Rose1+",
+          "Rose_Angle",
+          "Rose_Static"
+        ],
+        "sections": [
+          "3.5"
+        ],
+        "description": "Roll over algorithm"
+      },
+      {
+        "required_any": [
+          "Rose_Static"
+        ],
+        "sections": [
+          "3.5.1"
+        ],
+        "description": "Static roll-over algorithm"
+      },
+      {
+        "required_any": [
+          "PitchOver"
+        ],
+        "sections": [
+          "3.6"
+        ],
+        "description": "Pitch-over algorithm"
+      },
+      {
+        "required_any": [
+          "EPP",
+          "IDP"
+        ],
+        "sections": [
+          "3.7"
+        ],
+        "description": "Pedestrian protection algorithm"
+      },
+      {
+        "required_any": [
+          "IDP"
+        ],
+        "sections": [
+          "3.7.1"
+        ],
+        "description": "Integrated collision detection pedestrian function"
+      },
+      {
+        "required_any": [
+          "PCP"
+        ],
+        "sections": [
+          "3.8"
+        ],
+        "description": "Pre-Crash positioning function"
+      },
+      {
+        "required_any": [
+          "CrashGuard(SDD)"
+        ],
+        "sections": [
+          "3.9"
+        ],
+        "description": "Crash-guard algorithm"
+      }
+    ]
+  },
+  "red_paragraph_rules": [
+    {
+      "description": "3.2 校验传感器描述 | 包含 UFS 且 Inertial Sensor 只有 1 个 SMAx | 保留“UFS 失效后使用第二片中央传感器”描述，删除另外两段描述",
+      "section": "3.2",
+      "delete_groups": [
+        2,
+        4
+      ],
+      "when_ref": [
+        "peripheral_has_ufs",
+        "inertial_only_one_sma"
+      ]
+    },
+    {
+      "description": "3.2 校验传感器描述 | 包含 UFS 且 Inertial Sensor 不只是 1 个 SMAx | 保留“UFS 失效后使用中央传感器第二通道”描述，删除另外两段描述",
+      "section": "3.2",
+      "delete_groups": [
+        3,
+        4
+      ],
+      "when_ref": [
+        "peripheral_has_ufs",
+        "inertial_not_only_one_sma"
+      ]
+    },
+    {
+      "description": "3.2 校验传感器描述 | 不包含 UFS | 保留“第二片中央传感器提供校验信号”描述，删除 UFS 相关两段描述",
+      "section": "3.2",
+      "delete_groups": [
+        2,
+        3
+      ],
+      "when_ref": "peripheral_no_ufs"
+    },
+    {
+      "description": "3.2.1 UFS-defect strategy | 无需条件（默认） | 默认删除该小节红字段落",
+      "section": "3.2.1",
+      "delete_groups": [
+        1,
+        2
+      ],
+      "when": {}
+    },
+    {
+      "description": "3.3 后碰 CRO 描述 | 包含 BATD 关键字 | 删除后碰 CRO 段落",
+      "section": "3.3",
+      "delete_groups": [
+        2
+      ],
+      "when_ref": "firing_loops_has_batd"
+    },
+    {
+      "description": "3.3 中央后碰校验描述 | 不只包含 1 个 SMAx | 保留第四红段，删除第三红段",
+      "section": "3.3",
+      "delete_groups": [
+        3
+      ],
+      "when_ref": "inertial_not_only_one_sma"
+    },
+    {
+      "description": "3.3 中央后碰校验描述 | 只包含 1 个 SMAx | 保留第三红段，删除第四红段",
+      "section": "3.3",
+      "delete_groups": [
+        4
+      ],
+      "when_ref": "inertial_only_one_sma"
+    },
+    {
+      "description": "3.3 中央后碰校验描述 | 包含 UFS | 删除第五红段（非 central-only）",
+      "section": "3.3",
+      "delete_groups": [
+        5
+      ],
+      "when_ref": "peripheral_has_ufs"
+    },
+    {
+      "description": "3.3 中央后碰校验描述 | 包含 RCS | 删除第五红段（非 central-only）",
+      "section": "3.3",
+      "delete_groups": [
+        5
+      ],
+      "when_ref": "peripheral_has_rcs"
+    },
+    {
+      "description": "3.3 中央后碰校验描述 | 默认 | 删除第六红段",
+      "section": "3.3",
+      "delete_groups": [
+        6
+      ],
+      "when": {}
+    },
+    {
+      "description": "3.4 首段传感器列表 | 同时不包含 PAS、PPS、UFS-Y、RCS-Y | 直接删除第一红字段落",
+      "section": "3.4",
+      "delete_groups": [
+        1
+      ],
+      "when_ref": [
+        "peripheral_no_pas_no_pps",
+        "peripheral_no_ufsy",
+        "peripheral_no_rcsy"
+      ]
+    },
+    {
+      "description": "3.5.1 static table | no SMI8 and no SMI9 | 删除第一段",
+      "section": "3.5.1",
+      "delete_groups": [
+        1
+      ],
+      "when_ref": "inertial_no_smi8_no_smi9"
+    },
+    {
+      "description": "3.5.1 static table | no SMI7 | 删除第二段",
+      "section": "3.5.1",
+      "delete_groups": [
+        2
+      ],
+      "when_ref": "inertial_no_smi7"
+    },
+    {
+      "description": "3.5.1 静态翻滚阈值段落 | 不包含 SMA7 且不包含 SMA8 | 删除第三段",
+      "section": "3.5.1",
+      "delete_groups": [
+        3
+      ],
+      "when_ref": "inertial_no_sma7_no_sma8"
+    },
+    {
+      "description": "3.5.1 静态翻滚阈值段落 | 不包含 SMU3 | 删除第四段",
+      "section": "3.5.1",
+      "delete_groups": [
+        4
+      ],
+      "when_ref": "inertial_no_smu3"
+    },
+    {
+      "description": "4.1 信号变量段落 | 不包含 EPP | 删除第二段",
+      "section": "4.1",
+      "delete_groups": [
+        2
+      ],
+      "when_ref": "scope_no_epp"
+    },
+    {
+      "description": "4.1 信号变量段落 | 不包含 PTS | 删除第二段",
+      "section": "4.1",
+      "delete_groups": [
+        2
+      ],
+      "when_ref": "peripheral_no_pts"
+    },
+    {
+      "description": "4.1 采样变量侧翻段落 | 不包含 Rose1 且不包含 Rose1+ 且不包含 Rose_Angle | 删除第五段",
+      "section": "4.1",
+      "delete_groups": [
+        5
+      ],
+      "when_ref": [
+        "scope_no_rose1",
+        "scope_no_rose_angle"
+      ]
+    },
+    {
+      "description": "8 owner 后缀段落 | 后缀包含 EPD5-CN | 删除第二段",
+      "section": "8",
+      "delete_groups": [
+        2
+      ],
+      "when_ref": "owner_suffix_epd5_cn"
+    },
+    {
+      "description": "8 owner 后缀段落 | 后缀包含 MS/EAB-VM | 删除第一段",
+      "section": "8",
+      "delete_groups": [
+        1
+      ],
+      "when_ref": "owner_suffix_ms_eab_vm"
+    }
+  ],
+  "red_paragraph_text_rules": [
+    {
+      "description": "3.2 首段传感器描述 | 同时包含 UFS 和 PAS | 保留 UFS 和 PAS 描述，并删除可选标记",
+      "section": "3.2",
+      "group": 1,
+      "replacements": [
+        {
+          "from": "central sensors, (and) UFS and PAS are used",
+          "to": "central sensors, UFS and PAS are used"
+        },
+        {
+          "from": "(and) UFS and PAS",
+          "to": "UFS and PAS"
+        }
+      ],
+      "when_ref": "peripheral_has_ufs_and_pas"
+    },
+    {
+      "description": "3.2 首段传感器描述 | 只包含 UFS 且不包含 PAS | 只保留 UFS，删除 PAS 描述",
+      "section": "3.2",
+      "group": 1,
+      "replacements": [
+        {
+          "from": "central sensors, (and) UFS and PAS are used",
+          "to": "central sensors and UFS are used"
+        },
+        {
+          "from": "central sensors, UFS and PAS are used",
+          "to": "central sensors and UFS are used"
+        },
+        {
+          "from": "中央传感器，前碰传感器及侧碰传感器用来探测正面碰撞",
+          "to": "中央传感器及前碰传感器用来探测正面碰撞"
+        }
+      ],
+      "when_ref": [
+        "peripheral_has_ufs",
+        "peripheral_no_pas"
+      ]
+    },
+    {
+      "description": "3.2 首段传感器描述 | 只包含 PAS 且不包含 UFS | 只保留 PAS，删除 UFS 描述",
+      "section": "3.2",
+      "group": 1,
+      "replacements": [
+        {
+          "from": "central sensors, (and) UFS and PAS are used",
+          "to": "central sensors and PAS are used"
+        },
+        {
+          "from": "central sensors, UFS and PAS are used",
+          "to": "central sensors and PAS are used"
+        },
+        {
+          "from": "中央传感器，前碰传感器及侧碰传感器用来探测正面碰撞",
+          "to": "中央传感器及侧碰传感器用来探测正面碰撞"
+        }
+      ],
+      "when_ref": [
+        "peripheral_has_pas",
+        "peripheral_no_ufs"
+      ]
+    },
+    {
+      "description": "3.2 首段传感器描述 | 既不包含 UFS 也不包含 PAS | 只保留中央传感器描述，删除 UFS/PAS 描述",
+      "section": "3.2",
+      "group": 1,
+      "replacements": [
+        {
+          "from": "central sensors, (and) UFS and PAS are used",
+          "to": "central sensors are used"
+        },
+        {
+          "from": "central sensors, UFS and PAS are used",
+          "to": "central sensors are used"
+        },
+        {
+          "from": "中央传感器，前碰传感器及侧碰传感器用来探测正面碰撞",
+          "to": "中央传感器用来探测正面碰撞"
+        }
+      ],
+      "when_ref": "peripheral_no_ufs_no_pas"
+    },
+    {
+      "description": "3.3 首段传感器描述 | 只包含 UFS 且不包含 RCS | 只保留 UFS 描述，删除 RCS 描述",
+      "section": "3.3",
+      "group": 1,
+      "replacements": [
+        {
+          "from": "UFS and RCS are used",
+          "to": "UFS is used"
+        },
+        {
+          "from": "前碰传感器及后碰传感器",
+          "to": "前碰传感器"
+        }
+      ],
+      "when_ref": [
+        "peripheral_has_ufs",
+        "peripheral_no_rcs"
+      ]
+    },
+    {
+      "description": "3.3 首段传感器描述 | 只包含 RCS 且不包含 UFS | 只保留 RCS 描述，删除 UFS 描述",
+      "section": "3.3",
+      "group": 1,
+      "replacements": [
+        {
+          "from": "UFS and RCS are used",
+          "to": "RCS is used"
+        },
+        {
+          "from": "前碰传感器及后碰传感器",
+          "to": "后碰传感器"
+        }
+      ],
+      "when_ref": [
+        "peripheral_has_rcs",
+        "peripheral_no_ufs"
+      ]
+    },
+    {
+      "description": "3.3 首段传感器描述 | 同时包含 UFS 和 RCS | 以后碰 RCS 描述为准，保留 RCS 描述，删除 UFS 描述",
+      "section": "3.3",
+      "group": 1,
+      "replacements": [
+        {
+          "from": "UFS and RCS are used",
+          "to": "RCS is used"
+        },
+        {
+          "from": "前碰传感器及后碰传感器",
+          "to": "后碰传感器"
+        }
+      ],
+      "when_ref": "peripheral_has_ufs_and_rcs"
+    },
+    {
+      "description": "3.3 中央后碰校验描述 第三红段 | 只包含 UFS 且不包含 RCS | 第3段只保留 UFS 描述，删除 RCS 描述",
+      "section": "3.3",
+      "group": 3,
+      "replacements": [
+        {
+          "from": "UFS/RCS is(are) used as plausibility sensor(s)",
+          "to": "UFS is used as plausibility sensor(s)"
+        },
+        {
+          "from": "In case of UFS/RCS defect",
+          "to": "In case of UFS defect"
+        },
+        {
+          "from": "前碰/后碰传感器",
+          "to": "前碰传感器"
+        }
+      ],
+      "when_ref": [
+        "peripheral_has_ufs",
+        "peripheral_no_rcs"
+      ]
+    },
+    {
+      "description": "3.3 中央后碰校验描述 第三红段 | 只包含 RCS 且不包含 UFS | 第3段只保留 RCS 描述，删除 UFS 描述",
+      "section": "3.3",
+      "group": 3,
+      "replacements": [
+        {
+          "from": "UFS/RCS is(are) used as plausibility sensor(s)",
+          "to": "RCS is used as plausibility sensor(s)"
+        },
+        {
+          "from": "In case of UFS/RCS defect",
+          "to": "In case of RCS defect"
+        },
+        {
+          "from": "前碰/后碰传感器",
+          "to": "后碰传感器"
+        }
+      ],
+      "when_ref": [
+        "peripheral_has_rcs",
+        "peripheral_no_ufs"
+      ]
+    },
+    {
+      "description": "3.3 中央后碰校验描述 第三红段 | 同时包含 UFS 和 RCS | 第3段只保留 RCS 描述，删除 UFS 描述",
+      "section": "3.3",
+      "group": 3,
+      "replacements": [
+        {
+          "from": "UFS/RCS is(are) used as plausibility sensor(s)",
+          "to": "RCS is used as plausibility sensor(s)"
+        },
+        {
+          "from": "In case of UFS/RCS defect",
+          "to": "In case of RCS defect"
+        },
+        {
+          "from": "前碰/后碰传感器",
+          "to": "后碰传感器"
+        }
+      ],
+      "when_ref": "peripheral_has_ufs_and_rcs"
+    },
+    {
+      "description": "3.3 中央后碰校验描述 第四红段 | 只包含 UFS 且不包含 RCS | 第4段只保留 UFS 描述，删除 RCS 描述",
+      "section": "3.3",
+      "group": 4,
+      "replacements": [
+        {
+          "from": "UFS/RCS is(are) used as plausibility sensor(s)",
+          "to": "UFS is used as plausibility sensor(s)"
+        },
+        {
+          "from": "In case of UFS/RCS defect",
+          "to": "In case of UFS defect"
+        },
+        {
+          "from": "前碰/后碰传感器",
+          "to": "前碰传感器"
+        }
+      ],
+      "when_ref": [
+        "peripheral_has_ufs",
+        "peripheral_no_rcs"
+      ]
+    },
+    {
+      "description": "3.3 中央后碰校验描述 第四红段 | 只包含 RCS 且不包含 UFS | 第4段只保留 RCS 描述，删除 UFS 描述",
+      "section": "3.3",
+      "group": 4,
+      "replacements": [
+        {
+          "from": "UFS/RCS is(are) used as plausibility sensor(s)",
+          "to": "RCS is used as plausibility sensor(s)"
+        },
+        {
+          "from": "In case of UFS/RCS defect",
+          "to": "In case of RCS defect"
+        },
+        {
+          "from": "前碰/后碰传感器",
+          "to": "后碰传感器"
+        }
+      ],
+      "when_ref": [
+        "peripheral_has_rcs",
+        "peripheral_no_ufs"
+      ]
+    },
+    {
+      "description": "3.3 中央后碰校验描述 第四红段 | 同时包含 UFS 和 RCS | 第4段只保留 RCS 描述，删除 UFS 描述",
+      "section": "3.3",
+      "group": 4,
+      "replacements": [
+        {
+          "from": "UFS/RCS is(are) used as plausibility sensor(s)",
+          "to": "RCS is used as plausibility sensor(s)"
+        },
+        {
+          "from": "In case of UFS/RCS defect",
+          "to": "In case of RCS defect"
+        },
+        {
+          "from": "前碰/后碰传感器",
+          "to": "后碰传感器"
+        }
+      ],
+      "when_ref": "peripheral_has_ufs_and_rcs"
+    },
+    {
+      "description": "3.4 首段传感器列表 | 同时包含 PAS 和 PPS | 保留 PAS 和 PPS 描述",
+      "section": "3.4",
+      "group": 1,
+      "replacements": [
+        {
+          "from": "PAS and/or PPS",
+          "to": "PAS and PPS"
+        },
+        {
+          "from": "侧面加速度传感器和/或侧面压力传感器",
+          "to": "侧面加速度传感器和侧面压力传感器"
+        }
+      ],
+      "when_ref": "peripheral_has_pas_and_pps"
+    },
+    {
+      "description": "3.4 首段传感器列表 | 只包含 PAS 且不包含 PPS | 只保留 PAS 描述，删除 PPS 描述",
+      "section": "3.4",
+      "group": 1,
+      "replacements": [
+        {
+          "from": "PAS and/or PPS",
+          "to": "PAS"
+        },
+        {
+          "from": "侧面加速度传感器和/或侧面压力传感器",
+          "to": "侧面加速度传感器"
+        }
+      ],
+      "when_ref": [
+        "peripheral_has_pas",
+        "peripheral_no_pps"
+      ]
+    },
+    {
+      "description": "3.4 首段传感器列表 | 只包含 PPS 且不包含 PAS | 只保留 PPS 描述，删除 PAS 描述",
+      "section": "3.4",
+      "group": 1,
+      "replacements": [
+        {
+          "from": "PAS and/or PPS",
+          "to": "PPS"
+        },
+        {
+          "from": "侧面加速度传感器和/或侧面压力传感器",
+          "to": "侧面压力传感器"
+        }
+      ],
+      "when_ref": [
+        "peripheral_has_pps",
+        "peripheral_no_pas"
+      ]
+    },
+    {
+      "description": "3.4 首段传感器列表 | 既不包含 PAS 也不包含 PPS | 删除 PAS/PPS 相关描述",
+      "section": "3.4",
+      "group": 1,
+      "replacements": [
+        {
+          "from": "PAS and/or PPS,",
+          "to": ""
+        },
+        {
+          "from": "侧面加速度传感器和/或侧面压力传感器，",
+          "to": ""
+        }
+      ],
+      "when_ref": "peripheral_no_pas_no_pps"
+    },
+    {
+      "description": "3.4 首段传感器列表 | 不包含 UFS-Y | 删除 UFS-Y 相关描述",
+      "section": "3.4",
+      "group": 1,
+      "replacements": [
+        {
+          "from": "UFS-Y,",
+          "to": ""
+        },
+        {
+          "from": "前碰传感器Y通道，",
+          "to": ""
+        }
+      ],
+      "when_ref": "peripheral_no_ufsy"
+    },
+    {
+      "description": "3.4 首段传感器列表 | 不包含 RCS-Y | 删除 RCS-Y 相关描述",
+      "section": "3.4",
+      "group": 1,
+      "replacements": [
+        {
+          "from": "RCS-Y and the central sensors are used",
+          "to": "and the central sensors are used"
+        },
+        {
+          "from": "后碰传感器Y通道，及中央传感器",
+          "to": "及中央传感器"
+        }
+      ],
+      "when_ref": "peripheral_no_rcsy"
+    },
+    {
+      "description": "3.4 独立传感器确认描述 | 同时包含 PAS 和 PPS | 保留“一个外围传感器和一个中央传感器，或者是两个外围传感器”句式",
+      "section": "3.4",
+      "group": 2,
+      "replacements": [
+        {
+          "from": "This could be e.g. a peripheral acceleration sensor and a central sensor, two independent peripheral acceleration sensors, or the two independent sensor channels of the central sensor.",
+          "to": "This could be e.g. a peripheral acceleration sensor and a central sensor, or two independent peripheral acceleration sensors."
+        },
+        {
+          "from": "这种情况可以是一个外围传感器和一个中央传感器，或者是两个外围传感器，也可以是中央传感器的两个单独的传感器通道。",
+          "to": "这种情况可以是一个外围传感器和一个中央传感器，或者是两个外围传感器。"
+        }
+      ],
+      "when_ref": "peripheral_has_pas_and_pps"
+    },
+    {
+      "description": "3.4 独立传感器确认描述 | 既不包含 PAS 也不包含 PPS，且不只有 1 个 SMAx | 只保留“中央传感器的两个单独的传感器通道”句式",
+      "section": "3.4",
+      "group": 2,
+      "replacements": [
+        {
+          "from": "This could be e.g. a peripheral acceleration sensor and a central sensor, two independent peripheral acceleration sensors, or the two independent sensor channels of the central sensor.",
+          "to": "This could be e.g. the two independent sensor channels of the central sensor."
+        },
+        {
+          "from": "这种情况可以是一个外围传感器和一个中央传感器，或者是两个外围传感器，也可以是中央传感器的两个单独的传感器通道。",
+          "to": "这种情况可以是中央传感器的两个单独的传感器通道。"
+        }
+      ],
+      "when_ref": [
+        "peripheral_no_pas_no_pps",
+        "inertial_not_only_one_sma"
+      ]
+    },
+    {
+      "description": "3.4 独立传感器确认描述 | 其他情况 | 只保留“一个外围传感器和一个中央传感器”句式",
+      "section": "3.4",
+      "group": 2,
+      "replacements": [
+        {
+          "from": "This could be e.g. a peripheral acceleration sensor and a central sensor, two independent peripheral acceleration sensors, or the two independent sensor channels of the central sensor.",
+          "to": "This could be e.g. a peripheral acceleration sensor and a central sensor."
+        },
+        {
+          "from": "这种情况可以是一个外围传感器和一个中央传感器，或者是两个外围传感器，也可以是中央传感器的两个单独的传感器通道。",
+          "to": "这种情况可以是一个外围传感器和一个中央传感器。"
+        }
+      ]
+    },
+    {
+      "description": "4.1 采样变量前半句 | 不包含 EPP | 删除 and pedestrian Protection 及中文 和行人保护",
+      "section": "4.1",
+      "group": 4,
+      "replacements": [
+        {
+          "from": "and Pedestrian protection",
+          "to": ""
+        },
+        {
+          "from": "和行人保护",
+          "to": ""
+        }
+      ],
+      "when_ref": "scope_no_epp"
+    },
+    {
+      "description": "4.1 采样变量侧翻附加短语 | 不包含 PitchOver | 删除 and Pitchover 及中文 和俯仰碰撞",
+      "section": "4.1",
+      "group": 5,
+      "replacements": [
+        {
+          "from": "and Pitchover",
+          "to": ""
+        },
+        {
+          "from": "和俯仰碰撞",
+          "to": ""
+        }
+      ],
+      "when_ref": "scope_no_pitchover"
+    },
+    {
+      "description": "3.2 校验传感器描述 段二单复数 | 同时包含 UFS 和 PAS | 段二 UFS is(are) 改为复数 are",
+      "section": "3.2",
+      "group": 2,
+      "replacements": [
+        {
+          "from": "UFS is(are) used as plausibility sensor",
+          "to": "UFS and PAS are used as plausibility sensors"
+        }
+      ],
+      "when_ref": "peripheral_has_ufs_and_pas"
+    },
+    {
+      "description": "3.2 校验传感器描述 段三单复数 | 同时包含 UFS 和 PAS | 段三 UFS is(are) 改为复数 are",
+      "section": "3.2",
+      "group": 3,
+      "replacements": [
+        {
+          "from": "UFS is(are) used as plausibility sensor",
+          "to": "UFS and PAS are used as plausibility sensors"
+        }
+      ],
+      "when_ref": "peripheral_has_ufs_and_pas"
+    },
+    {
+      "description": "3.2 校验传感器描述 段二单复数 | 只包含 UFS 且不包含 PAS | 段二 UFS is(are) 改为单数 is",
+      "section": "3.2",
+      "group": 2,
+      "replacements": [
+        {
+          "from": "UFS is(are) used as plausibility sensor",
+          "to": "UFS is used as plausibility sensor"
+        }
+      ],
+      "when_ref": [
+        "peripheral_has_ufs",
+        "peripheral_no_pas"
+      ]
+    },
+    {
+      "description": "3.2 校验传感器描述 段三单复数 | 只包含 UFS 且不包含 PAS | 段三 UFS is(are) 改为单数 is",
+      "section": "3.2",
+      "group": 3,
+      "replacements": [
+        {
+          "from": "UFS is(are) used as plausibility sensor",
+          "to": "UFS is used as plausibility sensor"
+        }
+      ],
+      "when_ref": [
+        "peripheral_has_ufs",
+        "peripheral_no_pas"
+      ]
+    }
+  ]
+}

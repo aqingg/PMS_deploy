@@ -1,0 +1,32 @@
+html, body, #root {
+  height: 100%;
+  margin: 0;         /* ← 关键 */
+  padding: 0;
+  overflow: hidden;  /* ← 关键 */
+}
+/* Header 容器：占位，把下面内容顶下去，避免被压住 */
+.header-container {
+  height: 90px;             /* ⚠️这里改成你 Header 实际高度，比如 64 或 80 */
+}
+
+/* 整个下面的区域：高度 = 屏幕高度 - Header 高度 */
+.content-wrapper {
+  height: calc(100vh);  /* 同上，保持一致 */
+  display: flex;
+  overflow: hidden;
+}
+
+/* 左侧菜单区域 */
+.left-menu {
+  width: 200px;
+  height: 100%;
+  border-right: 1px solid #eee;
+}
+
+/* 右侧内容区域 */
+.right-content {
+  flex: 1;
+  padding: 16px;
+  overflow: auto;
+  box-sizing: border-box;
+}

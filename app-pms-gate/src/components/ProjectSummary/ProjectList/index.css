@@ -1,0 +1,52 @@
+.project-table-header {
+  background: #fafafa;
+  border-bottom: 1px solid #e0e0e0;
+  padding: 6px 12px;
+  font-weight: bold;
+  top: 0;
+  z-index: 5;
+}
+
+.project-header-row {
+  display: flex;
+  align-items: center;
+  font-size: 14px;
+  color: #555;
+}
+
+.project-col-rate { width: 10%; }      /* 对应 span=3 (3/24=12.5%) */
+.project-col-title { width: 20%; }
+.project-col-comment { width: 50%; }
+.project-col-tag { width: 20%; }   /* (10/24=41.7%) */
+
+/* ToDoTable 最外层，作为浮动按钮的定位参考 */
+.project-table-container {
+  position: relative;
+  height: 100%;         /* ⭐ 必须，加上这个 */
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.project-float-buttons {
+  position: absolute;
+  right: 20px;
+  position: fixed;
+  bottom: 5px;
+  right: 24px;
+  z-index: 50;          /* ⭐ 永远压在上面 */
+  pointer-events: auto; /* ⭐ 允许点击 */
+
+  /* ⛔ 关键：把它从滚动内容中抽离出来 */
+  transform: translateZ(0);  /* 强制提升单独层，不跟随滚动 */
+}
+
+.project-float-buttons .ant-float-btn {
+  position: relative !important;
+  pointer-events: auto;
+}
+
+/* 让表体占满容器剩余空间，并且在里面滚动 */
+.project-table-wrapper {
+  padding-bottom: 80px;
+}

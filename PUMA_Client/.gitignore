@@ -1,0 +1,27 @@
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Packaging / build outputs
+build/
+dist/
+*.egg-info/
+
+# Logs
+*.log
+client_startup.log
+
+# Local environment files
+.env
+.venv/
+venv/
+ENV/
+
+# OS files
+Thumbs.db
+Desktop.ini

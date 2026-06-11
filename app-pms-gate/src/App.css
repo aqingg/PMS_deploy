@@ -1,0 +1,19 @@
+/* Fix Splitter handle height so it doesn't cover Header */
+.ant-splitter-handle {
+  height: 60px !important;       /* 只允许 60px 高 */
+  top: 60px !important;          /* 距离 Header 60px 下开始 */
+  z-index: 5 !important;         /* 压低层级，不覆盖 header */
+  border-radius: 4px;
+}
+
+/* Handle 内部 */
+.ant-splitter-handle::after {
+  height: 100% !important;
+  border-radius: 4px;
+}
+
+/* Header 永远在最上层 */
+.header-container {
+  position: relative;
+  z-index: 20;
+}

@@ -1,0 +1,30 @@
+/* Sidebar 从左侧滑出版本 */
+.project-sidebar-slide-left {
+  position: absolute;
+  left: 0;                     /* ⭐ 从左边开始 */
+  top: 0;
+  height: 100%;
+  width: 120px;
+  display: flex;
+  justify-content: space-around; 
+  align-items: center;
+  background-color: rgba(0, 112, 255, 0.6);
+  border-radius: 0 4px 4px 0;  /* ⭐ 左侧贴边，右侧圆角 */
+  z-index: 99;
+  pointer-events: auto;
+
+  transform-origin: left center;   /* ⭐ 从左侧展开 */
+  transform: scaleX(0);
+  animation: sidebarExpandLeft 0.22s ease-out forwards;
+}
+
+@keyframes sidebarExpandLeft {
+  0% {
+    transform: scaleX(0);
+    opacity: 0.2;
+  }
+  100% {
+    transform: scaleX(1);
+    opacity: 1;
+  }
+}

@@ -1,0 +1,917 @@
+{
+  "calibration_scope": {
+    "field_label": "Calibration Scope",
+    "delete_when_missing": [
+      {
+        "required_any": ["FSR", "IDF"],
+        "sections": ["3.2"],
+        "description": "Front algorithm"
+      },
+      {
+        "required_any": ["IDF"],
+        "sections": ["3.2.2"],
+        "description": "Integrated collision detection front function"
+      },
+      {
+        "required_any": ["FSR"],
+        "sections": ["3.3"],
+        "description": "Rear algorithm; Peripheral Sensor RCS check is intentionally not applied yet"
+      },
+      {
+        "required_any": ["CSABS", "Offzone"],
+        "sections": ["3.4"],
+        "description": "Side algorithm"
+      },
+      {
+        "required_any": ["Rose1", "Rose1+", "Rose_Angle", "Rose_Static", "RoseStatic"],
+        "sections": ["3.5"],
+        "description": "Roll over algorithm"
+      },
+      {
+        "required_any": ["Rose_Static", "RoseStatic"],
+        "sections": ["3.5.1"],
+        "description": "Static roll-over algorithm"
+      },
+      {
+        "required_any": ["PitchOver"],
+        "sections": ["3.6"],
+        "description": "Pitch-over algorithm"
+      },
+      {
+        "required_any": ["EPP", "IDP"],
+        "sections": ["3.7"],
+        "description": "Pedestrian protection algorithm"
+      },
+      {
+        "required_any": ["IDP"],
+        "sections": ["3.7.1"],
+        "description": "Integrated collision detection pedestrian function"
+      },
+      {
+        "required_any": ["PCP"],
+        "sections": ["3.8"],
+        "description": "Pre-Crash positioning function"
+      },
+      {
+        "required_any": ["CrashGuard(SDD)"],
+        "sections": ["3.9"],
+        "description": "Crash-guard algorithm"
+      }
+    ]
+  },
+  "condition_refs": {
+    "peripheral_has_ufs": {
+      "Peripheral Sensor": {
+        "matches_any": "UFS[A-Z0-9]*"
+      }
+    },
+    "peripheral_no_ufs": {
+      "Peripheral Sensor": {
+        "not_matches_any": "UFS[A-Z0-9]*"
+      }
+    },
+    "peripheral_has_pas": {
+      "Peripheral Sensor": {
+        "matches_any": "PAS[A-Z0-9]*"
+      }
+    },
+    "peripheral_no_pas": {
+      "Peripheral Sensor": {
+        "not_matches_any": "PAS[A-Z0-9]*"
+      }
+    },
+    "peripheral_has_rcs": {
+      "Peripheral Sensor": {
+        "matches_any": "RCS[A-Z0-9]*"
+      }
+    },
+    "peripheral_no_rcs": {
+      "Peripheral Sensor": {
+        "not_matches_any": "RCS[A-Z0-9]*"
+      }
+    },
+    "peripheral_has_pps": {
+      "Peripheral Sensor": {
+        "matches_any": "PPS[A-Z0-9]*"
+      }
+    },
+    "peripheral_no_pps": {
+      "Peripheral Sensor": {
+        "not_matches_any": "PPS[A-Z0-9]*"
+      }
+    },
+    "peripheral_has_ufs_and_pas": {
+      "Peripheral Sensor": {
+        "matches_all": ["UFS[A-Z0-9]*", "PAS[A-Z0-9]*"]
+      }
+    },
+    "peripheral_no_ufs_no_pas": {
+      "Peripheral Sensor": {
+        "not_matches_any": "(UFS|PAS)[A-Z0-9]*"
+      }
+    },
+    "peripheral_has_ufs_and_rcs": {
+      "Peripheral Sensor": {
+        "matches_all": ["UFS[A-Z0-9]*", "RCS[A-Z0-9]*"]
+      }
+    },
+    "peripheral_has_ufs_or_rcs": {
+      "Peripheral Sensor": {
+        "matches_any": "(UFS[A-Z0-9]*|RCS[A-Z0-9]*)"
+      }
+    },
+    "peripheral_no_ufs_no_rcs": {
+      "Peripheral Sensor": {
+        "not_matches_any": "(UFS|RCS)[A-Z0-9]*"
+      }
+    },
+    "peripheral_no_pas_no_pps": {
+      "Peripheral Sensor": {
+        "not_matches_any": "(PAS|PPS)[A-Z0-9]*"
+      }
+    },
+    "peripheral_has_pas_and_pps": {
+      "Peripheral Sensor": {
+        "matches_all": ["PAS[A-Z0-9]*", "PPS[A-Z0-9]*"]
+      }
+    },
+    "peripheral_no_ufs_y": {
+      "Peripheral Sensor": {
+        "not_matches_any": ".*UFS[A-Z0-9-]*Y.*"
+      }
+    },
+    "peripheral_no_rcs_y": {
+      "Peripheral Sensor": {
+        "not_matches_any": ".*RCS[A-Z0-9-]*Y.*"
+      }
+    },
+    "peripheral_has_ufs_or_rcs_loose": {
+      "Peripheral Sensor": {
+        "matches_any": ".*(UFS|RCS)[A-Z0-9-]*.*"
+      }
+    },
+    "firing_loops_has_batd": {
+      "Fire Loops": {
+        "matches_any": ".*BATD[A-Z0-9]*.*"
+      }
+    },
+    "inertial_only_one_sma": {
+      "Inertial Sensor": {
+        "only_matches": "SMA\\d+"
+      }
+    },
+    "inertial_not_only_one_sma": {
+      "Inertial Sensor": {
+        "not_only_matches": "SMA\\d+"
+      }
+    },
+    "inertial_static_rollover_no_supported": {
+      "Inertial Sensor": {
+        "not_matches_any": "(SMI[789][A-Z0-9]*|SMA[78][A-Z0-9]*|SMU3[A-Z0-9]*)"
+      }
+    },
+    "inertial_static_rollover_smi8_smi9_only": {
+      "Inertial Sensor": {
+        "matches_any": "SMI[89][A-Z0-9]*",
+        "not_matches_any": "(SMI7[A-Z0-9]*|SMA[78][A-Z0-9]*|SMU3[A-Z0-9]*)"
+      }
+    },
+    "inertial_static_rollover_smi7_only": {
+      "Inertial Sensor": {
+        "matches_any": "SMI7[A-Z0-9]*",
+        "not_matches_any": "(SMI[89][A-Z0-9]*|SMA[78][A-Z0-9]*|SMU3[A-Z0-9]*)"
+      }
+    },
+    "inertial_static_rollover_sma7_sma8_only": {
+      "Inertial Sensor": {
+        "matches_any": "SMA[78][A-Z0-9]*",
+        "not_matches_any": "(SMI[789][A-Z0-9]*|SMU3[A-Z0-9]*)"
+      }
+    },
+    "inertial_static_rollover_smu3_only": {
+      "Inertial Sensor": {
+        "matches_any": "SMU3[A-Z0-9]*",
+        "not_matches_any": "(SMI[789][A-Z0-9]*|SMA[78][A-Z0-9]*)"
+      }
+    },
+    "inertial_static_rollover_smi8_smi9_and_smi7": {
+      "Inertial Sensor": {
+        "matches_all": ["SMI[89][A-Z0-9]*", "SMI7[A-Z0-9]*"],
+        "not_matches_any": "(SMA[78][A-Z0-9]*|SMU3[A-Z0-9]*)"
+      }
+    },
+    "inertial_static_rollover_smi8_smi9_and_sma7_sma8": {
+      "Inertial Sensor": {
+        "matches_all": ["SMI[89][A-Z0-9]*", "SMA[78][A-Z0-9]*"],
+        "not_matches_any": "(SMI7[A-Z0-9]*|SMU3[A-Z0-9]*)"
+      }
+    },
+    "inertial_static_rollover_smi8_smi9_and_smu3": {
+      "Inertial Sensor": {
+        "matches_all": ["SMI[89][A-Z0-9]*", "SMU3[A-Z0-9]*"],
+        "not_matches_any": "(SMI7[A-Z0-9]*|SMA[78][A-Z0-9]*)"
+      }
+    },
+    "inertial_static_rollover_smi7_and_sma7_sma8": {
+      "Inertial Sensor": {
+        "matches_all": ["SMI7[A-Z0-9]*", "SMA[78][A-Z0-9]*"],
+        "not_matches_any": "(SMI[89][A-Z0-9]*|SMU3[A-Z0-9]*)"
+      }
+    },
+    "inertial_static_rollover_smi7_and_smu3": {
+      "Inertial Sensor": {
+        "matches_all": ["SMI7[A-Z0-9]*", "SMU3[A-Z0-9]*"],
+        "not_matches_any": "(SMI[89][A-Z0-9]*|SMA[78][A-Z0-9]*)"
+      }
+    },
+    "inertial_static_rollover_sma7_sma8_and_smu3": {
+      "Inertial Sensor": {
+        "matches_all": ["SMA[78][A-Z0-9]*", "SMU3[A-Z0-9]*"],
+        "not_matches_any": "SMI[789][A-Z0-9]*"
+      }
+    },
+    "inertial_static_rollover_smi8_smi9_and_smi7_and_sma7_sma8": {
+      "Inertial Sensor": {
+        "matches_all": ["SMI[89][A-Z0-9]*", "SMI7[A-Z0-9]*", "SMA[78][A-Z0-9]*"],
+        "not_matches_any": "SMU3[A-Z0-9]*"
+      }
+    },
+    "inertial_static_rollover_smi8_smi9_and_smi7_and_smu3": {
+      "Inertial Sensor": {
+        "matches_all": ["SMI[89][A-Z0-9]*", "SMI7[A-Z0-9]*", "SMU3[A-Z0-9]*"],
+        "not_matches_any": "SMA[78][A-Z0-9]*"
+      }
+    },
+    "inertial_static_rollover_smi8_smi9_and_sma7_sma8_and_smu3": {
+      "Inertial Sensor": {
+        "matches_all": ["SMI[89][A-Z0-9]*", "SMA[78][A-Z0-9]*", "SMU3[A-Z0-9]*"],
+        "not_matches_any": "SMI7[A-Z0-9]*"
+      }
+    },
+    "inertial_static_rollover_smi7_and_sma7_sma8_and_smu3": {
+      "Inertial Sensor": {
+        "matches_all": ["SMI7[A-Z0-9]*", "SMA[78][A-Z0-9]*", "SMU3[A-Z0-9]*"],
+        "not_matches_any": "SMI[89][A-Z0-9]*"
+      }
+    },
+    "firing_loops_no_batd": {
+      "Fire Loops": {
+        "not_matches_any": ".*BATD[A-Z0-9]*.*"
+      }
+    }
+  },
+  "red_paragraph_rules": [
+    {
+      "description": "Peripheral Sensor has no UFSx model, keep central-sensor fallback and remove UFS-plausibility alternatives",
+      "section": "3.2",
+      "when_ref": "peripheral_no_ufs",
+      "delete_groups": [2, 3]
+    },
+    {
+      "description": "Peripheral Sensor has UFSx model and Inertial Sensor is only one SMAx model",
+      "section": "3.2",
+      "when_ref": ["peripheral_has_ufs", "inertial_only_one_sma"],
+      "delete_groups": [2, 4]
+    },
+    {
+      "description": "Peripheral Sensor has UFSx model and Inertial Sensor is not only one SMAx model",
+      "section": "3.2",
+      "when_ref": ["peripheral_has_ufs", "inertial_not_only_one_sma"],
+      "delete_groups": [3, 4]
+    },
+    {
+      "description": "Section 3.2.1 removes default UFS-defect strategy red notes",
+      "section": "3.2.1",
+      "when": {},
+      "delete_groups": [1, 2]
+    },
+    {
+      "description": "Section 3.3 combined red paragraph deletion: BATD, single SMAx, no UFS/RCS",
+      "section": "3.3",
+      "when_ref": ["firing_loops_has_batd", "inertial_only_one_sma", "peripheral_no_ufs_no_rcs"],
+      "delete_groups": [2, 4, 6]
+    },
+    {
+      "description": "Section 3.3 combined red paragraph deletion: BATD, single SMAx, has UFS/RCS",
+      "section": "3.3",
+      "when_ref": ["firing_loops_has_batd", "inertial_only_one_sma", "peripheral_has_ufs_or_rcs"],
+      "delete_groups": [2, 4, 5, 6]
+    },
+    {
+      "description": "Section 3.3 combined red paragraph deletion: BATD, not single SMAx, no UFS/RCS",
+      "section": "3.3",
+      "when_ref": ["firing_loops_has_batd", "inertial_not_only_one_sma", "peripheral_no_ufs_no_rcs"],
+      "delete_groups": [2, 3, 6]
+    },
+    {
+      "description": "Section 3.3 combined red paragraph deletion: BATD, not single SMAx, has UFS/RCS",
+      "section": "3.3",
+      "when_ref": ["firing_loops_has_batd", "inertial_not_only_one_sma", "peripheral_has_ufs_or_rcs"],
+      "delete_groups": [2, 3, 5, 6]
+    },
+    {
+      "description": "Section 3.3 combined red paragraph deletion: no BATD, single SMAx, no UFS/RCS",
+      "section": "3.3",
+      "when_ref": ["firing_loops_no_batd", "inertial_only_one_sma", "peripheral_no_ufs_no_rcs"],
+      "delete_groups": [4, 6]
+    },
+    {
+      "description": "Section 3.3 combined red paragraph deletion: no BATD, single SMAx, has UFS/RCS",
+      "section": "3.3",
+      "when_ref": ["firing_loops_no_batd", "inertial_only_one_sma", "peripheral_has_ufs_or_rcs"],
+      "delete_groups": [4, 5, 6]
+    },
+    {
+      "description": "Section 3.3 combined red paragraph deletion: no BATD, not single SMAx, no UFS/RCS",
+      "section": "3.3",
+      "when_ref": ["firing_loops_no_batd", "inertial_not_only_one_sma", "peripheral_no_ufs_no_rcs"],
+      "delete_groups": [3, 6]
+    },
+    {
+      "description": "Section 3.3 combined red paragraph deletion: no BATD, not single SMAx, has UFS/RCS",
+      "section": "3.3",
+      "when_ref": ["firing_loops_no_batd", "inertial_not_only_one_sma", "peripheral_has_ufs_or_rcs"],
+      "delete_groups": [3, 5, 6]
+    },
+    {
+      "description": "Section 3.5.1 keeps no static roll-over angle sensor text when no supported Inertial Sensor is configured",
+      "section": "3.5.1",
+      "when_ref": "inertial_static_rollover_no_supported",
+      "delete_groups": [1, 2, 3, 4]
+    },
+    {
+      "description": "Section 3.5.1 keeps only SMI8/SMI9 static roll-over angle text",
+      "section": "3.5.1",
+      "when_ref": "inertial_static_rollover_smi8_smi9_only",
+      "delete_groups": [2, 3, 4]
+    },
+    {
+      "description": "Section 3.5.1 keeps only SMI7 static roll-over angle text",
+      "section": "3.5.1",
+      "when_ref": "inertial_static_rollover_smi7_only",
+      "delete_groups": [1, 3, 4]
+    },
+    {
+      "description": "Section 3.5.1 keeps only SMA7/SMA8 static roll-over angle text",
+      "section": "3.5.1",
+      "when_ref": "inertial_static_rollover_sma7_sma8_only",
+      "delete_groups": [1, 2, 4]
+    },
+    {
+      "description": "Section 3.5.1 keeps only SMU3 static roll-over angle text",
+      "section": "3.5.1",
+      "when_ref": "inertial_static_rollover_smu3_only",
+      "delete_groups": [1, 2, 3]
+    },
+    {
+      "description": "Section 3.5.1 keeps SMI8/SMI9 and SMI7 static roll-over angle text",
+      "section": "3.5.1",
+      "when_ref": "inertial_static_rollover_smi8_smi9_and_smi7",
+      "delete_groups": [3, 4]
+    },
+    {
+      "description": "Section 3.5.1 keeps SMI8/SMI9 and SMA7/SMA8 static roll-over angle text",
+      "section": "3.5.1",
+      "when_ref": "inertial_static_rollover_smi8_smi9_and_sma7_sma8",
+      "delete_groups": [2, 4]
+    },
+    {
+      "description": "Section 3.5.1 keeps SMI8/SMI9 and SMU3 static roll-over angle text",
+      "section": "3.5.1",
+      "when_ref": "inertial_static_rollover_smi8_smi9_and_smu3",
+      "delete_groups": [2, 3]
+    },
+    {
+      "description": "Section 3.5.1 keeps SMI7 and SMA7/SMA8 static roll-over angle text",
+      "section": "3.5.1",
+      "when_ref": "inertial_static_rollover_smi7_and_sma7_sma8",
+      "delete_groups": [1, 4]
+    },
+    {
+      "description": "Section 3.5.1 keeps SMI7 and SMU3 static roll-over angle text",
+      "section": "3.5.1",
+      "when_ref": "inertial_static_rollover_smi7_and_smu3",
+      "delete_groups": [1, 3]
+    },
+    {
+      "description": "Section 3.5.1 keeps SMA7/SMA8 and SMU3 static roll-over angle text",
+      "section": "3.5.1",
+      "when_ref": "inertial_static_rollover_sma7_sma8_and_smu3",
+      "delete_groups": [1, 2]
+    },
+    {
+      "description": "Section 3.5.1 keeps SMI8/SMI9, SMI7 and SMA7/SMA8 static roll-over angle text",
+      "section": "3.5.1",
+      "when_ref": "inertial_static_rollover_smi8_smi9_and_smi7_and_sma7_sma8",
+      "delete_groups": [4]
+    },
+    {
+      "description": "Section 3.5.1 keeps SMI8/SMI9, SMI7 and SMU3 static roll-over angle text",
+      "section": "3.5.1",
+      "when_ref": "inertial_static_rollover_smi8_smi9_and_smi7_and_smu3",
+      "delete_groups": [3]
+    },
+    {
+      "description": "Section 3.5.1 keeps SMI8/SMI9, SMA7/SMA8 and SMU3 static roll-over angle text",
+      "section": "3.5.1",
+      "when_ref": "inertial_static_rollover_smi8_smi9_and_sma7_sma8_and_smu3",
+      "delete_groups": [2]
+    },
+    {
+      "description": "Section 3.5.1 keeps SMI7, SMA7/SMA8 and SMU3 static roll-over angle text",
+      "section": "3.5.1",
+      "when_ref": "inertial_static_rollover_smi7_and_sma7_sma8_and_smu3",
+      "delete_groups": [1]
+    }
+  ],
+  "red_paragraph_text_rules": [
+    {
+      "description": "Section 3.2 front algorithm sensor description keeps both UFS and PAS",
+      "section": "3.2",
+      "group": 1,
+      "when_ref": "peripheral_has_ufs_and_pas",
+      "replacements": [
+        {
+          "from": "central sensors, (and) UFS and PAS are used",
+          "to": "central sensors, UFS and PAS are used"
+        },
+        {
+          "from": "(and) UFS and PAS",
+          "to": "UFS and PAS"
+        }
+      ]
+    },
+    {
+      "description": "Section 3.2 front algorithm sensor description keeps UFS only",
+      "section": "3.2",
+      "group": 1,
+      "when_ref": ["peripheral_has_ufs", "peripheral_no_pas"],
+      "replacements": [
+        {
+          "from": "central sensors, (and) UFS and PAS are used",
+          "to": "central sensors and UFS are used"
+        },
+        {
+          "from": "central sensors, UFS and PAS are used",
+          "to": "central sensors and UFS are used"
+        },
+        {
+          "from": "中央传感器，前碰传感器及侧碰传感器用来探测正面碰撞",
+          "to": "中央传感器及前碰传感器用来探测正面碰撞"
+        }
+      ]
+    },
+    {
+      "description": "Section 3.2 front algorithm sensor description keeps PAS only",
+      "section": "3.2",
+      "group": 1,
+      "when_ref": ["peripheral_has_pas", "peripheral_no_ufs"],
+      "replacements": [
+        {
+          "from": "central sensors, (and) UFS and PAS are used",
+          "to": "central sensors and PAS are used"
+        },
+        {
+          "from": "central sensors, UFS and PAS are used",
+          "to": "central sensors and PAS are used"
+        },
+        {
+          "from": "中央传感器，前碰传感器及侧碰传感器用来探测正面碰撞",
+          "to": "中央传感器及侧碰传感器用来探测正面碰撞"
+        }
+      ]
+    },
+    {
+      "description": "Section 3.2 front algorithm sensor description removes both UFS and PAS",
+      "section": "3.2",
+      "group": 1,
+      "when_ref": "peripheral_no_ufs_no_pas",
+      "replacements": [
+        {
+          "from": "central sensors, (and) UFS and PAS are used",
+          "to": "central sensors are used"
+        },
+        {
+          "from": "central sensors, UFS and PAS are used",
+          "to": "central sensors are used"
+        },
+        {
+          "from": "中央传感器，前碰传感器及侧碰传感器用来探测正面碰撞",
+          "to": "中央传感器用来探测正面碰撞"
+        }
+      ]
+    },
+    {
+      "description": "Section 3.3 rear algorithm sensor description keeps UFS when Peripheral Sensor has UFSx only",
+      "section": "3.3",
+      "group": 1,
+      "when_ref": ["peripheral_has_ufs", "peripheral_no_rcs"],
+      "replacements": [
+        {
+          "from": "UFS and RCS are used",
+          "to": "UFS is used"
+        },
+        {
+          "from": "前碰传感器及后碰传感器",
+          "to": "前碰传感器"
+        }
+      ]
+    },
+    {
+      "description": "Section 3.3 rear algorithm sensor description keeps RCS when Peripheral Sensor has RCS only",
+      "section": "3.3",
+      "group": 1,
+      "when_ref": ["peripheral_has_rcs", "peripheral_no_ufs"],
+      "replacements": [
+        {
+          "from": "UFS and RCS are used",
+          "to": "RCS is used"
+        },
+        {
+          "from": "前碰传感器及后碰传感器",
+          "to": "后碰传感器"
+        }
+      ]
+    },
+    {
+      "description": "Section 3.3 rear algorithm sensor description keeps RCS when Peripheral Sensor has both UFSx and RCS",
+      "section": "3.3",
+      "group": 1,
+      "when_ref": "peripheral_has_ufs_and_rcs",
+      "replacements": [
+        {
+          "from": "UFS and RCS are used",
+          "to": "RCS is used"
+        },
+        {
+          "from": "前碰传感器及后碰传感器",
+          "to": "后碰传感器"
+        }
+      ]
+    },
+    {
+      "description": "Section 3.3 central rear plausibility text group 3 keeps UFS when Peripheral Sensor has UFSx only",
+      "section": "3.3",
+      "group": 3,
+      "when_ref": ["peripheral_has_ufs", "peripheral_no_rcs"],
+      "replacements": [
+        {
+          "from": "UFS/RCS is(are) used",
+          "to": "UFS is used"
+        },
+        {
+          "from": "UFS/RCS defect",
+          "to": "UFS defect"
+        },
+        {
+          "from": "前碰/后碰传感器",
+          "to": "前碰传感器"
+        }
+      ]
+    },
+    {
+      "description": "Section 3.3 central rear plausibility text group 3 keeps RCS when Peripheral Sensor has RCS only",
+      "section": "3.3",
+      "group": 3,
+      "when_ref": ["peripheral_has_rcs", "peripheral_no_ufs"],
+      "replacements": [
+        {
+          "from": "UFS/RCS is(are) used",
+          "to": "RCS is used"
+        },
+        {
+          "from": "UFS/RCS defect",
+          "to": "RCS defect"
+        },
+        {
+          "from": "前碰/后碰传感器",
+          "to": "后碰传感器"
+        }
+      ]
+    },
+    {
+      "description": "Section 3.3 central rear plausibility text group 3 keeps RCS when Peripheral Sensor has both UFSx and RCS",
+      "section": "3.3",
+      "group": 3,
+      "when_ref": "peripheral_has_ufs_and_rcs",
+      "replacements": [
+        {
+          "from": "UFS/RCS is(are) used",
+          "to": "RCS is used"
+        },
+        {
+          "from": "UFS/RCS defect",
+          "to": "RCS defect"
+        },
+        {
+          "from": "前碰/后碰传感器",
+          "to": "后碰传感器"
+        }
+      ]
+    },
+    {
+      "description": "Section 3.3 central rear plausibility text group 4 keeps UFS when Peripheral Sensor has UFSx only",
+      "section": "3.3",
+      "group": 4,
+      "when_ref": ["peripheral_has_ufs", "peripheral_no_rcs"],
+      "replacements": [
+        {
+          "from": "UFS/RCS is(are) used",
+          "to": "UFS is used"
+        },
+        {
+          "from": "UFS/RCS defect",
+          "to": "UFS defect"
+        },
+        {
+          "from": "前碰/后碰传感器",
+          "to": "前碰传感器"
+        }
+      ]
+    },
+    {
+      "description": "Section 3.3 central rear plausibility text group 4 keeps RCS when Peripheral Sensor has RCS only",
+      "section": "3.3",
+      "group": 4,
+      "when_ref": ["peripheral_has_rcs", "peripheral_no_ufs"],
+      "replacements": [
+        {
+          "from": "UFS/RCS is(are) used",
+          "to": "RCS is used"
+        },
+        {
+          "from": "UFS/RCS defect",
+          "to": "RCS defect"
+        },
+        {
+          "from": "前碰/后碰传感器",
+          "to": "后碰传感器"
+        }
+      ]
+    },
+    {
+      "description": "Section 3.3 central rear plausibility text group 4 keeps RCS when Peripheral Sensor has both UFSx and RCS",
+      "section": "3.3",
+      "group": 4,
+      "when_ref": "peripheral_has_ufs_and_rcs",
+      "replacements": [
+        {
+          "from": "UFS/RCS is(are) used",
+          "to": "RCS is used"
+        },
+        {
+          "from": "UFS/RCS defect",
+          "to": "RCS defect"
+        },
+        {
+          "from": "前碰/后碰传感器",
+          "to": "后碰传感器"
+        }
+      ]
+    },
+    {
+      "description": "Section 3.4 side sensor list removes editing notes",
+      "section": "3.4",
+      "group": 1,
+      "when": {},
+      "replacements": [
+        {
+          "from": " (delete not configured sensor)",
+          "to": ""
+        },
+        {
+          "from": "(删掉不需要的sensor)",
+          "to": ""
+        }
+      ]
+    },
+    {
+      "description": "Section 3.4 side sensor list keeps both PAS and PPS wording",
+      "section": "3.4",
+      "group": 1,
+      "when_ref": "peripheral_has_pas_and_pps",
+      "replacements": [
+        {
+          "from": "PAS and/or PPS",
+          "to": "PAS and PPS"
+        },
+        {
+          "from": "侧面加速度传感器和/或侧面压力传感器",
+          "to": "侧面加速度传感器和侧面压力传感器"
+        }
+      ]
+    },
+    {
+      "description": "Section 3.4 side sensor list keeps PAS and removes PPS wording",
+      "section": "3.4",
+      "group": 1,
+      "when_ref": ["peripheral_has_pas", "peripheral_no_pps"],
+      "replacements": [
+        {
+          "from": "PAS and/or PPS",
+          "to": "PAS"
+        },
+        {
+          "from": "侧面加速度传感器和/或侧面压力传感器",
+          "to": "侧面加速度传感器"
+        }
+      ]
+    },
+    {
+      "description": "Section 3.4 side sensor list keeps PPS and removes PAS wording",
+      "section": "3.4",
+      "group": 1,
+      "when_ref": ["peripheral_has_pps", "peripheral_no_pas"],
+      "replacements": [
+        {
+          "from": "PAS and/or PPS",
+          "to": "PPS"
+        },
+        {
+          "from": "侧面加速度传感器和/或侧面压力传感器",
+          "to": "侧面压力传感器"
+        }
+      ]
+    },
+    {
+      "description": "Section 3.4 side sensor list removes PAS/PPS wording when neither is configured",
+      "section": "3.4",
+      "group": 1,
+      "when_ref": "peripheral_no_pas_no_pps",
+      "replacements": [
+        {
+          "from": "PAS and/or PPS, ",
+          "to": ""
+        },
+        {
+          "from": "侧面加速度传感器和/或侧面压力传感器，",
+          "to": ""
+        }
+      ]
+    },
+    {
+      "description": "Section 3.4 side sensor list removes UFS-Y wording when no UFS-Y sensor is configured",
+      "section": "3.4",
+      "group": 1,
+      "when_ref": "peripheral_no_ufs_y",
+      "replacements": [
+        {
+          "from": "UFS-Y, ",
+          "to": ""
+        },
+        {
+          "from": "前碰传感器Y通道，",
+          "to": ""
+        }
+      ]
+    },
+    {
+      "description": "Section 3.4 side sensor list removes RCS-Y wording when no RCS-Y sensor is configured",
+      "section": "3.4",
+      "group": 1,
+      "when_ref": "peripheral_no_rcs_y",
+      "replacements": [
+        {
+          "from": ", RCS-Y",
+          "to": ""
+        },
+        {
+          "from": "RCS-Y and ",
+          "to": ""
+        },
+        {
+          "from": "，后碰传感器Y通道",
+          "to": ""
+        },
+        {
+          "from": "后碰传感器Y通道，",
+          "to": ""
+        }
+      ]
+    },
+    {
+      "description": "Section 3.4 side plausibility removes peripheral plus central example when UFS/RCS is configured",
+      "section": "3.4",
+      "group": 2,
+      "when_ref": "peripheral_has_ufs_or_rcs_loose",
+      "replacements": [
+        {
+          "from": "a peripheral acceleration sensor and a central sensor, ",
+          "to": ""
+        },
+        {
+          "from": "一个外围传感器和一个中央传感器，",
+          "to": ""
+        }
+      ]
+    },
+    {
+      "description": "Section 3.4 side plausibility removes two-peripheral example when PAS is missing",
+      "section": "3.4",
+      "group": 2,
+      "when_ref": "peripheral_no_pas",
+      "replacements": [
+        {
+          "from": "two independent peripheral acceleration sensors, ",
+          "to": ""
+        },
+        {
+          "from": "或者是两个外围传感器，",
+          "to": ""
+        }
+      ]
+    },
+    {
+      "description": "Section 3.4 side plausibility removes two-peripheral example when PPS is missing",
+      "section": "3.4",
+      "group": 2,
+      "when_ref": "peripheral_no_pps",
+      "replacements": [
+        {
+          "from": "two independent peripheral acceleration sensors, ",
+          "to": ""
+        },
+        {
+          "from": "或者是两个外围传感器，",
+          "to": ""
+        }
+      ]
+    },
+    {
+      "description": "Section 3.4 side plausibility removes central-channel example when PPS is configured",
+      "section": "3.4",
+      "group": 2,
+      "when_ref": "peripheral_has_pps",
+      "replacements": [
+        {
+          "from": ", or the two independent sensor channels of the central sensor",
+          "to": ""
+        },
+        {
+          "from": "，也可以是中央传感器的两个单独的传感器通道",
+          "to": ""
+        }
+      ]
+    },
+    {
+      "description": "Section 3.4 side plausibility removes central-channel example when Inertial Sensor is only one SMAx",
+      "section": "3.4",
+      "group": 2,
+      "when_ref": "inertial_only_one_sma",
+      "replacements": [
+        {
+          "from": ", or the two independent sensor channels of the central sensor",
+          "to": ""
+        },
+        {
+          "from": "，也可以是中央传感器的两个单独的传感器通道",
+          "to": ""
+        }
+      ]
+    },
+    {
+      "description": "Section 3.4 side plausibility fixes wording when only central-channel example remains",
+      "section": "3.4",
+      "group": 2,
+      "when_ref": ["peripheral_has_ufs_or_rcs_loose", "peripheral_no_pps", "inertial_not_only_one_sma"],
+      "replacements": [
+        {
+          "from": "This could be e.g. or the two independent sensor channels",
+          "to": "This could be e.g. the two independent sensor channels"
+        },
+        {
+          "from": "这种情况可以是也可以是",
+          "to": "这种情况可以是"
+        },
+        {
+          "from": "这种情况可以是或者是",
+          "to": "这种情况可以是"
+        }
+      ]
+    },
+    {
+      "description": "Section 3.4 side plausibility removes empty example sentence after optional text cleanup",
+      "section": "3.4",
+      "group": 2,
+      "when": {},
+      "replacements": [
+        {
+          "from": "This could be e.g. .",
+          "to": ""
+        },
+        {
+          "from": "这种情况可以是。",
+          "to": ""
+        },
+        {
+          "from": "这种情况可以是或者是",
+          "to": "这种情况可以是"
+        },
+        {
+          "from": "，。",
+          "to": "。"
+        }
+      ]
+    }
+  ]
+}

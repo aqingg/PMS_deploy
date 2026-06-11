@@ -1,0 +1,59 @@
+/* ToDoTable 最外层，作为浮动按钮的定位参考 */
+.todo-table-container {
+  position: relative;
+  /* 用视口高度减去 Header 等上方区域的高度，按你实际页面微调这个数 */
+  height: calc(100vh - 120px);
+  display: flex;
+  flex-direction: column;
+}
+
+
+.todo-float-buttons {
+  position: absolute;     /* 相对 todo-table-container */
+  bottom: 100px;
+  right: 0px;
+  display: flex;
+  gap: 60px;
+  pointer-events: none;   /* 容器不挡点击 */
+}
+
+/* 覆盖 FloatButton 默认定位，并允许点击 */
+.todo-float-buttons .ant-float-btn {
+  position: relative !important;
+  pointer-events: auto;
+}
+
+/* 让表体占满容器剩余空间，并且在里面滚动 */
+.todo-table-wrapper {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding-bottom: 80px;   /* 防止最后一行被按钮挡住 */
+}
+
+.todo-table-header {
+  background: #fafafa;
+  border-bottom: 1px solid #e0e0e0;
+  padding: 6px 12px;
+  font-weight: bold;
+  top: 0;
+  z-index: 5;
+}
+
+.header-row {
+  display: flex;
+  align-items: center;
+  font-size: 14px;
+  color: #555;
+}
+
+/* 对齐 Item 的列宽 */
+.col {
+  padding: 0 6px;
+}
+
+.col-date { width: 20%; }      /* 对应 span=3 (3/24=12.5%) */
+.col-progress { width: 7%; }
+.col-title { width: 13%; }
+.col-comment { width: 43%; }   /* (10/24=41.7%) */
+.col-tags { width: 17%; }      /* (5/24=20.8%) */

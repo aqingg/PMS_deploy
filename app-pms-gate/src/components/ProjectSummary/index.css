@@ -1,0 +1,22 @@
+.project {
+  padding: 60px 20px 0 20px;  /* 80 换成你 Header 实际高度 */
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  box-sizing: border-box;
+  position: relative;   /* ⭐ 必须，让按钮定位基于整个右侧 Panel */
+}
+.project-title {
+  font-size: 20px;
+  font-weight: 600;
+  color: #333;
+  padding-left: 0px;
+  padding-bottom: 0px;
+  padding-right: 0px;
+}
+
+
+.project-right {
+  padding-right: 0px;
+}

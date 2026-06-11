@@ -1,0 +1,12 @@
+version: "3.9"
+
+services:
+  app-puma:
+    build: .
+    image: app-puma
+    container_name: app-puma-container
+
+    ports:
+      - "8086:8086"
+
+    restart: unless-stopped

@@ -1,0 +1,76 @@
+syntax = "proto3";
+
+package dataprovider;
+
+// ==========================================================
+// 消息定义 (Message Definitions)
+// ==========================================================
+
+// /api/v1/identifiers
+message ProjectIdentifier {
+  string uuid = 1;
+  string customer = 2;
+}
+
+// 包含所有标识符的列表
+message ProjectIdentifierList {
+  repeated ProjectIdentifier identifiers = 1;
+}
+
+// /api/v1/projects/info/{uuid} 
+message ProjectProfile {
+  string customer = 1;
+  string project = 2;
+  string ab_generation = 3;
+  int32 sop = 4;
+  string vehicle_variant = 5;
+  string plattform = 6;
+  string type = 7;
+  string vint_responsible = 8;
+  string project_leader = 9;
+  string region = 10;
+  string oem = 11;
+  string model = 12;
+  string peripheral_sensor_configuration = 13;
+  string internal_sensor_configuration = 14;
+  string role_summary = 15;
+  string Digit10OemPn = 16;
+  string customerOemPn = 17;
+  string FlConfiguration = 18;
+  string TargetMarket = 19;
+  string MCR_No = 20;
+  string ConnectorDirection = 21;
+  string Status = 22;
+  string AlmProjectName = 23;
+  string ReferenceProjectPn = 24;
+  string ReferenceProjectBm = 25;
+  string role_email_summary = 26;
+  string QGC0Time = 27;
+  string QGC4Time = 28;
+  string UcType = 29;
+  string uuid = 30; 
+}
+
+// 获取项目标识符列表的请求 
+message GetIdentifiersRequest {
+  // 可以加入过滤条件，例如 filter_by_category = 1;
+}
+
+// 根据UUID获取项目详情的请求
+message GetInformationByUuidRequest {
+  string uuid = 1;
+}
+
+// ==========================================================
+// 服务定义 (Service Definition)
+// ==========================================================
+service DataProvider {
+  // 对应 /api/v1/identifiers
+  rpc GetProjectIdentifiers(GetIdentifiersRequest) returns (ProjectIdentifierList);
+
+  // 对应 /api/v1/projects/info/{uuid}
+  rpc GetProjectInformationByUuid(GetInformationByUuidRequest) returns (ProjectProfile);
+
+  // 一个服务端流式RPC，一次性获取所有项目的详细信息
+  rpc StreamAllProjectDetails(GetIdentifiersRequest) returns (stream ProjectProfile);
+}
