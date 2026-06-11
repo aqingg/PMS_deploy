@@ -1,0 +1,22 @@
+{
+  "fieldMapping": {
+    "CustomerName": "OEM",
+    "ProductSubCategory": "Product Category",
+    "projectTypeOss": "Project Type",
+    "Status": "Status",
+    "MCR_L0": "MCR No.",
+    "FlConfiguration": "Fire Loops",
+    "InternalSensor": "Inertial Sensor",
+    "ConnectorDirection" : "ECU Direction",
+    "Digit10OemPn" : "BOSCH PIN",
+    "customerOemPn" : "Customer PIN",
+    "TargetMarket" : "Market",
+    "VehicleSegment" : "Vehicle Type"
+  },
+
+  "collections": {
+    "Peripheral Sensor": {
+      "include": ["Ufs", "Pas", "Pps"]
+    }
+  }
+}

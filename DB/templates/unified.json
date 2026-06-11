@@ -1,0 +1,327 @@
+[
+  {
+    "owner": { "label": "Owner", "value": "" },
+    "proxies": { "label": "Proxies", "value": "" },
+    "uuid": { "label": "UUID", "value": "" },
+    
+    "department": "VM-OSS/EPD5-CN-Full",
+
+    "projectInfo": [
+      [
+        { "label": "OEM", "value": "" },
+        { "label": "Product Category", "value": "" },
+        { "label": "Market", "value": "" }
+        
+      ],
+      [
+        { "label": "Status", "value": "" },
+        { "label": "SOP Date", "value": "" },
+        { "label": "Project Leader", "value": "" }
+      ],
+      [
+        { "label": "MCR No.", "value": "" },
+        { "label": "ECU Direction", "value": "" },
+        { "label": "BOSCH PIN", "value": "" },
+        { "label": "Customer PIN", "value": "" }
+      ],
+      [
+        { "label": "Inertial Sensor", "value": "" },
+        { "label": "Peripheral Sensor", "value": "" },
+        { "label": "Vehicle Type", "value": "" }
+      ],
+      [
+        { "label": "Fire Loops", "value": "" }
+      ],
+      [
+        { "label": "Algo Scope", "value": "" , 
+        "keys": [
+		  "No Change",
+          "Change Direction",
+          "FCL",
+          "Cali Reflash", 
+          "CTD", 
+          "CSABS",
+          "Sleep Wake Up (C16)", 
+          "Sleep Wake Up (C18)", 
+          "IDF",  
+          "IDP",
+          "SDD",
+          "OMS"
+          ]
+        }
+      ],
+      [
+        { "label": "Calibration Scope", "value": "" , 
+        "keys": [
+          "FSR",
+          "Rose1",  
+          "Rose1+",
+          "EPP",
+          "CrashGuard(SDD)",		  
+		  "CSABS",
+          "Offzone",
+          "IDF",           
+          "Rose_Static",
+		  "Rose_Angle",
+		  "PitchOver",
+          "IDP", 
+          "CTD",
+          "OMS"
+          ]
+        }
+      ],
+      
+      [
+        { "label": "Local Link", "value": "" }
+      ],
+      [
+        { "label": "Public Link", "value": "" }
+      ],
+      [
+        { "label": "SharePoint", "value": "Support Functions Are Not Valid" }
+      ]
+    ],
+
+    "taskTree": [
+      {
+        "taskName": "Algo",
+        "status": "Pending",
+        "comment": "",
+        "children": [
+          {
+            "taskName": "Algo Name",
+            "status": "Pending",
+            "comment": "",
+            "children": [
+              {
+                "taskName": "Algo Plan",
+                "status": "Pending",
+                "comment": "",
+                "children": []
+              },
+              {
+                "taskName": "Algo Dev",
+                "status": "Pending",
+                "comment": "",
+                "children": []
+              },
+              {
+                "taskName": "Algo Test",
+                "status": "Pending",
+                "comment": "",
+                "children": []
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "taskName": "Vehicle Integration",
+        "status": "Pending",
+        "comment": "",
+        "children": [
+              {
+                "taskName": "Mounting_Picture",
+                "status": "Pending",
+                "comment": "",
+                "children": []
+              },
+              {
+                "taskName": "Hammer_Test",
+                "status": "Pending",
+                "comment": "",
+                "children": []
+              },
+              {
+                "taskName": "Sensor_Map",
+                "status": "Pending",
+                "comment": "",
+                "children": []
+              },
+              {
+                "taskName": "Mounting_Assessment",
+                "status": "Pending",
+                "comment": "",
+                "children": []
+              },
+              {
+                "taskName": "Mounting&Function_Checklist",
+                "status": "Pending",
+                "comment": "",
+                "children": []
+              },
+              {
+                "taskName": "IAR",
+                "status": "Pending",
+                "comment": "",
+                "children": []
+              },
+              {
+                "taskName": "ONETCD&TCD09",
+                "status": "Pending",
+                "comment": "",
+                "children": []
+              }
+            ]
+      },
+      {
+        "taskName": "Calibration",
+        "status": "Pending",
+        "comment": "",
+        "children": [
+          {
+            "taskName": "ACQ_CaliID",
+            "status": "Pending",
+            "comment": "",
+            "children": [
+              {
+                "taskName": "RTTF_Confirmation",
+                "status": "Pending",
+                "comment": "",
+                "children": []
+              },
+              {
+                "taskName": "ARS_Calibration",
+                "status": "Pending",
+                "comment": "",
+                "children": []
+              },
+              {
+                "taskName": "Data_Preparing",
+                "status": "Pending",
+                "comment": "",
+                "children": []
+              },
+              {
+                "taskName": "Data_Handling",
+                "status": "Pending",
+                "comment": "",
+                "children": []
+              },
+              {
+                "taskName": "Data_Uploading",
+                "status": "Pending",
+                "comment": "",
+                "children": []
+              },
+              {
+                "taskName": "Mapping",
+                "status": "Pending",
+                "comment": "",
+                "children": []
+              },
+              {
+                "taskName": "Crash_Data_Review",
+                "status": "Pending",
+                "comment": "",
+                "children": []
+              },
+              {
+                "taskName": "MDS_Setup",
+                "status": "Pending",
+                "comment": "",
+                "children": []
+              },
+              {
+                "taskName": "DT-AI_Calibration",
+                "status": "Pending",
+                "comment": "",
+                "children": []
+              },
+              {
+                "taskName": "Draft_Simulation",
+                "status": "Pending",
+                "comment": "",
+                "children": []
+              },
+              {
+                "taskName": "PreChecker",
+                "status": "Pending",
+                "comment": "",
+                "children": []
+              },
+              {
+                "taskName": "Standard_Simulation",
+                "status": "Pending",
+                "comment": "",
+                "children": []
+              },
+              {
+                "taskName": "Checker",
+                "status": "Pending",
+                "comment": "",
+                "children": []
+              },
+              {
+                "taskName": "Walkthrough",
+                "status": "Pending",
+                "comment": "",
+                "children": []
+              },
+              {
+                "taskName": "CCaRoT",
+                "status": "Pending",
+                "comment": "",
+                "children": []
+              },
+              {
+                "taskName": "Internal_Review",
+                "status": "Pending",
+                "comment": "",
+                "children": []
+              },
+              {
+                "taskName": "Customer_Communication",
+                "status": "Pending",
+                "comment": "",
+                "children": []
+              },
+              {
+                "taskName": "Create_BBMReview",
+                "status": "Pending",
+                "comment": "",
+                "children": []
+              },
+              {
+                "taskName": "Customer_Approval",
+                "status": "Pending",
+                "comment": "",
+                "children": []
+              },
+              {
+                "taskName": "Generate_CalibrationCP",
+                "status": "Pending",
+                "comment": "",
+                "children": []
+              },
+              {
+                "taskName": "Prepare_TestInput",
+                "status": "Pending",
+                "comment": "",
+                "children": []
+              },
+              {
+                "taskName": "Evaluate_TestResults",
+                "status": "Pending",
+                "comment": "",
+                "children": []
+              },
+              {
+                "taskName": "VAR",
+                "status": "Pending",
+                "comment": "",
+                "children": []
+              },
+              {
+                "taskName": "ONETCD&TCD08",
+                "status": "Pending",
+                "comment": "",
+                "children": []
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+]

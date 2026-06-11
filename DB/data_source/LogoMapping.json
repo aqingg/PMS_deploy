@@ -1,0 +1,56 @@
+{
+  "byd": {
+    "path": "BYD.jpg",
+    "width_inches": 3.0,
+    "aliases": ["byd", "byd auto", "比亚迪"]
+  },
+  "vw": {
+    "path": "VW.jpg",
+    "width_inches": 3.0,
+    "aliases": ["vw", "volkswagen", "大众"]
+  },
+  "jac": {
+    "path": "JAC.jpg",
+    "width_inches": 3.0,
+    "aliases": ["jac", "jianghuai", "江淮"]
+  },
+  "chery": {
+    "path": "Chery.jpg",
+    "width_inches": 3.0,
+    "aliases": ["chery", "奇瑞"]
+  },
+  "gwm": {
+    "path": "GWM.png",
+    "width_inches": 3.0,
+    "aliases": ["gwm", "great wall", "长城"]
+  },
+  "gwm_haval": {
+    "path": "GWM_HAVAL.png",
+    "width_inches": 3.0,
+    "aliases": ["gwm haval", "haval", "哈弗"]
+  },
+  "gwm_ora": {
+    "path": "GWM_ORA.png",
+    "width_inches": 3.0,
+    "aliases": ["gwm ora", "ora", "欧拉"]
+  },
+  "sgmw": {
+    "path": "SGMW.jpg",
+    "width_inches": 3.0,
+    "aliases": ["sgmw", "上汽通用五菱", "上汽通用五菱"]
+  },
+  "jmc": {
+    "path": "JMC.jpg",
+    "width_inches": 3.0,
+    "aliases": ["jmc", "江铃", "江铃汽车"]
+  },
+  "sgm": {
+    "path": "SGM.jpg",
+    "width_inches": 3.0,
+    "aliases": ["sgm", "上汽集团", "上汽"]
+  },
+  "default": {
+    "path": "BYD.jpg",
+    "width_inches": 3.0
+  }
+}

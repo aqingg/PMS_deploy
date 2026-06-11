@@ -1,0 +1,362 @@
+[
+
+  {
+    "TagName": "ARS",
+    "FileKeyWord": "ARS.json",
+    "RelativePath": "\\40.Application\\B.Algo\\AlgoID"
+  },
+  {
+    "TagName": "SW-Snapshot",
+    "FileKeyWord": "",
+    "RelativePath": "\\40.Application\\B.Algo\\AlgoID"
+  },
+  {
+    "TagName": "Sensor Scope",
+    "FileKeyWord": "ProjectConfiguration.json",
+    "RelativePath": "\\40.Application\\D.OtherFiles"
+  }, 
+  {
+    "TagName": "Sim-Devices",
+    "FileKeyWord": "ProjectConfiguration.json",
+    "RelativePath": "\\40.Application\\D.OtherFiles"
+  },
+  {
+    "TagName": "Algo Tasks",
+    "FileKeyWord": "AlgoTasks.json",
+    "RelativePath": "\\40.Application\\B.Algo\\AlgoID"
+  },
+  {
+	"TagName": "Official DLL",
+    "FileKeyWord": ".xml",
+    "RelativePath": "\\40.Application\\B.Algo\\AlgoID\\00_DesignXml"
+  },
+  {
+	"TagName": "ARTS & ARTR",
+    "FileKeyWord": "ARTS_ARTR.json",
+    "RelativePath": "\\40.Application\\B.Algo\\AlgoID"
+  },
+  {
+	"TagName": "Calibration Scope",
+    "FileKeyWord": "",
+    "RelativePath": "\\40.Application\\D.OtherFiles"
+  },
+  
+  {
+    "TagName": "IAR_Template",
+    "FileKeyWord": "",
+    "RelativePath":"",
+    "AbsolutePath": "\\\\bosch.com\\dfsrb\\DfsCN\\DIV\\CC\\Prj\\PS\\32_Application\\EPD5-CN-Tools-Mgmt\\00.General\\Templates\\VehicleIntegration\\IAR\\"
+  },
+  {
+    "TagName": "IAR_Report",
+    "FileKeyWord": "",
+    "RelativePath":"",
+    "AbsolutePath": "\\\\bosch.com\\dfsrb\\DfsCN\\DIV\\CC\\Prj\\PS\\32_Application\\EPD5-CN-Tools-Mgmt\\00.General\\PUMA_Test"
+  },
+  {
+    "TagName": "ONETCD&TCD08_Template",
+    "FileKeyWord": "QSTL0446_ Calibration_Report_CN_En_Cn_V1_6.docm",
+    "RelativePath":"",
+    "AbsolutePath": "\\\\bosch.com\\dfsrb\\DfsCN\\DIV\\CC\\Prj\\PS\\32_Application\\EPD5-CN-Tools-Mgmt\\00.General\\Templates\\VehicleIntegration\\TCD08\\"
+  },
+  {
+    "TagName": "ONETCD&TCD08_Report",
+    "FileKeyWord": "",
+    "RelativePath":"",
+    "AbsolutePath": "\\\\bosch.com\\dfsrb\\DfsCN\\DIV\\CC\\Prj\\PS\\32_Application\\EPD5-CN-Tools-Mgmt\\00.General\\PUMA_Test2"
+  },
+
+  {
+	"TagName": "Mounting Picture (Template)",
+    "FileKeyWord": "",
+    "RelativePath": "",
+	"AbsolutePath": "\\\\bosch.com\\dfsrb\\DfsCN\\DIV\\CC\\Prj\\PS\\32_Application\\EPD5-CN-Tools-Mgmt\\00.General\\Templates\\VehicleIntegration\\MountingPicture"
+  },
+  {
+	"TagName": "Mounting Guidelines (Template)",
+    "FileKeyWord": "",
+    "RelativePath": "",
+	"AbsolutePath": "\\\\bosch.com\\dfsrb\\DfsCN\\DIV\\CC\\Prj\\PS\\32_Application\\EPD5-CN-Tools-Mgmt\\00.General\\Templates\\VehicleIntegration\\MountingGuideline"
+  },
+  {
+    "TagName": "Mounting Picture From Customer",
+    "FileKeyWord": "",
+    "RelativePath": "\\40.Application\\A.Vehicle_integration\\01_Packaging"
+  },
+  {
+    "TagName": "Hammer Test Report",
+    "FileKeyWord": "",
+    "RelativePath": "\\40.Application\\A.Vehicle_integration\\05_Modal_analysis"
+  },
+  {
+	"TagName": "Mounting Assessment Excel (Template)",
+    "FileKeyWord": "",
+    "RelativePath": "",
+	"AbsolutePath": "\\\\bosch.com\\dfsrb\\DfsCN\\DIV\\CC\\Prj\\PS\\32_Application\\EPD5-CN-Tools-Mgmt\\00.General\\Templates\\VehicleIntegration\\MountingAssessment"
+  },
+  {
+	"TagName": "Mounting Assessment Mail (CS)",
+    "FileKeyWord": "Sensor_Map",
+    "RelativePath": "\\40.Application\\A.Vehicle_integration\\01_Packaging"
+  },
+  {
+	"TagName": "Mounting Assessment Excel (PS)",
+    "FileKeyWord": "Sensor_Map",
+    "RelativePath": "\\40.Application\\A.Vehicle_integration\\01_Packaging"
+  },
+  {
+	"TagName": "Mounting Assessment Report (CS)",
+    "FileKeyWord": "Sensor_Map",
+    "RelativePath": "\\40.Application\\A.Vehicle_integration\\01_Packaging"
+  },
+  {
+	"TagName": "Mounting Assessment Report (PS)",
+    "FileKeyWord": "Sensor_Map",
+    "RelativePath": "\\40.Application\\A.Vehicle_integration\\01_Packaging"
+  },
+  {
+	"TagName": "Sensor Map",
+    "FileKeyWord": "",
+    "RelativePath": "\\40.Application\\A.Vehicle_integration\\03_Sensor_map"
+  },
+  {
+	"TagName": "Sensor Map Mail",
+    "FileKeyWord": "",
+    "RelativePath": "\\40.Application\\A.Vehicle_integration\\03_Sensor_map"
+  },
+  {
+	"TagName": "Mounting&Function Checklist Mail",
+    "FileKeyWord": "",
+    "RelativePath": "\\40.Application\\A.Vehicle_integration\\04_Mounting_checklist"
+  },
+  {
+	"TagName": "RTTF Macro (Template)",
+    "FileKeyWord": "",
+    "RelativePath": "",
+	"AbsolutePath": "\\\\bosch.com\\dfsrb\\DfsCN\\DIV\\CC\\Prj\\PS\\32_Application\\EPD5-CN-Tools-Mgmt\\00.General\\Templates\\Calibration\\RTTF_MACRO"
+  },
+  {
+	"TagName": "Customer RTTF Mail",
+    "FileKeyWord": "",
+    "RelativePath": "\\40.Application\\A.Vehicle_integration\\02_Crash_matrix"
+  },
+  {
+	"TagName": "Confirmed RTTF",
+    "FileKeyWord": "",
+    "RelativePath": "\\40.Application\\A.Vehicle_integration\\02_Crash_matrix"
+  },
+  {
+	"TagName": "Checker (Template)",
+    "FileKeyWord": "",
+    "RelativePath": "",
+	"AbsolutePath": "\\\\bosch.com\\dfsrb\\DfsCN\\DIV\\CC\\Prj\\PS\\32_Application\\EPD5-CN-Tools-Mgmt\\00.General\\Templates\\Calibration\\Checker"
+  },
+  {
+	"TagName": "ARS Calibration (Template)",
+    "FileKeyWord": "",
+    "RelativePath": "",
+	"AbsolutePath": "\\\\bosch.com\\dfsrb\\DfsCN\\DIV\\CC\\Prj\\PS\\32_Application\\EPD5-CN-Tools-Mgmt\\00.General\\Templates\\Algo\\ARS_Calibration"
+  },
+  {
+	"TagName": "BBMReview ARS_Calibration",
+    "FileKeyWord": "",
+    "RelativePath": "\\40.Application\\B.Algo\\AlgoID\\ARS_Calibration"
+  },
+  {
+	"TagName": "ARS_Calibration (Outside Doors)",
+    "FileKeyWord": "",
+    "RelativePath": "\\40.Application\\B.Algo\\AlgoID\\ARS_Calibration"
+  },
+  {
+	"TagName": "Checker_ARS_Calibration",
+    "FileKeyWord": "",
+    "RelativePath": "\\40.Application\\C.Calibration\\ProjectID_Parameter_ID\\04_Internal_Release\\Checker"
+  },
+  {
+	"TagName": "Checker_NF",
+    "FileKeyWord": "",
+    "RelativePath": "\\40.Application\\C.Calibration\\ProjectID_Parameter_ID\\04_Internal_Release\\Checker"
+  },
+  {
+	"TagName": "Checker_MF",
+    "FileKeyWord": "",
+    "RelativePath": "\\40.Application\\C.Calibration\\ProjectID_Parameter_ID\\04_Internal_Release\\Checker"
+  },
+  {
+	"TagName": "Crash Data From Customer",
+    "FileKeyWord": "",
+    "RelativePath": "",
+	"AbsolutePath": "\\\\bosch.com\\dfsrb\\DfsCN\\DIV\\CC\\Prj\\PS\\00_General\\10_Migrated_2_ILM\\01.Crash_data\\OemID\\ProjectID"
+  },
+  {
+	"TagName": "Renamed CrashData Folder",
+    "FileKeyWord": "",
+    "RelativePath": "",
+	"AbsolutePath": "\\\\bosch.com\\dfsrb\\DfsCN\\DIV\\CC\\Prj\\PS\\00_General\\10_Migrated_2_ILM\\01.Crash_data\\OemID\\ProjectID\\StandardCrashData"
+  },
+  {
+	"TagName": "Crash Data (xml)",
+    "FileKeyWord": "",
+    "RelativePath": "",
+	"AbsolutePath": "\\\\bosch.com\\dfsrb\\DfsCN\\DIV\\CC\\Prj\\PS\\32_Application\\EPD5-CN-Tools-Mgmt\\00.General\\ForTools\\CrashDataUploading\\OemID\\ProjectID"
+  },
+  {
+	"TagName": "Crash List (Template)",
+    "FileKeyWord": "",
+    "RelativePath": "",
+	"AbsolutePath": "\\\\bosch.com\\dfsrb\\DfsCN\\DIV\\CC\\Prj\\PS\\32_Application\\EPD5-CN-Tools-Mgmt\\00.General\\ForTools\\ChannelOverView"
+  },
+  {
+	"TagName": "Crash List (Draft)",
+    "FileKeyWord": "",
+    "RelativePath": "\\40.Application\\A.Vehicle_integration\\02_Crash_matrix"
+  },
+  {
+	"TagName": "Crash List (ChannelOverview)",
+    "FileKeyWord": "",
+    "RelativePath": "\\40.Application\\A.Vehicle_integration\\02_Crash_matrix"
+  },
+  {
+	"TagName": "BBMReview CrashData",
+    "FileKeyWord": "",
+    "RelativePath": "\\40.Application\\A.Vehicle_integration\\02_Crash_matrix"
+  },
+  {
+	"TagName": "MDS Folder",
+    "FileKeyWord": "",
+    "RelativePath": "\\40.Application\\C.Calibration\\ProjectID_Parameter_ID\\01_MDS"
+  },
+  {
+	"TagName": "Base .ALG",
+    "FileKeyWord": "",
+    "RelativePath": "\\40.Application\\C.Calibration\\ProjectID_Parameter_ID\\02_Parameter"
+  },
+  {
+	"TagName": "Initial .ALG",
+    "FileKeyWord": "",
+    "RelativePath": "\\40.Application\\C.Calibration\\ProjectID_Parameter_ID\\02_Parameter"
+  },
+  {
+	"TagName": "Draft .ALG",
+    "FileKeyWord": "",
+    "RelativePath": "\\40.Application\\C.Calibration\\ProjectID_Parameter_ID\\02_Parameter"
+  },
+  {
+	"TagName": "MDS_SetupChecklist (Report)",
+    "FileKeyWord": "",
+    "RelativePath": "\\40.Application\\C.Calibration\\ProjectID_Parameter_ID\\01_MDS"
+  },
+  {
+	"TagName": "MDS_SetupChecklist (Template)",
+    "FileKeyWord": "",
+    "RelativePath": "",
+	"AbsolutePath": "\\\\bosch.com\\dfsrb\\DfsCN\\DIV\\CC\\Prj\\PS\\32_Application\\EPD5-CN-Tools-Mgmt\\00.General\\ForTools\\MdsSetupChecklist"
+  },
+  {
+	"TagName": "Simulation Results",
+    "FileKeyWord": "",
+    "RelativePath": "\\40.Application\\C.Calibration\\ProjectID_Parameter_ID\\03_Results"
+  },
+  {
+	"TagName": "PreChecker (Report)",
+    "FileKeyWord": "",
+    "RelativePath": "\\40.Application\\C.Calibration\\ProjectID_Parameter_ID\\02_Parameter"
+  },
+  {
+	"TagName": "Checker (Report)",
+    "FileKeyWord": "",
+    "RelativePath": "\\40.Application\\C.Calibration\\ProjectID_Parameter_ID\\04_Internal_Release\\Checker"
+  },
+  {
+	"TagName": "Checker (Template)",
+    "FileKeyWord": "",
+    "RelativePath": "",
+	  "AbsolutePath": "\\\\bosch.com\\dfsrb\\DfsCN\\DIV\\CC\\Prj\\PS\\32_Application\\EPD5-CN-Tools-Mgmt\\00.General\\Calibration\\Checker"
+  },
+  {
+	"TagName": "Walkthrough (Template)",
+    "FileKeyWord": "",
+    "RelativePath": "",
+	  "AbsolutePath": "\\\\bosch.com\\dfsrb\\DfsCN\\DIV\\CC\\Prj\\PS\\32_Application\\EPD5-CN-Tools-Mgmt\\00.General\\Calibration\\Walkthrough"
+  },
+  {
+	"TagName": "Walkthrough (Report)",
+    "FileKeyWord": "",
+    "RelativePath": "\\40.Application\\C.Calibration\\ProjectID_Parameter_ID\\04_Internal_Release\\Walkthrough"
+  },
+  {
+	"TagName": "Opls from Experts",
+    "FileKeyWord": "",
+    "RelativePath": "\\40.Application\\C.Calibration\\ProjectID_Parameter_ID\\04_Internal_Release\\Walkthrough"
+  },
+  {
+	"TagName": "MetPlot (Report)",
+    "FileKeyWord": "",
+    "RelativePath": "\\40.Application\\C.Calibration\\ProjectID_Parameter_ID\\03_Results"
+  },
+  {
+	"TagName": "Calibration Communication Mail",
+    "FileKeyWord": "",
+    "RelativePath": "\\40.Application\\C.Calibration\\ProjectID_Parameter_ID\\03_Results"
+  },
+  {
+	"TagName": "Confirmation Mail (BOSCH)",
+    "FileKeyWord": "",
+    "RelativePath": "\\40.Application\\C.Calibration\\ProjectID_Parameter_ID\\03_Results"
+  },
+  {
+	"TagName": "Confirmation Mail (Customer)",
+    "FileKeyWord": "",
+    "RelativePath": "\\40.Application\\C.Calibration\\ProjectID_Parameter_ID\\03_Results"
+  },
+  {
+	"TagName": "CCaRoT Assessment (Report)",
+    "FileKeyWord": "",
+    "RelativePath": "\\40.Application\\C.Calibration\\ProjectID_Parameter_ID\\04_Internal_Release\\CCaRoT"
+  },
+  {
+	"TagName": "BBMReview CCaRoT",
+    "FileKeyWord": "",
+    "RelativePath": "\\40.Application\\C.Calibration\\ProjectID_Parameter_ID\\06_Official_Release"
+  },
+  {
+	"TagName": "BBMReview Walkthrough",
+    "FileKeyWord": "",
+    "RelativePath": "\\40.Application\\C.Calibration\\ProjectID_Parameter_ID\\06_Official_Release"
+  },
+  {
+	"TagName": "BBMReview Checker",
+    "FileKeyWord": "",
+    "RelativePath": "\\40.Application\\C.Calibration\\ProjectID_Parameter_ID\\06_Official_Release"
+  },
+  {
+	"TagName": "Official .ALG",
+    "FileKeyWord": "",
+    "RelativePath": "\\40.Application\\C.Calibration\\ProjectID_Parameter_ID\\06_Official_Release\\Parameter"
+  },
+  {
+	"TagName": "Official .C",
+    "FileKeyWord": "",
+    "RelativePath": "\\40.Application\\C.Calibration\\ProjectID_Parameter_ID\\06_Official_Release\\Parameter"
+  },
+  {
+	"TagName": "Calibration CheckPoint",
+    "FileKeyWord": "",
+    "RelativePath": "\\40.Application\\C.Calibration\\ProjectID_Parameter_ID\\06_Official_Release"
+  },
+  {
+	"TagName": "Test Inputs",
+    "FileKeyWord": "",
+    "RelativePath": "\\40.Application\\C.Calibration\\ProjectID_Parameter_ID\\05_Test_Input"
+  },
+  {
+	"TagName": "Test Results (Draft)",
+    "FileKeyWord": "",
+    "RelativePath": "\\40.Application\\C.Calibration\\ProjectID_Parameter_ID\\05_Test_Input"
+  },
+  {
+	"TagName": "Test Results (Signed)",
+    "FileKeyWord": "",
+    "RelativePath": "\\40.Application\\C.Calibration\\ProjectID_Parameter_ID\\05_Test_Input"
+  }
+]

@@ -1,0 +1,246 @@
+{
+  "version": "1.0",
+  "source": "migrated_from_legacy_map",
+  "links": [
+    {
+      "title": "Template_AE_Assessment_Input",
+      "linkage": "\\\\bosch.com\\dfsrb\\DfsCN\\DIV\\CC\\Prj\\PS\\Line_OSS-CN\\Application\\02_Domain_Knowledge\\03_Vehicle_Integration\\02.Application_Assessment\\02.Send to AE Assessment",
+      "type": "folder"
+    },
+    {
+      "title": "Template_SensorMap",
+      "linkage": "\\\\bosch.com\\dfsrb\\DfsCN\\DIV\\CC\\Prj\\PS\\Line_OSS-CN\\Application\\02_Domain_Knowledge\\03_Vehicle_Integration\\05.Template\\02.Sensor map",
+      "type": "folder"
+    },
+    {
+      "title": "Template_Calibration_Report",
+      "linkage": "\\\\bosch.com\\dfsrb\\DfsCN\\DIV\\CC\\Prj\\PS\\Line_OSS-CN\\Application\\02_Domain_Knowledge\\02_Calibration\\05.TCD08_Template\\01.Calibration_Report",
+      "type": "folder"
+    },
+    {
+      "title": "Template_Field_Case",
+      "linkage": "\\\\bosch.com\\dfsrb\\DfsCN\\DIV\\CC\\Prj\\PS\\Line_OSS-CN\\Application\\97_Field_Cases\\0000.Template",
+      "type": "folder"
+    },
+    {
+      "title": "Guideline_Calibration_CP_Delivery",
+      "linkage": "\\\\bosch.com\\dfsrb\\DfsCN\\DIV\\CC\\Prj\\PS\\Line_OSS-CN\\Application\\02_Domain_Knowledge\\02_Calibration\\10. Calibration CP Transfer",
+      "type": "folder"
+    },
+    {
+      "title": "Guideline_Calibration_CP_PDC",
+      "linkage": "\\\\bosch.com\\dfsrb\\DfsCN\\DIV\\CC\\Prj\\PS\\Line_OSS-CN\\Application\\02_Domain_Knowledge\\02_Calibration\\10. Calibration CP Transfer",
+      "type": "folder"
+    },
+    {
+      "title": "Guideline_Calibration_Guideline_AIDA",
+      "linkage": "\\\\bosch.com\\dfsrb\\DfsCN\\DIV\\CC\\Prj\\PS\\Line_OSS-CN\\Application\\02_Domain_Knowledge\\02_Calibration\\01.Guideline_WI\\01_Calibration_Guideline\\AB12_Cali_Guideline",
+      "type": "folder"
+    },
+    {
+      "title": "Guideline_Calibration_Guideline_Rose",
+      "linkage": "\\\\bosch.com\\dfsrb\\DfsCN\\DIV\\CC\\Prj\\PS\\Line_OSS-CN\\Application\\02_Domain_Knowledge\\02_Calibration\\01.Guideline_WI\\01_Calibration_Guideline\\AB12_Cali_Guideline",
+      "type": "folder"
+    },
+    {
+      "title": "Guideline_Calibration_Guideline_EPP",
+      "linkage": "\\\\bosch.com\\dfsrb\\DfsCN\\DIV\\CC\\Prj\\PS\\Line_OSS-CN\\Application\\02_Domain_Knowledge\\02_Calibration\\01.Guideline_WI\\01_Calibration_Guideline\\AB12_Cali_Guideline",
+      "type": "folder"
+    },
+    {
+      "title": "Guideline_Calibration_Guideline_IDF",
+      "linkage": "\\\\bosch.com\\dfsrb\\DfsCN\\DIV\\CC\\Prj\\PS\\Line_OSS-CN\\Application\\02_Domain_Knowledge\\02_Calibration\\09.Standard_calibration\\02. IDF calibration",
+      "type": "folder"
+    },
+    {
+      "title": "Guideline_Mounting_Guideline",
+      "linkage": "\\\\bosch.com\\dfsrb\\DfsCN\\DIV\\CC\\Prj\\PS\\Line_OSS-CN\\Application\\02_Domain_Knowledge\\03_Vehicle_Integration\\01.Guideline_Checklist\\02_Mounting\\01_Mounting_Guideline\\CN",
+      "type": "folder"
+    },
+    {
+      "title": "Guideline_Hammer_Test",
+      "linkage": "\\\\bosch.com\\dfsrb\\DfsCN\\DIV\\CC\\Prj\\PS\\Line_OSS-CN\\Application\\02_Domain_Knowledge\\03_Vehicle_Integration\\01.Guideline_Checklist",
+      "type": "folder"
+    },
+    {
+      "title": "Guideline_Crash Matrix",
+      "linkage": "\\\\bosch.com\\dfsrb\\DfsCN\\DIV\\CC\\Prj\\PS\\Line_OSS-CN\\Application\\02_Domain_Knowledge\\05_Crash_Test",
+      "type": "folder"
+    },
+    {
+      "title": "EPD5_Group_Folder",
+      "linkage": "\\\\bosch.com\\dfsrb\\DfsCN\\loc\\szh\\CC\\Dev\\OSS-EPD-CN\\OSS-EPD5-CN",
+      "type": "folder"
+    },
+    {
+      "title": "Application_Folder",
+      "linkage": "\\\\bosch.com\\dfsrb\\DfsCN\\DIV\\CC\\Prj\\PS\\Line_OSS-CN\\Application",
+      "type": "folder"
+    },
+    {
+      "title": "Project_Folder",
+      "linkage": "\\\\bosch.com\\dfsrb\\DfsCN\\DIV\\CC\\Prj\\PS\\00_General\\10_Migrated_2_ILM",
+      "type": "folder"
+    },
+    {
+      "title": "Crash_Data_Folder",
+      "linkage": "\\\\bosch.com\\dfsrb\\DfsCN\\DIV\\CC\\Prj\\PS\\00_General\\10_Migrated_2_ILM\\01.Crash_data",
+      "type": "folder"
+    },
+    {
+      "title": "Field_Case_Folder",
+      "linkage": "\\\\bosch.com\\dfsrb\\DfsCN\\DIV\\CC\\Prj\\PS\\Line_OSS-CN\\Application\\97_Field_Cases",
+      "type": "folder"
+    },
+    {
+      "title": "MCR_Collection",
+      "linkage": "\\\\bosch.com\\dfsrb\\DfsCN\\DIV\\CC\\Prj\\PS\\Line_OSS-CN\\Application\\20_Info_exchange\\03.MCR_Monthly",
+      "type": "folder"
+    },
+    {
+      "title": "Home_Office_Registration",
+      "linkage": "\\\\bosch.com\\dfsrb\\DfsCN\\loc\\szh\\CC\\Dev\\OSS-EPD-CN\\OSS-EPD5-CN\\10_Managment\\02.OT_HO",
+      "type": "folder"
+    },
+    {
+      "title": "Vietnam InfoExchange Folder",
+      "linkage": "\\\\bosch.com\\dfsrb\\DfsCN\\DIV\\CC\\Prj\\PS\\07_RBVH_Exchange",
+      "type": "folder"
+    },
+    {
+      "title": "Innovation_Group_Folder",
+      "linkage": "\\\\bosch.com\\dfsrb\\DfsCN\\DIV\\CC\\Prj\\PS\\Line_OSS-CN\\Application\\02_Domain_Knowledge\\06_Feature_Owner\\02.Features\\05.Innovation_Report",
+      "type": "folder"
+    },
+    {
+      "title": "ETC_Public_Folder",
+      "linkage": "\\\\bosch.com\\dfsrb\\DfsCN\\DIV\\CC\\Prj\\PS\\32_Application\\EPD5-CN-Tools-Mgmt",
+      "type": "folder"
+    },
+    {
+      "title": "ETC_Local_Folder",
+      "linkage": "C:\\AppTools",
+      "type": "folder"
+    },
+    {
+      "title": "Template_Checker_Rule",
+      "linkage": "\\\\bosch.com\\dfsrb\\DfsCN\\DIV\\CC\\Prj\\PS\\Line_OSS-CN\\Application\\02_Domain_Knowledge\\02_Calibration\\01.Guideline_WI\\01_Calibration_Guideline\\AB12_Rules_Checker",
+      "type": "folder"
+    },
+    {
+      "title": "Template_Checker_Tool",
+      "linkage": "\\\\bosch.com\\dfsrb\\DfsCN\\DIV\\CC\\Prj\\PS\\Line_OSS-CN\\Application\\02_Domain_Knowledge\\02_Calibration\\05.TCD08_Template\\AppPak_TL\\02.AB12_AppPak_Release",
+      "type": "folder"
+    },
+    {
+      "title": "Template_Walkthrough",
+      "linkage": "\\\\bosch.com\\dfsrb\\DfsCN\\DIV\\CC\\Prj\\PS\\Line_OSS-CN\\Application\\02_Domain_Knowledge\\02_Calibration\\05.TCD08_Template\\AppPak_TL\\02.AB12_AppPak_Release",
+      "type": "folder"
+    },
+    {
+      "title": "Template_CCaRoT(Robustness)_Assessment",
+      "linkage": "\\\\bosch.com\\dfsrb\\DfsCN\\DIV\\CC\\Prj\\PS\\Line_OSS-CN\\Application\\02_Domain_Knowledge\\02_Calibration\\05.TCD08_Template\\AppPak_TL\\02.AB12_AppPak_Release",
+      "type": "folder"
+    },
+    {
+      "title": "Template_Vehicle_Application_Release_sheet(VAR)",
+      "linkage": "\\\\bosch.com\\dfsrb\\DfsCN\\DIV\\CC\\Prj\\PS\\Line_OSS-CN\\Application\\02_Domain_Knowledge\\02_Calibration\\05.TCD08_Template\\AppPak_TL\\02.AB12_AppPak_Release",
+      "type": "folder"
+    },
+    {
+      "title": "AWESIM_Result_Folder",
+      "linkage": "\\\\bosch.com\\dfsrb\\DfsCN\\DIV\\CC\\Prj\\PS\\07_RBVH_Exchange\\AWESimResult",
+      "type": "folder"
+    },
+    {
+      "title": "Sandbox_Folder",
+      "linkage": "C:\\sandboxes",
+      "type": "folder"
+    },
+    {
+      "title": "AWESIM_Website_CN",
+      "linkage": "http://szh6-v-0006n.szh.apac.bosch.com:8080/simjobs",
+      "type": "url"
+    },
+    {
+      "title": "MCR_Website",
+      "linkage": "https://rb-wam.bosch.com/igpmsp/f?p=IGPMSP:START:105764519112665:::::&tz=8%3A00",
+      "type": "url"
+    },
+    {
+      "title": "RBAC_ChatBot (Lunch)",
+      "linkage": "https://rbac-chatbot.bosch-szh.com.cn/home",
+      "type": "url"
+    },
+    {
+      "title": "Innovation_Rigistration_Website",
+      "linkage": "https://rb-wam.bosch.com/irp/faces/InventionRegistrationPortal",
+      "type": "url"
+    },
+    {
+      "title": "ALM_Website",
+      "linkage": "https://rb-alm-04-p.de.bosch.com/ccm/web/projects/Projects#action=com.ibm.team.dashboard.viewDashboard",
+      "type": "url"
+    },
+    {
+      "title": "BBM_Website",
+      "linkage": "https://rb-bbm-reviewtool01.apps.intranet.bosch.com/ReviewTool/dashboard",
+      "type": "url"
+    },
+    {
+      "title": "WorkOn_Website",
+      "linkage": "https://inside.bosch.com/irj/portal?NavigationTarget=navurl%3A%2F%2Ff7042c584d59c501599ab6fec8712e27&ExecuteLocally=true&NavPathUpdate=true",
+      "type": "url"
+    },
+    {
+      "title": "WorkingTime_Website",
+      "linkage": "https://inside.bosch.com/irj/portal/fiori#HR_CHINA_MyWorkingTime-overview",
+      "type": "url"
+    },
+    {
+      "title": "Leave-Request_Website",
+      "linkage": "https://inside.bosch.com/irj/portal/fiori#HR_CHINA_Leave-manage",
+      "type": "url"
+    },
+    {
+      "title": "OT-Request_Website",
+      "linkage": "https://inside.bosch.com/irj/portal/fiori#HR_CHINA_Overtime-manage",
+      "type": "url"
+    },
+    {
+      "title": "ProLib_Website",
+      "linkage": "https://abt-prolib.de.bosch.com/stages/#/workspace/1/_vv/home",
+      "type": "url"
+    },
+    {
+      "title": "Learning-Home_Website",
+      "linkage": "https://bosch.plateau.com/learning/user/personal/landOnPortalHome.do",
+      "type": "url"
+    },
+    {
+      "title": "DT/AI-Homepage",
+      "linkage": "https://cccn.apac.bosch.com/OSS-CN_DT_AI_HomePage/",
+      "type": "url"
+    },
+    {
+      "title": "MDSng32bit",
+      "linkage": "C:\\MDSng\\MDSng.exe",
+      "type": "tool"
+    },
+    {
+      "title": "MDSng64bit",
+      "linkage": "C:\\MDSng64\\MDSng.exe",
+      "type": "tool"
+    },
+    {
+      "title": "CrashBench32bit",
+      "linkage": "C:\\MDSng\\CrashBench\\CrashBench.exe",
+      "type": "tool"
+    },
+    {
+      "title": "CrashBench64bit",
+      "linkage": "C:\\MDSng64\\CrashBenchNG64\\CrashBench.exe",
+      "type": "tool"
+    }
+  ]
+}
