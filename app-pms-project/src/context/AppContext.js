@@ -25,10 +25,11 @@ export function AppProvider({ children }) {
     LOCAL: "http://127.0.0.1:7175",
 
     // 🔥 调试时建议用本地： http://127.0.0.1:8086/app-puma
-    BASE: "https://oss-dthub.apac.bosch.com/app-puma",
-    // BASE: "http://127.0.0.1:8086/app-puma",
+    //BASE: "https://oss-dthub.apac.bosch.com/app-puma",
+     BASE: "http://127.0.0.1:8086/app-puma",
     PROJECT_GET: "/project/getProject",
     PROJECT_CREATE: "/project/createProject",
+    PROJECT_CREATE_CALIBRATION_WORKSPACE: "/project/createCalibrationWorkspace",
     PROJECT_INFO_UPDATE: "/project/updateProjectInfo",
     PROJECT_WF_UPDATE: "/project/updateWorkFlow",
     PROJECT_GETPATH: "/project/getPath",
@@ -574,6 +575,70 @@ export function AppProvider({ children }) {
       return res.status
   };
 
+  const createCalibrationWorkspace = async (calibrationId) => {
+    if (!projectId) {
+      console.warn("createCalibrationWorkspace: projectId is missing");
+      return {
+        success: false,
+        message: "projectId is missing",
+      };
+    }
+
+    if (!user?.username || user.username === "Unknown") {
+      console.warn("createCalibrationWorkspace: username is missing");
+      return {
+        success: false,
+        message: "username is missing",
+      };
+    }
+
+    if (!calibrationId || String(calibrationId).trim() === "") {
+      console.warn("createCalibrationWorkspace: calibrationId is missing");
+      return {
+        success: false,
+        message: "calibrationId is missing",
+      };
+    }
+
+    try {
+      const res = await request("POST", API.BASE + API.PROJECT_CREATE_CALIBRATION_WORKSPACE, {
+        data: {
+          projectId,
+          username: user.username,
+          department: user.department,
+          calibrationId: String(calibrationId).trim(),
+        },
+      });
+
+      if (res.data?.success) {
+        console.log("Calibration workspace created:", res.data.paths);
+        return {
+          success: true,
+          data: res.data,
+        };
+      }
+
+      return {
+        success: false,
+        message: res.data?.message || "createCalibrationWorkspace failed",
+        data: res.data,
+      };
+    } catch (err) {
+      console.error("createCalibrationWorkspace failed:", err);
+
+      const detail =
+        err.response?.data?.detail ||
+        err.response?.data?.message ||
+        err.message ||
+        "createCalibrationWorkspace request failed";
+
+      return {
+        success: false,
+        message: detail,
+      };
+    }
+  };
+
   useEffect(() => {
     if (msgQueue.length === 0) return;
 
@@ -644,6 +709,7 @@ export function AppProvider({ children }) {
           getRealPathFromBackend,
           getOfficeFiles,
           SetUpApplicationFloder,
+          createCalibrationWorkspace,
 
           teamMembers,
           loadTeamMembers,

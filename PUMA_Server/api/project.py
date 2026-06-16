@@ -1,7 +1,13 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from utils.file_loader import load_json, extract_root_paths, load_folder_mapping, load_template
+from utils.file_loader import (
+    load_json,
+    extract_root_paths,
+    load_folder_mapping,
+    load_template,
+    build_local_workspace_paths,
+)
 from crud.project import (
     get_project,
     create_project,
@@ -555,6 +561,109 @@ def get_path(
         "success": True,
         "root": root,
         "path": final_path
+    }
+
+
+# ===============================================================
+# POST /project/createCalibrationWorkspace
+# ===============================================================
+@router.post("/createCalibrationWorkspace")
+def create_calibration_workspace_api(
+    payload: dict = Body(...),
+    db: Session = Depends(get_db),
+):
+    """
+    根据当前项目 Local Link 和 CalibrationID 创建本地工作区。
+
+    请求体示例：
+    {
+        "projectId": 365,
+        "username": "WUE7SZH",
+        "calibrationId": "TCD08"
+    }
+    """
+
+    project_id = payload.get("projectId")
+    username = payload.get("username")
+    calibration_id = (
+        payload.get("calibrationId")
+        or payload.get("CalibrationID")
+        or payload.get("calibrationID")
+    )
+
+    if not project_id:
+        raise HTTPException(status_code=400, detail="projectId is required")
+
+    if not username:
+        raise HTTPException(status_code=400, detail="username is required")
+
+    if not calibration_id:
+        raise HTTPException(status_code=400, detail="calibrationId is required")
+
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    # 解析 projectInfo
+    try:
+        meta = json.loads(project.projectInfo)
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"projectInfo JSON decode error: {e}",
+        )
+
+    # 权限校验：复用 updateWorkFlow 的思路
+    team_members = load_template("TeamMembers.json")
+    account_to_name = {
+        tm["account"]: tm["name"]
+        for tm in team_members
+        if "account" in tm and "name" in tm
+    }
+
+    user_name = account_to_name.get(username)
+
+    owner = meta.get("owner", {}).get("value", "")
+    proxies_raw = meta.get("proxies", {}).get("value", "")
+    proxies = [x.strip() for x in proxies_raw.split(",") if x.strip()]
+
+    if user_name != owner and user_name not in proxies:
+        raise HTTPException(
+            status_code=403,
+            detail="No permission to create calibration workspace",
+        )
+
+    # 创建目录
+    try:
+        paths = build_local_workspace_paths(
+            projectInfo=meta,
+            calibration_id=calibration_id,
+            create=True,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except PermissionError as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"No permission to create workspace directory: {e}",
+        )
+    except OSError as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to create workspace directory: {e}",
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Unexpected error when creating calibration workspace: {e}",
+        )
+
+    return {
+        "success": True,
+        "message": "Calibration workspace created",
+        "projectId": project_id,
+        "calibrationId": calibration_id,
+        "paths": paths,
     }
 
 @router.delete("/clearAll")
