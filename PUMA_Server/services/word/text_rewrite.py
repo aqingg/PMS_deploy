@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import shutil
 import tempfile
 import unicodedata
@@ -18,6 +19,63 @@ from services.word.xml_utils import NS, clean_text, element_text, local_name, qn
 
 
 logger = logging.getLogger("uvicorn.error")
+
+
+def replace_regex_in_docx_paragraph(
+    paragraph,
+    pattern: re.Pattern[str],
+    replacement,
+) -> int:
+    """Replace matches while preserving the placeholder's run formatting."""
+    replacements_applied = 0
+    search_from = 0
+
+    while True:
+        runs = list(paragraph.runs)
+        full_text = "".join(run.text for run in runs)
+        match = pattern.search(full_text, search_from)
+        if match is None:
+            break
+
+        start, end = match.span()
+        if start == end:
+            search_from = end + 1
+            continue
+
+        offsets: list[tuple[int, int]] = []
+        cursor = 0
+        for run in runs:
+            run_text = run.text
+            offsets.append((cursor, cursor + len(run_text)))
+            cursor += len(run_text)
+
+        first_index = next(
+            index for index, (_, run_end) in enumerate(offsets) if run_end > start
+        )
+        last_index = next(
+            index for index, (_, run_end) in enumerate(offsets) if run_end >= end
+        )
+
+        first_start, _ = offsets[first_index]
+        last_start, _ = offsets[last_index]
+        first_text = runs[first_index].text
+        last_text = runs[last_index].text
+        prefix = first_text[: start - first_start]
+        suffix = last_text[end - last_start :]
+        new_text = str(replacement(match))
+
+        if first_index == last_index:
+            runs[first_index].text = prefix + new_text + suffix
+        else:
+            runs[first_index].text = prefix + new_text
+            for index in range(first_index + 1, last_index):
+                runs[index].text = ""
+            runs[last_index].text = suffix
+
+        replacements_applied += 1
+        search_from = start + len(new_text)
+
+    return replacements_applied
 
 
 def _same_file(left: Path, right: Path) -> bool:

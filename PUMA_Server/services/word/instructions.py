@@ -38,7 +38,7 @@ DEFAULT_TEMPLATE_INSTRUCTIONS = [
     "(delete this paragraph if calibration in China)",
     "(如果标定在中国完成，删除这段)",
     "The red text identifies template-text and hints and should be adapted for customer specific report. Not changed text should be color changed (if values and text are applicable) or removed (if not necessary or not applicable) ",
-    "The blue text identifies hints for the use of a report in Acquisition-Phase and should be adapted for customer specific reports. Not changed text should be color changed (if values and text are applicable) or removed (if not necessary or not applicable)"
+    "The blue text identifies hints for the use of a report in Acquisition-Phase and should be adapted for customer specific reports. Not changed text should be color changed (if values and text are applicable) or removed (if not necessary or not applicable)",
     "(modify chapter if not applicable) ",
     "(如不适用修改该段) "
 ]

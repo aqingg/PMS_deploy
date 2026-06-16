@@ -29,6 +29,7 @@ else:
 import docx  # type: ignore[reportMissingImports]  # noqa: E402
 
 from services.word.logo import replace_logo_placeholders
+from services.word.text_rewrite import replace_regex_in_docx_paragraph
 from services.email.parser import parse_email_pair
 from utils.path_config import EMAIL_DIR
 
@@ -444,14 +445,11 @@ def fill_docx_by_placeholders(
         return str(value)
 
     def substitute_in_paragraph(paragraph, in_table_cell: bool = False):
-        if placeholder_pattern.search(paragraph.text):
-            full_text = paragraph.text
-            new_text = placeholder_pattern.sub(
-                lambda match: replacer(match, in_table_cell=in_table_cell),
-                full_text,
-            )
-            if new_text != full_text:
-                paragraph.text = new_text
+        replace_regex_in_docx_paragraph(
+            paragraph,
+            placeholder_pattern,
+            lambda match: replacer(match, in_table_cell=in_table_cell),
+        )
 
     def substitute_in_container(container, in_table_cell: bool = False):
         for paragraph in container.paragraphs:

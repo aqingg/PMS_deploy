@@ -56,6 +56,11 @@
         "required_any": ["CrashGuard(SDD)"],
         "sections": ["3.9"],
         "description": "Crash-guard algorithm"
+      },
+      {
+        "required_any": ["Always delelte 10.2"],
+        "sections": ["10.2"],
+        "description": "没有Always标签所以永远不命中,固定删除"
       }
     ]
   },
