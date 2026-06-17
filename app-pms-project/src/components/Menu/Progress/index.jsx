@@ -660,7 +660,7 @@ export default function Progress() {
             value={modalCalibrationId}
             onChange={(event) => setModalCalibrationId(event.target.value)}
             onPressEnter={addCalibrationIdByModal}
-            placeholder="例如 TCD80"
+            placeholder="例如 ACQ_AAAA-BBBB-CC"
             disabled={saving}
             allowClear
           />

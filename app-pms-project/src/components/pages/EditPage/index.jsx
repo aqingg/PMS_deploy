@@ -170,7 +170,7 @@ export default function EditProjectPage() {
       try {
         const result = await SetUpApplicationFloder(publicLinkValue);
         //const result = await SetUpApplicationFloder("C:/Users/SZO8SZH/Downloads/testoutput/");
-        if(result = "success") {
+        if (result >= 200 && result < 300) {
           messageApi.success("Create Floder Success");
         } else {
           messageApi.error("Failed to create floder");
