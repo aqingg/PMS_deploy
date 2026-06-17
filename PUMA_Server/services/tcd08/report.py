@@ -33,7 +33,7 @@ from services.word_sections import (
     rewrite_red_paragraph_text_batch,
     update_tocs_with_word,
 )
-from utils.file_loader import load_folder_mapping
+from utils.file_loader import build_local_workspace_paths, load_folder_mapping
 
 
 logger = logging.getLogger("uvicorn.error")
@@ -156,6 +156,50 @@ def _resolve_output_dir() -> Path:
     return output_dir
 
 
+def _resolve_tcd08_workspace_paths(
+    resolved_project_info: dict[str, Any],
+    calibration_name: str,
+) -> tuple[dict[str, str] | None, str | None]:
+    """
+    优先根据 Local Link + CalibrationID 解析 TCD08 专属工作区。
+
+    成功返回：
+    (
+        {
+            "email_dir": "...",
+            "tcd08_report_dir": "...",
+            ...
+        },
+        None
+    )
+
+    失败返回：
+    (None, "失败原因")
+    """
+    if not calibration_name:
+        return None, "Calibration task name not resolved from workflow"
+
+    if not resolved_project_info:
+        return None, "projectInfo is empty"
+
+    try:
+        paths = build_local_workspace_paths(
+            projectInfo=resolved_project_info,
+            calibration_id=calibration_name,
+            create=True,
+        )
+        return paths, None
+    except Exception as exc:
+        logger.warning(
+            "[TCD08] Failed to resolve CalibrationID workspace. "
+            "calibration_name=%s error=%s",
+            calibration_name,
+            exc,
+            exc_info=True,
+        )
+        return None, str(exc)
+
+
 def _load_project_info_from_db(project_id: Optional[int], db: Session) -> dict:
     """当前端没有直接传 project_info 时，从本地 DB 读取 projectInfo。"""
     if not project_id:
@@ -224,7 +268,7 @@ def _extract_calibration_parameter(task_name: str) -> str:
     return clean_name
 
 
-def _resolve_calibration_parameter_from_workflow(workflow: dict[str, Any], task_id: Optional[str]) -> str:
+def _resolve_calibration_task_name_from_workflow(workflow: dict[str, Any], task_id: Optional[str]) -> str:
     if not task_id:
         return ""
 
@@ -237,7 +281,11 @@ def _resolve_calibration_parameter_from_workflow(workflow: dict[str, Any], task_
         return ""
 
     parent_task = path[-2]
-    parent_name = str(parent_task.get("taskName") or "").strip()
+    return str(parent_task.get("taskName") or "").strip()
+
+
+def _resolve_calibration_parameter_from_workflow(workflow: dict[str, Any], task_id: Optional[str]) -> str:
+    parent_name = _resolve_calibration_task_name_from_workflow(workflow, task_id)
     return _extract_calibration_parameter(parent_name)
 
 
@@ -291,10 +339,17 @@ async def generate_tcd08_report(
         profile_dict = apply_project_info_overrides(profile_dict, resolved_project_info)
         logger.info("[TCD08] Applied project info overrides to PMS profile.")
 
-    calibration_parameter = _resolve_calibration_parameter_from_workflow(
-        _load_project_workflow_from_db(project_id, db),
-        task_id,
-    )
+    workflow = _load_project_workflow_from_db(project_id, db)
+    calibration_task_name = _resolve_calibration_task_name_from_workflow(workflow, task_id)
+    calibration_parameter = _resolve_calibration_parameter_from_workflow(workflow, task_id)
+
+    if calibration_task_name:
+        logger.info(
+            "[TCD08] Resolved calibration task name from workflow. task_id=%s value=%s",
+            task_id,
+            calibration_task_name,
+        )
+
     if calibration_parameter:
         profile_dict["CalibrationParameter"] = calibration_parameter
         logger.info(
@@ -319,7 +374,35 @@ async def generate_tcd08_report(
     )
 
     template_paths = _resolve_template_paths()
-    output_dir = _resolve_output_dir()
+
+    workspace_paths = None
+    workspace_warning = None
+    email_dir = None
+
+    if calibration_task_name:
+        workspace_paths, workspace_warning = _resolve_tcd08_workspace_paths(
+            resolved_project_info=resolved_project_info,
+            calibration_name=calibration_task_name,
+        )
+
+    if workspace_paths:
+        output_dir = Path(workspace_paths["tcd08_report_dir"])
+        email_dir = workspace_paths["email_dir"]
+        logger.info(
+            "[TCD08] Using CalibrationID workspace. calibration_parameter=%s email_dir=%s output_dir=%s",
+            calibration_parameter,
+            email_dir,
+            output_dir,
+        )
+    else:
+        logger.warning(
+            "[TCD08] CalibrationID workspace unavailable, fallback to legacy output dir. "
+            "calibration_parameter=%s reason=%s",
+            calibration_parameter,
+            workspace_warning or "unknown",
+        )
+        output_dir = _resolve_output_dir()
+
     sections_to_delete = sections_to_delete_by_calibration_scope(resolved_project_info)
     red_paragraph_deletions = red_paragraph_deletion_rules(resolved_project_info, sections_to_delete)
     merged_red_paragraph_deletions = _merge_red_paragraph_deletions(red_paragraph_deletions)
@@ -371,7 +454,11 @@ async def generate_tcd08_report(
                 template_path,
             )
             step_start = time.perf_counter()
-            filled_stream = fill_docx_by_placeholders(profile_dict, template_path)
+            filled_stream = fill_docx_by_placeholders(
+                profile_dict,
+                template_path,
+                email_dir=email_dir,
+            )
             logger.info(
                 "[TCD08] (%s/%s) Placeholder filling took %.2fs.",
                 index,
@@ -655,6 +742,11 @@ async def generate_tcd08_report(
         "message": "TCD08报告已成功生成并保存。",
         "template_paths": [str(path) for path in template_paths],
         "saved_paths": saved_paths,
+        "calibration_parameter": calibration_parameter,
+        "workspace_used": bool(workspace_paths),
+        "workspace_warning": workspace_warning,
+        "email_dir": str(email_dir) if email_dir else None,
+        "output_dir": str(output_dir),
         "section_deletions": section_delete_results,
         "red_paragraph_deletions": red_paragraph_delete_results,
         "red_paragraph_text_rewrites": red_paragraph_text_rewrite_results,
