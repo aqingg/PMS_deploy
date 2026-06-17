@@ -11,6 +11,7 @@ import {
   Tooltip,
   Modal,
   Form,
+  Spin,
 } from "antd";
 
 import WorkFlow from "./WorkFlow";
@@ -46,6 +47,10 @@ export default function TaskDetailPage() {
   // Modal
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [newTaskName, setNewTaskName] = useState("");
+
+  // 操作执行中等待弹窗
+  const [loadingModalOpen, setLoadingModalOpen] = useState(false);
+  const [loadingText, setLoadingText] = useState("");
 
   // 允许中文，不允许真正危险字符
   const ILLEGAL_REGEX = /[/\\<>{}[\]"'`|]/g;
@@ -135,7 +140,7 @@ export default function TaskDetailPage() {
 
     task.status = newStatus;
 
-    const res = await updateWorkFlow({
+    await updateWorkFlow({
       username: user.username,
       department: user.department,
       workflow: updated,
@@ -192,7 +197,7 @@ export default function TaskDetailPage() {
 
     // 并行等待所有参数获取完成
     const parameterResults = await Promise.all(parameterPromises);
-    const type = "Copy";
+    const type = "local";
     const isTCD08Fill = operation_detail.url?.includes("/fillTCD08Report");
 
     let input_files = [];
@@ -338,9 +343,10 @@ export default function TaskDetailPage() {
               // 下面的内容需要按照 Operation 的 type 进行处理
               const { operation_name, operation_detail } = taskOperation;
               let { type } = operation_detail;
-              
-              // 显示加载提示，并告知用户操作已开始
-              const hideLoading = message.loading(`正在执行: ${operation_name}...`, 0);
+              //这里增加了弹窗提示等待功能！！！
+              // 显示加载弹窗，并告知用户操作已开始
+              setLoadingText(`正在执行: ${operation_name}，请稍候...`);
+              setLoadingModalOpen(true);
 
               void (async () => {
                 try {
@@ -357,10 +363,10 @@ export default function TaskDetailPage() {
                   // 捕获上面抛出的自定义错误或网络错误
                   console.error("操作失败:", error);
                   // 向用户显示更具体的错误信息
-                  message.error(error.message || "操作失败，请查看控制台获取详情。");
+                  messageApi.error(error.message || "操作失败，请查看控制台获取详情。");
                 } finally {
-                  // 确保无论成功或失败，都关闭加载提示
-                  hideLoading();
+                  // 确保无论成功或失败，都关闭加载弹窗
+                  setLoadingModalOpen(false);
                 }
               })();
             }}
@@ -428,6 +434,23 @@ export default function TaskDetailPage() {
             />
           </Form.Item>
         </Form>
+      </Modal>
+
+      {/* 操作执行中等待弹窗 */}
+      <Modal
+        title="请稍候"
+        open={loadingModalOpen}
+        footer={null}
+        closable={false}
+        maskClosable={false}
+        centered
+      >
+        <div style={{ textAlign: "center", padding: "24px 0" }}>
+          <Spin size="large" />
+          <p style={{ marginTop: 16, marginBottom: 0, fontSize: 15 }}>
+            {loadingText}
+          </p>
+        </div>
       </Modal>
     </div>
   );
