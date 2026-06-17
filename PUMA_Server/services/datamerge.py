@@ -336,6 +336,7 @@ def _prepare_profile_for_filling(profile_dict: dict[str, Any]) -> dict[str, str]
 def fill_docx_by_placeholders(
     profile_dict: dict[str, Any],
     source: Union[Path, io.BytesIO],
+    email_dir: Optional[Path] = None,
 ) -> io.BytesIO:
     try:
         document = docx.Document(source)
@@ -343,9 +344,11 @@ def fill_docx_by_placeholders(
         raise HTTPException(status_code=400, detail=f"无法处理提供的Word文件: {exc}") from exc
 
     formatted_profile = _prepare_profile_for_filling(profile_dict)
-    # Try to populate email-related placeholders from DB/Email directory
+    # Try to populate email-related placeholders from CalibrationID email_dir first.
+    # If email_dir is not provided, keep the old EMAIL_DIR behavior.
+    actual_email_dir = Path(email_dir) if email_dir else EMAIL_DIR
     try:
-        email_map = parse_email_pair(EMAIL_DIR)
+        email_map = parse_email_pair(actual_email_dir)
         send = email_map.get("send", {}) or {}
         approval = email_map.get("approval", {}) or {}
 
@@ -361,7 +364,7 @@ def fill_docx_by_placeholders(
         formatted_profile["Email.Send.DefectXlsxCount"] = str(send.get("defect_xlsx_count", 0) or 0)
         formatted_profile["Email.Send.SpecificXlsxCount"] = str(send.get("specific_xlsx_count", 0) or 0)
     except Exception:
-        logger.exception("Failed to populate email placeholders from %s", EMAIL_DIR)
+        logger.exception("Failed to populate email placeholders from %s", actual_email_dir)
     placeholder_pattern = re.compile(r"<\s*PMS\.([^>]+?)\s*>")
 
     def normalize_header_text(value: str) -> str:
