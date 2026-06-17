@@ -1,0 +1,24 @@
+/* 整个 Header 布局 */
+.header {
+  position: fixed;
+  top: 20px;
+  width: 100%;
+  height: 60px;              /* 相当于 Tailwind 的 h-16 */
+  background-color: white;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+  padding:0px 16px;
+  box-sizing: border-box; /* 确保计算宽度包含 padding */
+}
+
+.logo {
+  width: 280px;
+  height: 40px;
+}
+
+.colorbar {
+  width: 100%;
+  height: 40px;
+}
