@@ -727,7 +727,6 @@ def client_fill_tcd08_report(payload: dict = Body(...)):
                 server_report_url,
                 data=data,
                 files=files,
-                proxies={"http": None, "https": None},
                 verify=False,
                 timeout=600,
             )
