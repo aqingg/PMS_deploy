@@ -8,7 +8,7 @@ import dataprovider_pb2
 from google.protobuf.json_format import MessageToDict
 
 from pydantic import BaseModel, Field
-from fastapi import FastAPI, HTTPException, Response, status
+from fastapi import FastAPI, HTTPException, Response, status, Body
 
 from fastapi.middleware.cors import CORSMiddleware
 import getpass
@@ -22,6 +22,8 @@ import platform
 import time
 import socket
 import cgi
+import base64
+import mimetypes
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -141,6 +143,136 @@ class CreateFoldersRequest(BaseModel):
         default_factory=list,
         description="Absolute folder paths to create on the local machine.",
     )
+
+
+# =================================================================================
+# TCD08 本地适配层配置
+# =================================================================================
+# 生产环境默认指向服务器 8086 的对外地址；如本地调试，可在启动 Client 前设置环境变量：
+#   set PUMA_SERVER_TCD08_URL=http://127.0.0.1:8086/app-puma/report/fillTCD08Report
+DEFAULT_SERVER_BASE_URL = os.environ.get(
+    "PUMA_SERVER_BASE_URL",
+    "https://oss-dthub.apac.bosch.com/app-puma",
+).rstrip("/")
+
+DEFAULT_SERVER_TCD08_URL = os.environ.get(
+    "PUMA_SERVER_TCD08_URL",
+    f"{DEFAULT_SERVER_BASE_URL}/report/fillTCD08Report",
+)
+
+
+def _norm_path(value: str) -> Path:
+    """Normalize a Windows local path for operations on the user's machine."""
+    if not value or not str(value).strip():
+        raise ValueError("path is empty")
+    return Path(os.path.normpath(str(value).strip()))
+
+
+def _derive_tcd08_email_dir(save_path: str) -> Path:
+    """
+    Derive Customer_Approval_Email from the frontend-provided TCD08 save_path.
+
+    Expected save_path:
+      ...\C.Calibration\{CalibrationID}\06_Official_Release\TCD08_Report
+
+    Derived email_dir:
+      ...\C.Calibration\{CalibrationID}\03_Results\Customer_Approval_Email
+    """
+    output_dir = _norm_path(save_path)
+    parts_lower = [p.lower() for p in output_dir.parts]
+
+    if "06_official_release" in parts_lower:
+        idx = parts_lower.index("06_official_release")
+        calibration_root = Path(*output_dir.parts[:idx])
+    elif output_dir.name.lower() == "tcd08_report":
+        calibration_root = output_dir.parent.parent
+    else:
+        # Fallback: assume save_path is under the CalibrationID root or one level below it.
+        calibration_root = output_dir.parent
+
+    if not str(calibration_root) or str(calibration_root) == ".":
+        raise ValueError(f"Cannot derive calibration root from save_path: {save_path}")
+
+    return calibration_root / "03_Results" / "Customer_Approval_Email"
+
+
+def _collect_upload_files(folder: Path):
+    """Collect files directly under folder for upload to the 8086 server."""
+    if not folder.exists():
+        raise HTTPException(status_code=404, detail=f"Email folder not found: {folder}")
+    if not folder.is_dir():
+        raise HTTPException(status_code=400, detail=f"Email path is not a folder: {folder}")
+
+    files = []
+    handles = []
+
+    for file_path in folder.iterdir():
+        if not file_path.is_file():
+            continue
+        if file_path.name.startswith("~$"):
+            continue
+
+        mime_type = mimetypes.guess_type(str(file_path))[0] or "application/octet-stream"
+        fh = open(file_path, "rb")
+        handles.append(fh)
+        files.append(("email_files", (file_path.name, fh, mime_type)))
+
+    if not files:
+        raise HTTPException(status_code=404, detail=f"No files found in email folder: {folder}")
+
+    return files, handles
+
+
+def _filename_from_response(response: requests.Response, fallback: str = "TCD08_Report.docx") -> str:
+    cd = response.headers.get("content-disposition") or response.headers.get("Content-Disposition")
+    if cd:
+        _, params = cgi.parse_header(cd)
+        filename = params.get("filename") or params.get("filename*")
+        if filename:
+            filename = os.path.basename(str(filename).strip().strip('"'))
+            if filename:
+                return filename
+    return fallback
+
+
+def _save_binary_response(response: requests.Response, output_dir: Path, fallback_name: str = "TCD08_Report.docx") -> str:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    filename = _filename_from_response(response, fallback=fallback_name)
+    save_path = output_dir / filename
+    with open(save_path, "wb") as f:
+        f.write(response.content)
+    return str(save_path)
+
+
+def _save_json_report_payload(data: dict, output_dir: Path):
+    """
+    Support JSON-style server responses if the 8086 endpoint returns base64 or download_url.
+    Preferred future response remains binary FileResponse.
+    """
+    output_dir.mkdir(parents=True, exist_ok=True)
+    saved_paths = []
+
+    # Case 1: {"filename": "x.docx", "content_base64": "..."}
+    if data.get("content_base64"):
+        filename = os.path.basename(data.get("filename") or "TCD08_Report.docx")
+        save_path = output_dir / filename
+        with open(save_path, "wb") as f:
+            f.write(base64.b64decode(data["content_base64"]))
+        saved_paths.append(str(save_path))
+
+    # Case 2: {"files": [{"filename": "x.docx", "content_base64": "..."}, ...]}
+    for item in data.get("files") or []:
+        if not isinstance(item, dict):
+            continue
+        if not item.get("content_base64"):
+            continue
+        filename = os.path.basename(item.get("filename") or "TCD08_Report.docx")
+        save_path = output_dir / filename
+        with open(save_path, "wb") as f:
+            f.write(base64.b64decode(item["content_base64"]))
+        saved_paths.append(str(save_path))
+
+    return saved_paths
 
 # =================================================================================
 # CORS 设置
@@ -520,6 +652,151 @@ def api_create_folders(req: CreateFoldersRequest):
         "message": "Folders created on local client",
         "folders": created_folders,
     }
+
+
+
+@app.post("/report/fillTCD08Report")
+def client_fill_tcd08_report(payload: dict = Body(...)):
+    """
+    TCD08 local adapter.
+
+    Correct architecture:
+      Browser -> 7175 Client -> 8086 Server -> 7175 saves to user's C drive.
+
+    This endpoint receives the same JSON body previously sent to the 8086 server.
+    It reads local Customer_Approval_Email files, uploads them to 8086, receives the
+    generated report, and saves it to the local TCD08_Report directory.
+    """
+    try:
+        save_path_raw = payload.get("save_path") or payload.get("output_path")
+        if not save_path_raw:
+            raise HTTPException(status_code=400, detail="save_path is required")
+
+        output_dir = _norm_path(save_path_raw)
+        email_dir_raw = payload.get("email_dir") or payload.get("email_path")
+        email_dir = _norm_path(email_dir_raw) if email_dir_raw else _derive_tcd08_email_dir(str(output_dir))
+
+        server_report_url = (
+            payload.get("server_report_url")
+            or payload.get("backend_report_url")
+            or payload.get("target_report_url")
+            or DEFAULT_SERVER_TCD08_URL
+        )
+
+        print("=" * 80)
+        print("[TCD08 Client] Start local TCD08 fill")
+        print(f"[TCD08 Client] server_report_url = {server_report_url}")
+        print(f"[TCD08 Client] email_dir         = {email_dir}")
+        print(f"[TCD08 Client] output_dir        = {output_dir}")
+        print("=" * 80)
+
+        files, handles = _collect_upload_files(email_dir)
+
+        # Send form-data to the 8086 server. Complex objects are serialized as JSON strings.
+        data = {}
+        for key, value in payload.items():
+            if key in {
+                "template_paths",
+                "save_path",
+                "output_path",
+                "email_dir",
+                "email_path",
+                "server_report_url",
+                "backend_report_url",
+                "target_report_url",
+            }:
+                continue
+
+            if isinstance(value, (dict, list)):
+                data[key] = json.dumps(value, ensure_ascii=False)
+            elif value is None:
+                data[key] = ""
+            else:
+                data[key] = str(value)
+
+        # Compatibility aliases for backend parameter naming.
+        if "projectId" not in data and payload.get("projectId") is not None:
+            data["projectId"] = str(payload.get("projectId"))
+        if "projectid" not in data and payload.get("projectid") is not None:
+            data["projectid"] = str(payload.get("projectid"))
+        if "taskId" not in data and payload.get("taskId") is not None:
+            data["taskId"] = str(payload.get("taskId"))
+
+        try:
+            response = requests.post(
+                server_report_url,
+                data=data,
+                files=files,
+                proxies={"http": None, "https": None},
+                verify=False,
+                timeout=600,
+            )
+        finally:
+            for fh in handles:
+                try:
+                    fh.close()
+                except Exception:
+                    pass
+
+        if response.status_code < 200 or response.status_code >= 300:
+            detail = response.text[:2000] if response.text else response.reason
+            raise HTTPException(
+                status_code=response.status_code,
+                detail=f"8086 TCD08 report generation failed: {detail}",
+            )
+
+        content_type = (response.headers.get("content-type") or "").lower()
+
+        # Preferred: server returns FileResponse / binary report.
+        if "application/json" not in content_type:
+            saved_path = _save_binary_response(response, output_dir)
+            return {
+                "success": True,
+                "message": "TCD08 report generated and saved by local client",
+                "email_dir": str(email_dir),
+                "output_dir": str(output_dir),
+                "saved_path": saved_path,
+            }
+
+        # Compatibility: server returns JSON with base64 content or a normal status payload.
+        try:
+            json_data = response.json()
+        except Exception:
+            saved_path = _save_binary_response(response, output_dir)
+            return {
+                "success": True,
+                "message": "TCD08 report generated and saved by local client",
+                "email_dir": str(email_dir),
+                "output_dir": str(output_dir),
+                "saved_path": saved_path,
+            }
+
+        saved_paths = _save_json_report_payload(json_data, output_dir)
+        if saved_paths:
+            return {
+                "success": True,
+                "message": "TCD08 report generated and saved by local client",
+                "email_dir": str(email_dir),
+                "output_dir": str(output_dir),
+                "saved_paths": saved_paths,
+                "server_response": json_data,
+            }
+
+        # If server only returns JSON status, pass it through for debugging.
+        return {
+            "success": bool(json_data.get("success", True)),
+            "message": json_data.get("message", "8086 returned JSON without report binary"),
+            "email_dir": str(email_dir),
+            "output_dir": str(output_dir),
+            "server_response": json_data,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as exc:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Local TCD08 client failed: {exc}")
 
 class OpenLinkRequest(BaseModel):
     link: str

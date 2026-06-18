@@ -128,206 +128,6 @@
     ],
     "description": ""
   },
-  "RTTF_Confirmation": {
-    "inputs": [
-      { "label": "Calibration Scope" },
-      { "label": "RTTF Macro (Template)" }
-    ],
-    "operation": {
-      "operation_name": "Generate RTTF Draft Version and Send Mail",
-      "operation_detail": {
-        "method": "POST",
-        "url": "http://server/api/algo/create",
-        "body": {}
-      }
-    },
-    "outputs": [
-      { "label": "Customer RTTF Mail" },
-      { "label": "Confirmed RTTF" }
-    ],
-    "description": "Auto copy, paste and modify RTTF Template to your project folder."
-  },
-  "ARS_Calibration": {
-    "inputs": [
-      { "label": "Checker (Template)" },
-      { "label": "ARS Calibration (Template)" },
-      { "label": "Sensor Scope" },
-      { "label": "Calibration Scope" },
-      { "label": "Confirmed RTTF" }
-    ],
-    "operation": {
-      "operation_name": "Generate ARS Draft Files",
-      "operation_detail": {
-        "method": "POST",
-        "url": "http://server/api/algo/create",
-        "body": {}
-      }
-    },
-    "outputs": [
-      { "label": "BBMReview ARS_Calibration" },
-      { "label": "ARS_Calibration (Outside Doors)" },
-      { "label": "Checker_ARS_Calibration" },
-      { "label": "Checker_NF" },
-      { "label": "Checker_MF" }
-    ],
-    "description": "Auto generate draft ARS_Calibration and Checker files to your folder."
-  },
-  "Data_Preparing": {
-    "inputs": [
-      { "label": "Crash Data From Customer" }
-    ],
-    "operation": {
-      "operation_name": "Rename Crash Data Folders with Standard Format",
-      "operation_detail": {
-        "method": "POST",
-        "url": "http://server/api/algo/create",
-        "body": {}
-      }
-    },
-    "outputs": [
-      { "label": "Renamed CrashData Folder" }
-    ],
-    "description": "Auto copy your Crash Folder and rename them with standard format."
-  },
-  "Data_Handling": {
-    "inputs": [
-      { "label": "Renamed CrashData Folder" },
-      { "label": "Sensor Scope" }
-    ],
-    "operation": {
-      "operation_name": "Open CrashBench",
-      "operation_detail": {
-        "method": "POST",
-        "url": "http://server/api/algo/create",
-        "body": {}
-      }
-    },
-    "outputs": [
-      { "label": "Crash Data (xml)" }
-    ],
-    "description": "Auto copy your Crash Folder and rename them with standard format."
-  },
-  "Data_Uploading": {
-    "inputs": [
-      { "label": "Crash Data (xml)" },
-      { "label": "Crash List (Template)" }
-    ],
-    "operation": {
-      "operation_name": "Upload Crash Data",
-      "operation_detail": {
-        "method": "POST",
-        "url": "http://server/api/algo/create",
-        "body": {}
-      }
-    },
-    "outputs": [
-      { "label": "Crash List (Draft)" }
-    ],
-    "description": "Auto copy your Crash Data .xml and upload one by one via scripts."
-  },
-  "Mapping": {
-    "inputs": [
-      { "label": "Crash Data (xml)" },
-      { "label": "Crash List (Draft)" },
-      { "label": "MDS Folder" },
-      { "label": "Sensor Scope" }
-    ],
-    "operation": {
-      "operation_name": "Open Mapping Tool",
-      "operation_detail": {
-        "method": "POST",
-        "url": "http://server/api/algo/create",
-        "body": {}
-      }
-    },
-    "outputs": [
-      { "label": "Crash List (ChannelOverview)" }
-    ],
-    "description": "Auto copy your Crash Data .xml and upload one by one via scripts."
-  },
-  "Crash_Data_Review": {
-    "inputs": [
-      { "label": "Crash List (ChannelOverview)" }
-    ],
-    "operation": {
-      "operation_name": "Generate CrashData BBM Review",
-      "operation_detail": {
-        "method": "POST",
-        "url": "http://server/api/algo/create",
-        "body": {}
-      }
-    },
-    "outputs": [
-      { "label": "BBMReview CrashData" }
-    ],
-    "description": "Auto copy your Crash Data .xml and upload one by one via scripts."
-  },
-  "MDS_Setup": {
-    "inputs": [
-      { "label": "Calibration Scope" },
-      { "label": "Sensor Scope" },
-      { "label": "MDS_SetupChecklist (Template)" },
-      { "label": "MDS Folder" },
-      { "label": "Initial .ALG" }
-    ],
-    "operation": {
-      "operation_name": "Generate .ALG and MDS_SetupChecklist",
-      "operation_detail": {
-        "method": "POST",
-        "url": "http://server/api/algo/create",
-        "body": {}
-      }
-    },
-    "outputs": [
-      { "label": "Base .ALG" },
-      { "label": "MDS_SetupChecklist (Report)" }
-    ],
-    "description": "Auto copy your Crash Data .xml and upload one by one via scripts."
-  },
-  "DT-AI_Calibration": {
-    "inputs": [
-      { "label": "Calibration Scope" },
-      { "label": "Sensor Scope" },
-      { "label": "Sim-Devices" },
-      { "label": "MDS Folder" },
-      { "label": "Base .ALG" }
-    ],
-    "operation": {
-      "operation_name": "Open MDSng / OrCa(Orientated Calibration)",
-      "operation_detail": {
-        "method": "POST",
-        "url": "http://server/api/algo/create",
-        "body": {}
-      }
-    },
-    "outputs": [
-      { "label": "Draft .ALG" },
-      { "label": "OrCa Database" }
-    ],
-    "description": "Auto copy your Crash Data .xml and upload one by one via scripts."
-  },
-  "Draft_Simulation": {
-    "inputs": [
-      { "label": "Sensor Scope" },
-      { "label": "Sim-Devices" },
-      { "label": "Confirmed RTTF"},
-      { "label": "MDS Folder" },
-      { "label": "Draft .ALG" }
-    ],
-    "operation": {
-      "operation_name": "Open CIA (CREIS_Input_Assisstant)",
-      "operation_detail": {
-        "method": "POST",
-        "url": "http://server/api/algo/create",
-        "body": {}
-      }
-    },
-    "outputs": [
-      { "label": "Simulation Results" }
-    ],
-    "description": "TBD."
-  },
-
   "IAR": {
     "inputs": [
       { "label": "IAR_Template" }
@@ -369,39 +169,12 @@
       { "label": "Output" }
     ]
   },
-
-  "ONETCD&TCD08": {
+  "RTTF_Confirmation": {
     "inputs": [
-      { "label": "ONETCD&TCD08_Template" }
+      { "label": "Customer RTTF Standard (Template)" }
     ],
     "operation": {
-      "operation_name": "Fill_ONETCD&TCD08",
-      "operation_detail": {
-        "type": "httpWithParameter",
-        "need_parameter": ["uuid","projectid"],
-        "method": "POST",
-        "url": "https://oss-dthub.apac.bosch.com/app-puma/report/fillTCD08Report",
-        "body": {
-          "uuid": "",
-          "template_paths": [],
-          "save_path": ""
-        }
-      }
-    },
-    "outputs": [
-      { "label": "ONETCD&TCD08_Report" }
-    ],
-    "description": "ONETCD&TCD08."
-  },
-
-  "PreChecker": {
-    "inputs": [
-      { "label": "Sensor Scope" },
-      { "label": "Calibration Scope" },
-      { "label": "Draft .ALG" }
-    ],
-    "operation": {
-      "operation_name": "PreCheck Calibration Parameters",
+      "operation_name": "Generate Draft Mail for customer RTTF confirmation",
       "operation_detail": {
         "method": "POST",
         "url": "http://server/api/algo/create",
@@ -409,20 +182,106 @@
       }
     },
     "outputs": [
-      { "label": "PreChecker (Report)" }
+      { "label": "Draft Customer RTTF Mail" },
+      { "label": "RTTF Macro" }
     ],
-    "description": "TBD."
+    "description": "Please fill in Customer RTTF Standard Template, then E-mail to customer for confirmation."
   },
-  "Standard_Simulation": {
+  "ARS_Calibration": {
     "inputs": [
+      { "label": "ARS Calibration (Doors link)" },
+      { "label": "Reviewer name1" },
+      { "label": "Reviewer name2" }
+    ],
+    "operation": {
+      "operation_name": "Open BBM System",
+      "operation_detail": {
+        "method": "POST",
+        "url": "http://server/api/algo/create",
+        "body": {}
+      }
+    },
+    "outputs": [
+      { "label": "BBMReview ARS_Calibration" }
+    ],
+    "description": "Auto. ARS_cali & BBM creation not ready. Please maintain RTTF and Checker input in ARS_Calibration, then invite BBM review for it."
+  },
+  "Data_Handle & Reivew": {
+    "inputs": [
+      { "label": "Click to open Online data handling tool" },
+	  { "label": "Channel Overview link" },
+	  { "label": "Reviewer name1" }
+    ],
+    "operation": {
+      "operation_name": "Open BBM System",
+      "operation_detail": {
+        "method": "POST",
+        "url": "http://server/api/algo/create",
+        "body": {
+          "url": "https://rb-bbm-reviewtool01.apps.intranet.bosch.com/ReviewTool/dashboard"
+       }
+      }
+    },
+    "outputs": [
+      { "label": "BBMReview handled crash data" }
+    ],
+    "description": "Auto. data handling & BBM creation not ready. Please use crash impoter for data handling, then invite BBM review."
+  },
+    "MDS_Setup & Map Assignment": {
+    "inputs": [
+      { "label": "Calibration Scope" },
+      { "label": "Sensor Scope" },
+      { "label": "MDS_SetupChecklist (Template)" },
+      { "label": "MDS Folder" },
+      { "label": "Initial .ALG" }
+    ],
+    "operation": {
+      "operation_name": "Generate MDS_SetupChecklist and Mapping Assignment list",
+      "operation_detail": {
+        "method": "POST",
+        "url": "http://server/api/algo/create",
+        "body": {}
+      }
+    },
+    "outputs": [
+      { "label": "MDS_SetupChecklist (Report)" },
+      { "label": "Mapping Assignment (Report)" }
+    ],
+    "description": "Auto. setup check & mapping assign check not ready. Please find setup and assignment check tool via AppETC ."
+  },
+  "DT-AI_Calibration": {
+    "inputs": [
+      { "label": "Calibration Scope" },
       { "label": "Sensor Scope" },
       { "label": "Sim-Devices" },
-      { "label": "Confirmed RTTF"},
       { "label": "MDS Folder" },
+      { "label": "Base .ALG" }
+    ],
+    "operation": {
+      "operation_name": "Open MDSng / OrCa(Orientated Calibration)",
+      "operation_detail": {
+        "method": "POST",
+        "url": "http://server/api/algo/create",
+        "body": {}
+      }
+    },
+    "outputs": [
+      { "label": "Draft .ALG" },
+      { "label": "OrCa Database" }
+    ],
+    "description": "Auto. calibration database and auto. threshold function not ready, Please use OrCa to create database and MDSng for threshold drawing."
+  },
+   "Cali Internal Test": {
+    "inputs": [
+      { "label": "SimjobStar config file" },
+	  { "label": "Checker (Template)" },
+      { "label": "Checker_input_ARS_Calibration" },
+      { "label": "Checker_input_Fire/Nofire" },
+	  { "label": "CcaRoT setup file)" },
       { "label": "Draft .ALG" }
     ],
     "operation": {
-      "operation_name": "Open CIA (CREIS_Input_Assisstant)",
+      "operation_name": "Generate report",
       "operation_detail": {
         "method": "POST",
         "url": "http://server/api/algo/create",
@@ -430,20 +289,22 @@
       }
     },
     "outputs": [
-      { "label": "Simulation Results" }
+      { "label": "Customer simulation result"},
+	    { "label": "Checker (Report)"},
+      { "label": "Walkthrough (Report)"},
+	    { "label": "CcaRoT (Report)"}
     ],
-    "description": "TBD."
+    "description": "Auto. report generation function not ready. Please manually complete internal test."
   },
-  "Checker": {
+  "Official_Simulation & Customer Approval": {
     "inputs": [
-      { "label": "Checker (Template)" },
-      { "label": "Checker_ARS_Calibration" },
-      { "label": "Checker_NF" },
-      { "label": "Checker_MF" },
-      { "label": "Draft .ALG" }
+      { "label": "SimjobStar config file" },
+      { "label": "MDS Folder" },
+      { "label": "Official .ALG" },
+	  { "label": "Customer approval E-mail (Template)" }
     ],
     "operation": {
-      "operation_name": "Generate Checker",
+      "operation_name": "Generate Official simulation result and customer approval E-mail",
       "operation_detail": {
         "method": "POST",
         "url": "http://server/api/algo/create",
@@ -451,139 +312,21 @@
       }
     },
     "outputs": [
-      { "label": "Checker (Report)" }
+      { "label": "Official Simulation Results" },
+	  { "label": "Customer approval E-mail(draft) " }
     ],
-    "description": "TBD."
+    "description": "Taget function is to auto. generate official simulation result and E-mail. But this is not ready now."
   },
-  "Walkthrough": {
-    "inputs": [
-      { "label": "Walkthrough (Template)" },
-      { "label": "Calibration Scope" },
-      { "label": "OrCa Database" },
-      { "label": "Draft .ALG" }
-    ],
-    "operation": {
-      "operation_name": "Generate Walkthrough",
-      "operation_detail": {
-        "method": "POST",
-        "url": "http://server/api/algo/create",
-        "body": {}
-      }
-    },
-    "outputs": [
-      { "label": "Walkthrough (Report)" },
-      { "label": "MetPlot (Report)" }
-    ],
-    "description": "TBD."
-  },
-  "CCaRoT": {
-    "inputs": [
-      { "label": "Calibration Scope" },
-      { "label": "Sensor Scope" },
-      { "label": "MDS Folder"},
-      { "label": "Draft .ALG" }
-    ],
-    "operation": {
-      "operation_name": "Generate CCaRoT Configuration Files",
-      "operation_detail": {
-        "method": "POST",
-        "url": "http://server/api/algo/create",
-        "body": {}
-      }
-    },
-    "outputs": [
-      { "label": "CCaRoT Assessment (Report)" }
-    ],
-    "description": "TBD."
-  },
-  "Internal_Review": {
-    "inputs": [
-      { "label": "Crash List (ChannelOverview)"},
-      { "label": "Simulation Results" },
-      { "label": "Walkthrough (Report)" },
-      { "label": "MetPlot (Report)" }
-    ],
-    "operation": {
-      "operation_name": "Generate Walkthrough",
-      "operation_detail": {
-        "method": "POST",
-        "url": "http://server/api/algo/create",
-        "body": {}
-      }
-    },
-    "outputs": [
-      { "label": "Opls from Experts" }
-    ],
-    "description": "TBD."
-  },
-  "Customer_Communication": {
-    "inputs": [
-      { "label": "Simulation Results" },
-      { "label": "Calibration Scope" }
-    ],
-    "operation": {
-      "operation_name": "Generate Customer Communication Mail",
-      "operation_detail": {
-        "method": "POST",
-        "url": "http://server/api/algo/create",
-        "body": {}
-      }
-    },
-    "outputs": [
-      { "label": "Calibration Communication Mail" }
-    ],
-    "description": "TBD."
-  },
-  "Create_BBMReview": {
-    "inputs": [
-      { "label": "CCaRoT Assessment (Report)" },
-      { "label": "Walkthrough (Report)" },
-      { "label": "Checker (Report)" }
-    ],
-    "operation": {
-      "operation_name": "Generate Customer Communication Mail",
-      "operation_detail": {
-        "method": "POST",
-        "url": "http://server/api/algo/create",
-        "body": {}
-      }
-    },
-    "outputs": [
-      { "label": "BBMReview CCaRoT" },
-      { "label": "BBMReview Walkthrough" },
-      { "label": "BBMReview Checker" }
-    ],
-    "description": "TBD."
-  },
-  "Customer_Approval": {
-    "inputs": [
-      { "label": "Simulation Results" },
-      { "label": "Calibration Scope" }
-    ],
-    "operation": {
-      "operation_name": "Generate Customer Confirmation Mail",
-      "operation_detail": {
-        "method": "POST",
-        "url": "http://server/api/algo/create",
-        "body": {}
-      }
-    },
-    "outputs": [
-      { "label": "Confirmation Mail (BOSCH)" },
-      { "label": "Confirmation Mail (Customer)" }
-    ],
-    "description": "TBD."
-  },
-  "Generate_CalibrationCP": {
+   "Calibration CP": {
     "inputs": [
       { "label": "Official .ALG"},
       { "label": "Official .C"},
+	  { "label": "BBMReview CrashData" },
       { "label": "BBMReview ARS_Calibration" },
       { "label": "BBMReview CCaRoT" },
       { "label": "BBMReview Checker" },
-      { "label": "BBMReview CrashData" },
       { "label": "BBMReview Walkthrough" },
-      { "label": "Algo Tasks" }
+      { "label": "Algo Task ID" }
     ],
     "operation": {
       "operation_name": "Generate Calibration CP",
@@ -596,9 +339,9 @@
     "outputs": [
       { "label": "Calibration CheckPoint" }
     ],
-    "description": "TBD."
+    "description": "Auto. generate CP function not ready."
   },
-  "Prepare_TestInput": {
+  "Sys Test Input and Evaluate": {
     "inputs": [
       { "label": "Sensor Scope" },
       { "label": "Sim-Devices" },
@@ -616,18 +359,51 @@
     "outputs": [
       { "label": "Test Inputs" }
     ],
-    "description": "TBD."
+    "description": "Pop out CIA functino not ready now, please find CIA via AppETC."
   },
-  "Evaluate_TestResults": {
+   "ARTR_Cal & VAR": {
     "inputs": [
-      { "label": "Test Results (Draft)" }
+      { "label": "ARS_Cal report (doors link)" },
+      { "label": "ARTR_Cal report (doorslink)" },
+      { "label": "Cali CP task ID" },
+	  { "label": "Persim/Sefita report (share-point link)" },
+      { "label": "Mounting report(share-point link)"},
+	  { "label": "VAR(template)"}
     ],
     "operation": {
-      
+      "operation_name": "Generate VAR report",
+      "operation_detail": {
+        "method": "POST",
+        "url": "http://server/api/algo/create",
+        "body": {}
+      }
     },
     "outputs": [
-      { "label": "Test Results (Signed)" }
+      { "label": "VAR report" }
     ],
     "description": "TBD."
+  },
+  "ONETCD&TCD08": {
+    "inputs": [
+      { "label": "ONETCD&TCD08_Template" }
+    ],
+    "operation": {
+      "operation_name": "Fill_ONETCD&TCD08",
+      "operation_detail": {
+        "type": "httpWithParameter",
+        "need_parameter": ["uuid","projectid"],
+        "method": "POST",
+        "url": "http://127.0.0.1:8086/report/fillTCD08Report",
+        "body": {
+          "uuid": "",
+          "template_paths": [],
+          "save_path": ""
+        }
+      }
+    },
+    "outputs": [
+      { "label": "ONETCD&TCD08_Report" }
+    ],
+    "description": "Please double check the simulation applitude setting, manual copy customer approve info. to OneTCD chapter 1.3."
   }
 }

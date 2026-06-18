@@ -4,7 +4,6 @@ import json
 import logging
 import re
 import sys
-import zipfile
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
@@ -12,7 +11,6 @@ from typing import Any, Dict, List, Optional, Union
 
 import httpx
 from fastapi import HTTPException
-
 
 SERVER_ROOT = Path(__file__).resolve().parents[1]
 
@@ -29,17 +27,19 @@ else:
 import docx  # type: ignore[reportMissingImports]  # noqa: E402
 
 from services.word.logo import replace_logo_placeholders
-from services.word.text_rewrite import replace_regex_in_docx_paragraph
 from services.email.parser import parse_email_pair
 from utils.path_config import EMAIL_DIR
 
+# Prefer the formatting-preserving replacement helper if it exists.
+try:
+    from services.word.text_rewrite import replace_regex_in_docx_paragraph
+except Exception:  # pragma: no cover - compatibility fallback
+    replace_regex_in_docx_paragraph = None
 
 logger = logging.getLogger("uvicorn.error")
 
-
 GATEWAY_KEY = "PN9rSrBi6770yG35WSoN25yAPiWaqbBS"
 BASE_URL = "http://apiroutecccn.apac.bosch.com/openapi/pmsserverprod/api"
-
 URL_STEP1 = f"{BASE_URL}/getSimpleProjectInfoList?gatewayKey={GATEWAY_KEY}"
 URL_STEP2_TEMPLATE = f"{BASE_URL}/vms/get/CustomerProjectByIDX/{{uuid}}?gatewayKey={GATEWAY_KEY}"
 URL_STEP3_TEMPLATE = f"{BASE_URL}/vms/pbi/CustomerProjects/ALL?projectId={{uuid}}"
@@ -214,7 +214,6 @@ async def fetch_single_project_details(uuid: str) -> Optional[Dict[str, Any]]:
             profile[key] = "N/A"
 
     profile["FlLoopCount"] = format_firing_loop_count(profile.get("FlConfiguration"))
-
     return profile
 
 
@@ -222,20 +221,22 @@ def _parse_role_email_summary(role_email_summary: str) -> dict[str, str]:
     if not role_email_summary or role_email_summary == "N/A":
         return {}
 
-    email_data_by_role = {}
+    email_data_by_role: dict[str, str] = {}
     for section in role_email_summary.split(";"):
         if ":" not in section:
             continue
+
         role_key, _, member_list_str = section.partition(":")
         role_key = role_key.strip()
         if not role_key:
             continue
 
-        output_lines = []
+        output_lines: list[str] = []
         for member_str in member_list_str.strip().split(","):
             member_str = member_str.strip()
             if not member_str:
                 continue
+
             display_name, separator, email = member_str.rpartition("_")
             if separator:
                 output_lines.append(display_name.strip())
@@ -272,7 +273,7 @@ def format_firing_loop_count(value: Any) -> str:
 
 
 def _prepare_profile_for_filling(profile_dict: dict[str, Any]) -> dict[str, str]:
-    formatted_profile = {}
+    formatted_profile: dict[str, str] = {}
     for key, value in profile_dict.items():
         if value is None or value == "" or value == []:
             formatted_profile[key] = "N/A"
@@ -286,7 +287,7 @@ def _prepare_profile_for_filling(profile_dict: dict[str, Any]) -> dict[str, str]
     )
 
     role_summary_str = formatted_profile.get("role_summary", "N/A")
-    role_data = {}
+    role_data: dict[str, str] = {}
     if role_summary_str and role_summary_str != "N/A":
         for pair in role_summary_str.split(";"):
             if ":" in pair:
@@ -318,7 +319,8 @@ def _prepare_profile_for_filling(profile_dict: dict[str, Any]) -> dict[str, str]
     parsed_emails_by_role = _parse_role_email_summary(
         formatted_profile.get("role_email_summary", "N/A")
     )
-    corrected_email_data = {}
+
+    corrected_email_data: dict[str, str] = {}
     for raw_key, value in parsed_emails_by_role.items():
         if raw_key.endswith("Email"):
             prefix = raw_key[:-5]
@@ -333,10 +335,70 @@ def _prepare_profile_for_filling(profile_dict: dict[str, Any]) -> dict[str, str]
     return formatted_profile
 
 
+def _resolve_actual_email_dir(email_dir: Optional[Union[str, Path]]) -> Path:
+    """
+    Resolve the email source directory used by TCD08 placeholders.
+
+    New architecture:
+    - 7175 Client reads user C: email files.
+    - 7175 uploads them to 8086.
+    - 8086 stores them in a server temp directory.
+    - datamerge parses that server temp directory.
+
+    Legacy fallback:
+    - If email_dir is absent, keep existing EMAIL_DIR behavior.
+    """
+    if email_dir:
+        return Path(email_dir)
+    return EMAIL_DIR
+
+
+def _populate_email_placeholders(
+    formatted_profile: dict[str, str],
+    email_dir: Optional[Union[str, Path]] = None,
+) -> None:
+    actual_email_dir = _resolve_actual_email_dir(email_dir)
+
+    try:
+        email_map = parse_email_pair(actual_email_dir)
+        send = email_map.get("send", {}) or {}
+        approval = email_map.get("approval", {}) or {}
+
+        formatted_profile["Email.Approval.SenderFull"] = approval.get("sender", "N/A")
+        formatted_profile["Email.Approval.SentDate"] = approval.get("sent_date", "N/A")
+        formatted_profile["Email.Approval.MsgFileName"] = approval.get("file", "N/A")
+
+        formatted_profile["Email.Send.ZipFileName"] = send.get("zip", "N/A")
+        formatted_profile["Email.Send.StandardXlsxFiles"] = (
+            "\n".join(send.get("standard_xlsx_files", []) or []) or "N/A"
+        )
+        formatted_profile["Email.Send.DefectXlsxFiles"] = (
+            "\n".join(send.get("defect_xlsx_files", []) or []) or "N/A"
+        )
+        formatted_profile["Email.Send.SpecificXlsxFiles"] = (
+            "\n".join(send.get("specific_xlsx_files", []) or []) or "N/A"
+        )
+        formatted_profile["Email.Send.StandardXlsxCount"] = str(
+            send.get("standard_xlsx_count", 0) or 0
+        )
+        formatted_profile["Email.Send.DefectXlsxCount"] = str(
+            send.get("defect_xlsx_count", 0) or 0
+        )
+        formatted_profile["Email.Send.SpecificXlsxCount"] = str(
+            send.get("specific_xlsx_count", 0) or 0
+        )
+
+        logger.info("[TCD08] Email placeholders populated from %s", actual_email_dir)
+
+    except Exception:
+        # Keep generation alive; missing email info becomes N/A instead of failing whole Word build.
+        logger.exception("Failed to populate email placeholders from %s", actual_email_dir)
+
+
 def fill_docx_by_placeholders(
     profile_dict: dict[str, Any],
     source: Union[Path, io.BytesIO],
-    email_dir: Optional[Path] = None,
+    email_dir: Optional[Union[str, Path]] = None,
 ) -> io.BytesIO:
     try:
         document = docx.Document(source)
@@ -344,27 +406,8 @@ def fill_docx_by_placeholders(
         raise HTTPException(status_code=400, detail=f"无法处理提供的Word文件: {exc}") from exc
 
     formatted_profile = _prepare_profile_for_filling(profile_dict)
-    # Try to populate email-related placeholders from CalibrationID email_dir first.
-    # If email_dir is not provided, keep the old EMAIL_DIR behavior.
-    actual_email_dir = Path(email_dir) if email_dir else EMAIL_DIR
-    try:
-        email_map = parse_email_pair(actual_email_dir)
-        send = email_map.get("send", {}) or {}
-        approval = email_map.get("approval", {}) or {}
+    _populate_email_placeholders(formatted_profile, email_dir=email_dir)
 
-        # Map into formatted_profile keys expected by template placeholders
-        formatted_profile["Email.Approval.SenderFull"] = approval.get("sender", "N/A")
-        formatted_profile["Email.Approval.SentDate"] = approval.get("sent_date", "N/A")
-        formatted_profile["Email.Approval.MsgFileName"] = approval.get("file", "N/A")
-        formatted_profile["Email.Send.ZipFileName"] = send.get("zip", "N/A")
-        formatted_profile["Email.Send.StandardXlsxFiles"] = "\n".join(send.get("standard_xlsx_files", []) or []) or "N/A"
-        formatted_profile["Email.Send.DefectXlsxFiles"] = "\n".join(send.get("defect_xlsx_files", []) or []) or "N/A"
-        formatted_profile["Email.Send.SpecificXlsxFiles"] = "\n".join(send.get("specific_xlsx_files", []) or []) or "N/A"
-        formatted_profile["Email.Send.StandardXlsxCount"] = str(send.get("standard_xlsx_count", 0) or 0)
-        formatted_profile["Email.Send.DefectXlsxCount"] = str(send.get("defect_xlsx_count", 0) or 0)
-        formatted_profile["Email.Send.SpecificXlsxCount"] = str(send.get("specific_xlsx_count", 0) or 0)
-    except Exception:
-        logger.exception("Failed to populate email placeholders from %s", actual_email_dir)
     placeholder_pattern = re.compile(r"<\s*PMS\.([^>]+?)\s*>")
 
     def normalize_header_text(value: str) -> str:
@@ -378,12 +421,7 @@ def fill_docx_by_placeholders(
                 mapping[key] = index
         return mapping
 
-    def set_cell_text(row, column_index: int, text: str) -> None:
-        if column_index >= len(row.cells):
-            return
-        row.cells[column_index].text = text
-
-    def normalize_document_change_table(document) -> None:
+    def normalize_document_change_table(document_obj) -> None:
         required_headers = [
             "no",
             "document",
@@ -393,7 +431,7 @@ def fill_docx_by_placeholders(
             "date",
         ]
 
-        for table in document.tables:
+        for table in document_obj.tables:
             if not table.rows:
                 continue
 
@@ -422,7 +460,6 @@ def fill_docx_by_placeholders(
             for item in re.split(r"\s*(?:\+|,|;|；|，|\n)\s*", text)
             if item.strip()
         ]
-
         if len(items) <= 3:
             return text
 
@@ -435,7 +472,8 @@ def fill_docx_by_placeholders(
     def replacer(match: re.Match, in_table_cell: bool = False) -> str:
         combined_key = match.group(1).strip()
         if combined_key.lower() == "logo":
-            return "<PMS.logo>"
+            return ""
+
         if "-" in combined_key:
             keys = [key.strip() for key in combined_key.split("-")]
             value_parts = [formatted_profile.get(key, "N/A") for key in keys]
@@ -447,14 +485,27 @@ def fill_docx_by_placeholders(
             return format_table_cell_value(combined_key, value)
         return str(value)
 
-    def substitute_in_paragraph(paragraph, in_table_cell: bool = False):
-        replace_regex_in_docx_paragraph(
-            paragraph,
-            placeholder_pattern,
-            lambda match: replacer(match, in_table_cell=in_table_cell),
-        )
+    def substitute_in_paragraph(paragraph, in_table_cell: bool = False) -> None:
+        if not placeholder_pattern.search(paragraph.text or ""):
+            return
 
-    def substitute_in_container(container, in_table_cell: bool = False):
+        if replace_regex_in_docx_paragraph is not None:
+            replace_regex_in_docx_paragraph(
+                paragraph,
+                placeholder_pattern,
+                lambda match: replacer(match, in_table_cell=in_table_cell),
+            )
+            return
+
+        full_text = paragraph.text
+        new_text = placeholder_pattern.sub(
+            lambda match: replacer(match, in_table_cell=in_table_cell),
+            full_text,
+        )
+        if new_text != full_text:
+            paragraph.text = new_text
+
+    def substitute_in_container(container, in_table_cell: bool = False) -> None:
         for paragraph in container.paragraphs:
             substitute_in_paragraph(paragraph, in_table_cell=in_table_cell)
 
@@ -484,9 +535,9 @@ def fill_docx_by_placeholders(
 
 
 def flatten_project_info(project_info: Dict[str, Any]) -> Dict[str, str]:
-    values = {}
+    values: Dict[str, str] = {}
 
-    def add_value(label, value):
+    def add_value(label, value) -> None:
         if label and value not in [None, "", []]:
             values[label] = ", ".join(map(str, value)) if isinstance(value, list) else str(value)
 
@@ -510,6 +561,7 @@ def apply_project_info_overrides(
     project_info: Dict[str, Any],
 ) -> Dict[str, Any]:
     form_values = flatten_project_info(project_info)
+
     form_to_profile = {
         "OEM": "oem",
         "Product Category": "ab_generation",
@@ -539,5 +591,4 @@ def apply_project_info_overrides(
     profile_dict["FlLoopCount"] = format_firing_loop_count(
         profile_dict.get("FlConfiguration")
     )
-
     return profile_dict

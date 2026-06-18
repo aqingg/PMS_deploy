@@ -33,8 +33,7 @@ from services.word_sections import (
     rewrite_red_paragraph_text_batch,
     update_tocs_with_word,
 )
-from utils.file_loader import build_local_workspace_paths, load_folder_mapping
-
+from utils.file_loader import load_folder_mapping
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -68,18 +67,23 @@ def _merge_red_paragraph_deletions(red_deletions: list[dict[str, Any]]) -> list[
                 "matched_rules": grouped_rules.get(section, []),
             }
         )
+
     return merged
+
 
 # 固定收尾处理开关：
 # 如需临时保留模板里的删除提示语/红色字体，把对应值改为 False 即可。
 REMOVE_TEMPLATE_INSTRUCTIONS_ENABLED = True
 REPLACE_RED_FONT_WITH_BLACK_ENABLED = True
+
 # 红转黑白名单：这些章节保留红色，不执行红转黑。
 # 示例：{"4.1"}
 RED_TO_BLACK_SECTION_WHITELIST: set[str] = {"4.1"}
+
 # 是否把整条文档处理链路放到本地临时目录执行：
-# - True：先在本机 temp 路径处理（含 TOC），最后统一复制到输出目录。
+# - True：先在服务器 temp 路径处理（含 TOC），最后统一复制到输出目录。
 # - False：直接在输出目录原位置处理。
+# 注意：当 copy_to_final_output=False 时，本函数会强制直接写 forced_output_dir，避免再复制到用户 C 盘。
 PROCESS_ALL_STEPS_IN_LOCAL_TEMP = True
 
 
@@ -100,13 +104,15 @@ def _mapping_base_path(item: dict, tag_name: str) -> Path:
     path = Path(absolute_path)
     if not path.exists():
         raise HTTPException(status_code=404, detail=f"Configured path not found: {path}")
+
     return path
 
 
 def _resolve_template_paths() -> list[Path]:
-    """解析 TCD08 模板文件路径。"""
+    """解析 TCD08 模板文件路径。模板仍来自服务器/公盘 AbsolutePath。"""
     item = _mapping_by_tag("ONETCD&TCD08_Template")
     base_path = _mapping_base_path(item, "ONETCD&TCD08_Template")
+
     file_keyword = (item.get("FileKeyWord") or "").strip()
 
     if file_keyword:
@@ -122,6 +128,7 @@ def _resolve_template_paths() -> list[Path]:
                 status_code=404,
                 detail=f"TCD08 template file not found: {exact_file}",
             )
+
         return [exact_file]
 
     if not base_path.is_dir():
@@ -135,6 +142,7 @@ def _resolve_template_paths() -> list[Path]:
         for path in sorted(base_path.iterdir())
         if path.is_file() and path.suffix.lower() in {".docx", ".docm"}
     ]
+
     if not template_paths:
         raise HTTPException(status_code=404, detail=f"No Word templates found in {base_path}")
 
@@ -142,7 +150,10 @@ def _resolve_template_paths() -> list[Path]:
 
 
 def _resolve_output_dir() -> Path:
-    """解析 TCD08 报告输出目录，不存在则创建。"""
+    """
+    旧接口兜底输出目录。
+    新架构下 7175 调用 8086 时，会传 forced_output_dir，通常不会走这里。
+    """
     item = _mapping_by_tag("ONETCD&TCD08_Report")
     absolute_path = item.get("AbsolutePath") or ""
     if not absolute_path:
@@ -154,50 +165,6 @@ def _resolve_output_dir() -> Path:
     output_dir = Path(absolute_path)
     output_dir.mkdir(parents=True, exist_ok=True)
     return output_dir
-
-
-def _resolve_tcd08_workspace_paths(
-    resolved_project_info: dict[str, Any],
-    calibration_name: str,
-) -> tuple[dict[str, str] | None, str | None]:
-    """
-    优先根据 Local Link + CalibrationID 解析 TCD08 专属工作区。
-
-    成功返回：
-    (
-        {
-            "email_dir": "...",
-            "tcd08_report_dir": "...",
-            ...
-        },
-        None
-    )
-
-    失败返回：
-    (None, "失败原因")
-    """
-    if not calibration_name:
-        return None, "Calibration task name not resolved from workflow"
-
-    if not resolved_project_info:
-        return None, "projectInfo is empty"
-
-    try:
-        paths = build_local_workspace_paths(
-            projectInfo=resolved_project_info,
-            calibration_id=calibration_name,
-            create=False,
-        )
-        return paths, None
-    except Exception as exc:
-        logger.warning(
-            "[TCD08] Failed to resolve CalibrationID workspace. "
-            "calibration_name=%s error=%s",
-            calibration_name,
-            exc,
-            exc_info=True,
-        )
-        return None, str(exc)
 
 
 def _load_project_info_from_db(project_id: Optional[int], db: Session) -> dict:
@@ -268,7 +235,10 @@ def _extract_calibration_parameter(task_name: str) -> str:
     return clean_name
 
 
-def _resolve_calibration_task_name_from_workflow(workflow: dict[str, Any], task_id: Optional[str]) -> str:
+def _resolve_calibration_task_name_from_workflow(
+    workflow: dict[str, Any],
+    task_id: Optional[str],
+) -> str:
     if not task_id:
         return ""
 
@@ -284,9 +254,44 @@ def _resolve_calibration_task_name_from_workflow(workflow: dict[str, Any], task_
     return str(parent_task.get("taskName") or "").strip()
 
 
-def _resolve_calibration_parameter_from_workflow(workflow: dict[str, Any], task_id: Optional[str]) -> str:
+def _resolve_calibration_parameter_from_workflow(
+    workflow: dict[str, Any],
+    task_id: Optional[str],
+) -> str:
     parent_name = _resolve_calibration_task_name_from_workflow(workflow, task_id)
     return _extract_calibration_parameter(parent_name)
+
+
+def _fill_docx_by_placeholders_with_optional_email_dir(
+    profile_dict: dict[str, Any],
+    template_path: Path,
+    uploaded_email_dir: str | None,
+):
+    """
+    调用 datamerge.fill_docx_by_placeholders。
+
+    第五步建议同步修改 services/datamerge.py，使它正式支持 email_dir 参数。
+    为了减少覆盖后立刻因旧 datamerge 签名崩溃，这里做一次兼容降级：
+    - 新 datamerge：fill_docx_by_placeholders(profile, template, email_dir=...)
+    - 旧 datamerge：fill_docx_by_placeholders(profile, template)
+    """
+    if uploaded_email_dir:
+        try:
+            return fill_docx_by_placeholders(
+                profile_dict,
+                template_path,
+                email_dir=uploaded_email_dir,
+            )
+        except TypeError as exc:
+            if "email_dir" not in str(exc):
+                raise
+            logger.warning(
+                "[TCD08] services.datamerge.fill_docx_by_placeholders does not support email_dir yet. "
+                "Fallback to legacy call without uploaded email_dir. Please complete step 5.",
+                exc_info=True,
+            )
+
+    return fill_docx_by_placeholders(profile_dict, template_path)
 
 
 async def generate_tcd08_report(
@@ -299,18 +304,27 @@ async def generate_tcd08_report(
     report_date: str,
     customer_release_email: str,
     db: Session,
+    uploaded_email_dir: str | None = None,
+    forced_output_dir: str | None = None,
+    copy_to_final_output: bool = True,
 ) -> dict:
-    """TCD08 报告生成主流程。
+    """
+    TCD08 报告生成主流程。
 
-    这里负责“编排”：
-    1. 获取 PMS profile。
-    2. 合并 project_info。
-    3. 计算章节删除、红字段落删除、段落内改写计划。
-    4. 填充模板并调用 word_sections 执行 Word 修改。
-    5. 组装与旧接口一致的返回结果。
+    新架构职责边界：
+    - 7175 Client 读取用户 C 盘 Customer_Approval_Email，并上传到 8086。
+    - 8086 只读取 uploaded_email_dir，即服务器临时目录。
+    - 8086 只把生成文件写到 forced_output_dir，即服务器临时输出目录。
+    - 8086 不再复制或写入用户 C 盘。
+
+    参数说明：
+    - uploaded_email_dir：7175 上传文件后，api/report.py 保存到服务器临时目录的位置。
+    - forced_output_dir：api/report.py 为本次请求创建的服务器临时输出目录。
+    - copy_to_final_output：False 时禁止 shutil.copy2 到最终路径；直接在 forced_output_dir 生成，供 FileResponse 返回。
     """
     request_start = time.perf_counter()
     logger.info("[TCD08] Start generating report. uuid=%s", uuid)
+
     profile_dict = await fetch_single_project_details(uuid)
     if not profile_dict:
         raise HTTPException(
@@ -323,18 +337,20 @@ async def generate_tcd08_report(
         resolved_project_info = {}
 
     # 兜底：若前端未传 Owner，但传了 author，则回填到 project_info。
-    # 这样第八章 owner 后缀规则可与文档 Author 保持一致。
     owner_item = resolved_project_info.get("owner")
     owner_value = ""
     if isinstance(owner_item, dict):
         owner_value = str(owner_item.get("value") or "").strip()
+
     if not owner_value and str(author).strip():
         resolved_project_info["owner"] = {"label": "Owner", "value": str(author).strip()}
+
     logger.info(
         "[TCD08] Project info loaded. source=%s project_id=%s",
         "request" if project_info else "database",
         project_id,
     )
+
     if resolved_project_info:
         profile_dict = apply_project_info_overrides(profile_dict, resolved_project_info)
         logger.info("[TCD08] Applied project info overrides to PMS profile.")
@@ -366,47 +382,32 @@ async def generate_tcd08_report(
         or profile_dict.get("project_leader")
         or getpass.getuser().upper()
     )
-    profile_dict["report_date"] = (
-        report_date or datetime.now().strftime("%Y.%m.%d")
-    )
-    profile_dict["customer_release_email"] = (
-        customer_release_email or "N/A"
-    )
+    profile_dict["report_date"] = report_date or datetime.now().strftime("%Y.%m.%d")
+    profile_dict["customer_release_email"] = customer_release_email or "N/A"
 
     template_paths = _resolve_template_paths()
 
-    workspace_paths = None
-    workspace_warning = None
-    email_dir = None
-
-    if calibration_task_name:
-        workspace_paths, workspace_warning = _resolve_tcd08_workspace_paths(
-            resolved_project_info=resolved_project_info,
-            calibration_name=calibration_task_name,
-        )
-
-    if workspace_paths:
-        output_dir = Path(workspace_paths["tcd08_report_dir"])
-        email_dir = workspace_paths["email_dir"]
-        logger.info(
-            "[TCD08] Using CalibrationID workspace. calibration_parameter=%s email_dir=%s output_dir=%s",
-            calibration_parameter,
-            email_dir,
-            output_dir,
-        )
+    if forced_output_dir:
+        output_dir = Path(forced_output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        logger.info("[TCD08] Using forced server output dir: %s", output_dir)
     else:
-        logger.warning(
-            "[TCD08] CalibrationID workspace unavailable, fallback to legacy output dir. "
-            "calibration_parameter=%s reason=%s",
-            calibration_parameter,
-            workspace_warning or "unknown",
-        )
         output_dir = _resolve_output_dir()
+        logger.info("[TCD08] Using legacy output dir: %s", output_dir)
+
+    if uploaded_email_dir:
+        uploaded_email_path = Path(uploaded_email_dir)
+        if uploaded_email_path.exists():
+            logger.info("[TCD08] Using uploaded server email dir: %s", uploaded_email_path)
+        else:
+            logger.warning("[TCD08] uploaded_email_dir does not exist: %s", uploaded_email_path)
+            uploaded_email_dir = None
 
     sections_to_delete = sections_to_delete_by_calibration_scope(resolved_project_info)
     red_paragraph_deletions = red_paragraph_deletion_rules(resolved_project_info, sections_to_delete)
     merged_red_paragraph_deletions = _merge_red_paragraph_deletions(red_paragraph_deletions)
     red_paragraph_text_rewrites = red_paragraph_text_rewrite_rules(resolved_project_info, sections_to_delete)
+
     logger.info(
         "[TCD08] Resolved %s template(s). output_dir=%s",
         len(template_paths),
@@ -425,24 +426,37 @@ async def generate_tcd08_report(
         red_paragraph_text_rewrites or "no red paragraph text to rewrite",
     )
 
-    saved_paths = []
+    saved_paths: list[str] = []
+    generated_files: list[str] = []
     toc_update_paths: list[Path] = []
-    section_delete_results = []
-    red_paragraph_delete_results = []
-    red_paragraph_text_rewrite_results = []
-    instruction_removal_results = []
-    color_replacement_results = []
+    section_delete_results: list[dict[str, Any]] = []
+    red_paragraph_delete_results: list[dict[str, Any]] = []
+    red_paragraph_text_rewrite_results: list[dict[str, Any]] = []
+    instruction_removal_results: list[dict[str, Any]] = []
+    color_replacement_results: list[dict[str, Any]] = []
     toc_update_warning: str | None = None
+
     local_output_pairs: list[tuple[Path, Path]] = []
+
+    # 新架构 copy_to_final_output=False 时，必须禁止最后 copy2 到用户 C 盘。
+    # 直接把文件写在服务器 forced_output_dir，FileResponse 再返回给 7175。
+    use_local_temp_workflow = PROCESS_ALL_STEPS_IN_LOCAL_TEMP and copy_to_final_output
+
     local_runtime_dir = (
         tempfile.TemporaryDirectory(prefix="puma_tcd08_report_")
-        if PROCESS_ALL_STEPS_IN_LOCAL_TEMP
+        if use_local_temp_workflow
         else None
     )
     local_runtime_root = Path(local_runtime_dir.name) if local_runtime_dir else None
 
     if local_runtime_root is not None:
         logger.info("[TCD08] Local temp workflow enabled. temp_root=%s", local_runtime_root)
+    else:
+        logger.info(
+            "[TCD08] Direct server output workflow enabled. copy_to_final_output=%s output_dir=%s",
+            copy_to_final_output,
+            output_dir,
+        )
 
     try:
         for index, template_path in enumerate(template_paths, start=1):
@@ -453,11 +467,12 @@ async def generate_tcd08_report(
                 len(template_paths),
                 template_path,
             )
+
             step_start = time.perf_counter()
-            filled_stream = fill_docx_by_placeholders(
+            filled_stream = _fill_docx_by_placeholders_with_optional_email_dir(
                 profile_dict,
                 template_path,
-                email_dir=email_dir,
+                uploaded_email_dir,
             )
             logger.info(
                 "[TCD08] (%s/%s) Placeholder filling took %.2fs.",
@@ -469,6 +484,7 @@ async def generate_tcd08_report(
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             output_name = f"filled_{template_path.stem}_{timestamp}{template_path.suffix}"
             output_path = output_dir / output_name
+
             working_path = output_path
             if local_runtime_root is not None:
                 working_path = local_runtime_root / output_name
@@ -477,6 +493,7 @@ async def generate_tcd08_report(
             step_start = time.perf_counter()
             with open(working_path, "wb") as output_file:
                 output_file.write(filled_stream.read())
+
             logger.info(
                 "[TCD08] (%s/%s) Filled document saved in %.2fs: %s",
                 index,
@@ -493,6 +510,7 @@ async def generate_tcd08_report(
                     len(red_paragraph_text_rewrites),
                 )
                 step_start = time.perf_counter()
+
                 rewrite_plans = [
                     {
                         "section": text_rewrite["section"],
@@ -504,12 +522,14 @@ async def generate_tcd08_report(
                     }
                     for text_rewrite in red_paragraph_text_rewrites
                 ]
+
                 rewrite_summaries = rewrite_red_paragraph_text_batch(
                     working_path,
                     plans=rewrite_plans,
                     update_toc=False,
                     use_local_temp=False,
                 )
+
                 for text_rewrite, rewrite_summary in zip(red_paragraph_text_rewrites, rewrite_summaries):
                     red_paragraph_text_rewrite_results.append(
                         {
@@ -522,6 +542,7 @@ async def generate_tcd08_report(
                             "after": rewrite_summary.after_text,
                         }
                     )
+
                 logger.info(
                     "[TCD08] (%s/%s) Batched red paragraph text rewrite took %.2fs.",
                     index,
@@ -537,6 +558,7 @@ async def generate_tcd08_report(
                     len(merged_red_paragraph_deletions),
                 )
                 step_start = time.perf_counter()
+
                 delete_plans = [
                     {
                         "section": red_deletion["section"],
@@ -544,15 +566,19 @@ async def generate_tcd08_report(
                     }
                     for red_deletion in merged_red_paragraph_deletions
                 ]
+
                 red_summaries = remove_red_paragraph_groups_batch(
                     working_path,
                     plans=delete_plans,
                     update_toc=False,
                     use_local_temp=False,
                 )
+
                 deletion_meta = {
-                    str(item.get("section", "")).strip(): item for item in merged_red_paragraph_deletions
+                    str(item.get("section", "")).strip(): item
+                    for item in merged_red_paragraph_deletions
                 }
+
                 for red_summary in red_summaries:
                     meta = deletion_meta.get(red_summary.section, {})
                     red_paragraph_delete_results.append(
@@ -566,6 +592,7 @@ async def generate_tcd08_report(
                             "preview": red_summary.deleted_preview,
                         }
                     )
+
                 logger.info(
                     "[TCD08] (%s/%s) Batched red paragraph deletion took %.2fs.",
                     index,
@@ -581,12 +608,14 @@ async def generate_tcd08_report(
                     sections_to_delete,
                 )
                 step_start = time.perf_counter()
+
                 deleted_sections = remove_word_sections(
                     working_path,
                     sections_to_delete,
                     update_toc=False,
                     use_local_temp=False,
                 )
+
                 section_delete_results.extend(
                     {
                         "file": str(output_path),
@@ -597,6 +626,7 @@ async def generate_tcd08_report(
                     }
                     for result in deleted_sections
                 )
+
                 logger.info(
                     "[TCD08] (%s/%s) Removed %s section(s) in %.2fs.",
                     index,
@@ -613,11 +643,13 @@ async def generate_tcd08_report(
                     len(template_paths),
                 )
                 step_start = time.perf_counter()
+
                 instruction_summary = remove_template_instruction_text(
                     working_path,
                     use_local_temp=False,
                 )
                 instruction_replacements_applied = instruction_summary.replacements_applied
+
                 instruction_removal_results.append(
                     {
                         "file": str(output_path),
@@ -626,6 +658,7 @@ async def generate_tcd08_report(
                         "changed_paragraphs": instruction_summary.changed_paragraphs,
                     }
                 )
+
                 logger.info(
                     "[TCD08] (%s/%s) Removed template instruction text in %.2fs. replacements=%s",
                     index,
@@ -648,12 +681,14 @@ async def generate_tcd08_report(
                     len(template_paths),
                 )
                 step_start = time.perf_counter()
+
                 color_summary = replace_red_font_with_black(
                     working_path,
                     preserve_sections=RED_TO_BLACK_SECTION_WHITELIST,
                     use_local_temp=False,
                 )
                 color_changed_runs = color_summary.changed_runs
+
                 color_replacement_results.append(
                     {
                         "file": str(output_path),
@@ -662,6 +697,7 @@ async def generate_tcd08_report(
                         "changed_runs": color_summary.changed_runs,
                     }
                 )
+
                 logger.info(
                     "[TCD08] (%s/%s) Replaced red font with black in %.2fs. changed_runs=%s",
                     index,
@@ -691,6 +727,8 @@ async def generate_tcd08_report(
                 toc_update_paths.append(working_path)
 
             saved_paths.append(str(output_path))
+            generated_files.append(str(output_path if local_runtime_root is None else working_path))
+
             logger.info(
                 "[TCD08] (%s/%s) Template processing completed in %.2fs.",
                 index,
@@ -719,34 +757,50 @@ async def generate_tcd08_report(
                     exc_info=True,
                 )
 
-        if local_output_pairs:
+        if local_output_pairs and copy_to_final_output:
             step_start = time.perf_counter()
+            copied_paths: list[str] = []
             for local_path, final_path in local_output_pairs:
+                final_path.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(local_path, final_path)
+                copied_paths.append(str(final_path))
+
+            generated_files = copied_paths
             logger.info(
                 "[TCD08] Copied %s local processed document(s) back to output_dir in %.2fs.",
                 len(local_output_pairs),
                 time.perf_counter() - step_start,
             )
+        elif local_output_pairs and not copy_to_final_output:
+            # 正常新架构不会进入这里，因为 copy_to_final_output=False 时已经禁用 local temp workflow。
+            logger.warning(
+                "[TCD08] local_output_pairs exists but copy_to_final_output=False. "
+                "Skip copy2 to avoid writing user C drive."
+            )
+
     finally:
         if local_runtime_dir is not None:
             local_runtime_dir.cleanup()
 
     logger.info(
-        "[TCD08] Report generation completed in %.2fs. saved_paths=%s",
+        "[TCD08] Report generation completed in %.2fs. saved_paths=%s generated_files=%s",
         time.perf_counter() - request_start,
         saved_paths,
+        generated_files,
     )
+
     return {
         "status": "success",
-        "message": "TCD08报告已成功生成并保存。",
+        "message": "TCD08报告已成功生成。",
         "template_paths": [str(path) for path in template_paths],
         "saved_paths": saved_paths,
+        "generated_files": generated_files,
+        "server_files": generated_files,
+        "calibration_task_name": calibration_task_name,
         "calibration_parameter": calibration_parameter,
-        "workspace_used": bool(workspace_paths),
-        "workspace_warning": workspace_warning,
-        "email_dir": str(email_dir) if email_dir else None,
+        "email_dir": str(uploaded_email_dir) if uploaded_email_dir else None,
         "output_dir": str(output_dir),
+        "copy_to_final_output": copy_to_final_output,
         "section_deletions": section_delete_results,
         "red_paragraph_deletions": red_paragraph_delete_results,
         "red_paragraph_text_rewrites": red_paragraph_text_rewrite_results,
