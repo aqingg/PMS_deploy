@@ -22,6 +22,7 @@ import platform
 import time
 import socket
 import cgi
+from pathlib import Path
 from urllib.parse import urlparse
 
 from typing import List
@@ -133,6 +134,13 @@ class ReportRequest(BaseModel):
     url: str
     template_paths: List[str]
     save_path: str
+
+
+class CreateFoldersRequest(BaseModel):
+    folders: List[str] = Field(
+        default_factory=list,
+        description="Absolute folder paths to create on the local machine.",
+    )
 
 # =================================================================================
 # CORS 设置
@@ -485,6 +493,33 @@ def api_copy_path(path: str):
 
     except Exception as e:
         return {"success": False, "error": str(e), "path": path}
+
+
+@app.post("/createFolders")
+def api_create_folders(req: CreateFoldersRequest):
+    folders = [str(folder).strip() for folder in req.folders if str(folder).strip()]
+
+    if not folders:
+        raise HTTPException(status_code=400, detail="folders is required")
+
+    created_folders = []
+
+    try:
+        for folder in folders:
+            path = Path(folder)
+            path.mkdir(parents=True, exist_ok=True)
+            created_folders.append(str(path))
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to create local folder '{folder}': {exc}",
+        ) from exc
+
+    return {
+        "success": True,
+        "message": "Folders created on local client",
+        "folders": created_folders,
+    }
 
 class OpenLinkRequest(BaseModel):
     link: str

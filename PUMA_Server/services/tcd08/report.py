@@ -186,7 +186,7 @@ def _resolve_tcd08_workspace_paths(
         paths = build_local_workspace_paths(
             projectInfo=resolved_project_info,
             calibration_id=calibration_name,
-            create=True,
+            create=False,
         )
         return paths, None
     except Exception as exc:

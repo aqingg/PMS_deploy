@@ -221,7 +221,15 @@ const fillTaskDetailsFromTree = (workflow, newNode) => {
 };
 
 export default function Progress() {
-  const { projectWorkFlow, updateWorkFlow, user, projectName, projectId, createCalibrationWorkspace } =
+  const {
+    projectWorkFlow,
+    updateWorkFlow,
+    user,
+    projectName,
+    projectId,
+    createCalibrationWorkspace,
+    createLocalFolders,
+  } =
     useAppContext();
 
   const [localWorkflow, setLocalWorkflow] = useState(() =>
@@ -447,14 +455,14 @@ export default function Progress() {
     if (saveResult.success) {
       setStatus({
         type: "info",
-        text: `已新增 ${cid} 并保存 workflow。正在创建本地目录...`,
+        text: `已新增 ${cid} 并保存 workflow。正在计算本地目录路径...`,
       });
       message.success(`workflow 保存成功：${cid}`);
 
       if (!createCalibrationWorkspace) {
         setStatus({
           type: "warning",
-          text: `已新增 ${cid} 并保存 workflow，但 createCalibrationWorkspace 方法不存在，未创建本地目录。`,
+          text: `已新增 ${cid} 并保存 workflow，但 createCalibrationWorkspace 方法不存在，未计算本地目录路径。`,
         });
         message.warning("createCalibrationWorkspace 方法不存在");
         setSaving(false);
@@ -462,24 +470,60 @@ export default function Progress() {
       }
 
       const workspaceResult = await createCalibrationWorkspace(cid);
+
+      if (!workspaceResult?.success) {
+        setStatus({
+          type: "warning",
+          text: `已新增 ${cid}，workflow 保存成功，但 8086 路径计算失败：${
+            workspaceResult?.message || "未知错误"
+          }`,
+        });
+        message.warning(`路径计算失败：${workspaceResult?.message || "未知错误"}`);
+        setSaving(false);
+        return;
+      }
+
+      const paths = workspaceResult?.paths || workspaceResult?.data?.paths || {};
+      const folders = [
+        paths.calibration_root,
+        paths.email_dir,
+        paths.tcd08_report_dir,
+      ].filter(Boolean);
+
+      if (!createLocalFolders) {
+        setStatus({
+          type: "warning",
+          text: `已新增 ${cid}，workflow 保存成功，8086 已返回路径，但本地 createLocalFolders 方法不存在，未在用户电脑创建目录。`,
+        });
+        message.warning("createLocalFolders 方法不存在");
+        setSaving(false);
+        return;
+      }
+
+      setStatus({
+        type: "info",
+        text: `已新增 ${cid}，8086 路径计算成功。正在通过 7175 本地客户端创建目录...`,
+      });
+
+      const localFolderResult = await createLocalFolders(folders);
       setSaving(false);
 
-      if (workspaceResult?.success) {
+      if (localFolderResult?.success) {
         setStatus({
           type: createdRoot ? "warning" : "success",
           text: createdRoot
-            ? `已新增 ${cid}，workflow 保存成功，本地目录创建成功。注意：原 workflow 未找到 C.Calibration，本页面已自动创建该根节点。`
-            : `已新增 ${cid}，workflow 保存成功，本地目录创建成功。`,
+            ? `已新增 ${cid}，workflow 保存成功，7175 已在用户电脑创建本地目录。注意：原 workflow 未找到 C.Calibration，本页面已自动创建该根节点。`
+            : `已新增 ${cid}，workflow 保存成功，7175 已在用户电脑创建本地目录。`,
         });
         message.success(`本地目录创建成功：${cid}`);
       } else {
         setStatus({
           type: "warning",
-          text: `已新增 ${cid}，workflow 保存成功，但本地目录创建失败：${
-            workspaceResult?.message || "未知错误"
+          text: `已新增 ${cid}，workflow 保存成功，8086 已返回路径，但 7175 创建目录失败：${
+            localFolderResult?.message || "未知错误"
           }`,
         });
-        message.warning(`本地目录创建失败：${workspaceResult?.message || "未知错误"}`);
+        message.warning(`本地目录创建失败：${localFolderResult?.message || "未知错误"}`);
       }
     } else {
       setSaving(false);

@@ -23,6 +23,7 @@ export function AppProvider({ children }) {
   // =====================================================
   const API = {
     LOCAL: "http://127.0.0.1:7175",
+    LOCAL_CREATE_FOLDERS: "/createFolders",
 
     // 🔥 调试时建议用本地： http://127.0.0.1:8086/app-puma
     //BASE: "https://oss-dthub.apac.bosch.com/app-puma",
@@ -611,9 +612,10 @@ export function AppProvider({ children }) {
       });
 
       if (res.data?.success) {
-        console.log("Calibration workspace created:", res.data.paths);
+        console.log("Calibration workspace paths resolved:", res.data.paths);
         return {
           success: true,
+          paths: res.data?.paths || {},
           data: res.data,
         };
       }
@@ -631,6 +633,54 @@ export function AppProvider({ children }) {
         err.response?.data?.message ||
         err.message ||
         "createCalibrationWorkspace request failed";
+
+      return {
+        success: false,
+        message: detail,
+      };
+    }
+  };
+
+  const createLocalFolders = async (folders) => {
+    const folderList = Array.isArray(folders)
+      ? folders.map((folder) => String(folder || "").trim()).filter(Boolean)
+      : [];
+
+    if (folderList.length === 0) {
+      return {
+        success: false,
+        message: "folders is empty",
+      };
+    }
+
+    try {
+      const res = await request("POST", API.LOCAL + API.LOCAL_CREATE_FOLDERS, {
+        data: {
+          folders: folderList,
+        },
+      });
+
+      if (res.data?.success) {
+        return {
+          success: true,
+          folders: res.data?.folders || folderList,
+          data: res.data,
+        };
+      }
+
+      return {
+        success: false,
+        message: res.data?.message || "createLocalFolders failed",
+        data: res.data,
+      };
+    } catch (err) {
+      console.error("createLocalFolders failed:", err);
+
+      const detail =
+        err.response?.data?.detail ||
+        err.response?.data?.message ||
+        err.message ||
+        "createLocalFolders request failed";
 
       return {
         success: false,
@@ -710,6 +760,7 @@ export function AppProvider({ children }) {
           getOfficeFiles,
           SetUpApplicationFloder,
           createCalibrationWorkspace,
+          createLocalFolders,
 
           teamMembers,
           loadTeamMembers,

@@ -573,7 +573,7 @@ def create_calibration_workspace_api(
     db: Session = Depends(get_db),
 ):
     """
-    根据当前项目 Local Link 和 CalibrationID 创建本地工作区。
+    根据当前项目 Local Link 和 CalibrationID 计算本地工作区路径。
 
     请求体示例：
     {
@@ -633,34 +633,24 @@ def create_calibration_workspace_api(
             detail="No permission to create calibration workspace",
         )
 
-    # 创建目录
+    # 仅计算路径，不在 8086 上执行 mkdir
     try:
         paths = build_local_workspace_paths(
             projectInfo=meta,
             calibration_id=calibration_id,
-            create=True,
+            create=False,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    except PermissionError as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"No permission to create workspace directory: {e}",
-        )
-    except OSError as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to create workspace directory: {e}",
-        )
     except Exception as e:
         raise HTTPException(
             status_code=500,
-            detail=f"Unexpected error when creating calibration workspace: {e}",
+            detail=f"Unexpected error when resolving calibration workspace: {e}",
         )
 
     return {
         "success": True,
-        "message": "Calibration workspace created",
+        "message": "Calibration workspace paths resolved",
         "projectId": project_id,
         "calibrationId": calibration_id,
         "paths": paths,

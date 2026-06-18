@@ -136,11 +136,11 @@ def _validate_calibration_id(calibration_id: str) -> str:
     return cid
 
 
-def build_local_workspace_paths(projectInfo, calibration_id, create=True):
+def build_local_workspace_paths(projectInfo, calibration_id, create=False):
     """
-    根据当前项目的 Local Link 和 CalibrationID 创建专属本地工作区。
+        根据当前项目的 Local Link 和 CalibrationID 计算专属本地工作区路径。
 
-    目标目录：
+        目标目录：
     Local Link/
       40.Application/
         C.Calibration/
@@ -150,9 +150,12 @@ def build_local_workspace_paths(projectInfo, calibration_id, create=True):
             06_Official_Release/
               TCD08_Report/
 
-    返回：
+        说明：
+        - 这里只负责计算路径，不执行 mkdir。
+        - 所有本地文件系统创建动作应由 7175 PUMA_Client 在用户电脑上执行。
+
+        返回：
     {
-        "local_root": "...",
         "calibration_root": "...",
         "email_dir": "...",
         "tcd08_report_dir": "..."
@@ -170,18 +173,12 @@ def build_local_workspace_paths(projectInfo, calibration_id, create=True):
     local_root = Path(str(local_link).strip())
     calibration_root = local_root / "40.Application" / "C.Calibration" / cid
 
-    email_dir = calibration_root / "03_Results" / "Customer_Approval_Email"
-    tcd08_report_dir = calibration_root / "06_Official_Release" / "TCD08_Report"
-
     paths = {
-        "local_root": local_root,
         "calibration_root": calibration_root,
-        "email_dir": email_dir,
-        "tcd08_report_dir": tcd08_report_dir,
+        "email_dir": calibration_root / "03_Results" / "Customer_Approval_Email",
+        "tcd08_report_dir": calibration_root / "06_Official_Release" / "TCD08_Report",
     }
 
-    if create:
-        for path in paths.values():
-            path.mkdir(parents=True, exist_ok=True)
+    _ = create
 
     return {key: str(value) for key, value in paths.items()}
