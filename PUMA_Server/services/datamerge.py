@@ -472,7 +472,7 @@ def fill_docx_by_placeholders(
     def replacer(match: re.Match, in_table_cell: bool = False) -> str:
         combined_key = match.group(1).strip()
         if combined_key.lower() == "logo":
-            return ""
+            return match.group(0)
 
         if "-" in combined_key:
             keys = [key.strip() for key in combined_key.split("-")]
