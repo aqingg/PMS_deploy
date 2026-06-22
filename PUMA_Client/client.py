@@ -20,6 +20,7 @@ import webbrowser
 import subprocess
 import platform
 import time
+import re
 import socket
 import cgi
 import base64
@@ -149,10 +150,11 @@ class CreateFoldersRequest(BaseModel):
 # TCD08 本地适配层配置
 # =================================================================================
 # 生产环境默认指向服务器 8086 的对外地址；如本地调试，可在启动 Client 前设置环境变量：
-#   set PUMA_SERVER_TCD08_URL=http://127.0.0.1:8086/app-puma/report/fillTCD08Report
+#   set PUMA_SERVER_TCD08_URL=http://127.0.0.1:8086/report/fillTCD08Report
 DEFAULT_SERVER_BASE_URL = os.environ.get(
     "PUMA_SERVER_BASE_URL",
-    "https://oss-dthub.apac.bosch.com/app-puma",
+    #"https://oss-dthub.apac.bosch.com/app-puma",
+    "http://127.0.0.1:8086"
 ).rstrip("/")
 
 DEFAULT_SERVER_TCD08_URL = os.environ.get(
@@ -173,10 +175,10 @@ def _derive_tcd08_email_dir(save_path: str) -> Path:
     Derive Customer_Approval_Email from the frontend-provided TCD08 save_path.
 
     Expected save_path:
-      ...\C.Calibration\{CalibrationID}\06_Official_Release\TCD08_Report
+      .../C.Calibration/{CalibrationID}/06_Official_Release/TCD08_Report
 
     Derived email_dir:
-      ...\C.Calibration\{CalibrationID}\03_Results\Customer_Approval_Email
+      .../C.Calibration/{CalibrationID}/06_Official_Release/Customer_Approval_Email
     """
     output_dir = _norm_path(save_path)
     parts_lower = [p.lower() for p in output_dir.parts]
@@ -193,7 +195,7 @@ def _derive_tcd08_email_dir(save_path: str) -> Path:
     if not str(calibration_root) or str(calibration_root) == ".":
         raise ValueError(f"Cannot derive calibration root from save_path: {save_path}")
 
-    return calibration_root / "03_Results" / "Customer_Approval_Email"
+    return calibration_root / "06_Official_Release" / "Customer_Approval_Email"
 
 
 def _collect_upload_files(folder: Path):
@@ -223,19 +225,35 @@ def _collect_upload_files(folder: Path):
     return files, handles
 
 
-def _filename_from_response(response: requests.Response, fallback: str = "TCD08_Report.docx") -> str:
-    cd = response.headers.get("content-disposition") or response.headers.get("Content-Disposition")
-    if cd:
-        _, params = cgi.parse_header(cd)
-        filename = params.get("filename") or params.get("filename*")
+def _filename_from_response(response: requests.Response, fallback: str = "TCD08_Report.docm") -> str:
+    """
+    Parse Content-Disposition filename safely.
+
+    Supports both:
+      filename=xxx.docm
+      filename*=utf-8''xxx%20xxx.docm
+    """
+    cd = response.headers.get("content-disposition") or response.headers.get("Content-Disposition") or ""
+
+    # RFC 5987 style: filename*=utf-8''filled_xxx%20xxx.docm
+    m = re.search(r"filename\*\s*=\s*(?:UTF-8''|utf-8'')?([^;]+)", cd, flags=re.IGNORECASE)
+    if m:
+        filename = unquote(m.group(1).strip().strip('"'))
+        filename = os.path.basename(filename)
         if filename:
-            filename = os.path.basename(str(filename).strip().strip('"'))
-            if filename:
-                return filename
+            return filename
+
+    # Normal style: filename=xxx.docm
+    m = re.search(r'filename\s*=\s*"?([^";]+)"?', cd, flags=re.IGNORECASE)
+    if m:
+        filename = os.path.basename(m.group(1).strip().strip('"'))
+        if filename:
+            return filename
+
     return fallback
 
 
-def _save_binary_response(response: requests.Response, output_dir: Path, fallback_name: str = "TCD08_Report.docx") -> str:
+def _save_binary_response(response: requests.Response, output_dir: Path, fallback_name: str = "TCD08_Report.docm") -> str:
     output_dir.mkdir(parents=True, exist_ok=True)
     filename = _filename_from_response(response, fallback=fallback_name)
     save_path = output_dir / filename
@@ -723,13 +741,27 @@ def client_fill_tcd08_report(payload: dict = Body(...)):
             data["taskId"] = str(payload.get("taskId"))
 
         try:
-            response = requests.post(
-                server_report_url,
-                data=data,
-                files=files,
-                verify=False,
-                timeout=600,
-            )
+            # 本地调试 127.0.0.1 / localhost 必须绕过公司代理；
+            # 正式 oss-dthub 地址继续走系统/公司代理。
+            host = (urlparse(server_report_url).hostname or "").lower()
+            if host in {"127.0.0.1", "localhost"}:
+                session = requests.Session()
+                session.trust_env = False
+                response = session.post(
+                    server_report_url,
+                    data=data,
+                    files=files,
+                    verify=False,
+                    timeout=600,
+                )
+            else:
+                response = requests.post(
+                    server_report_url,
+                    data=data,
+                    files=files,
+                    verify=False,
+                    timeout=600,
+                )
         finally:
             for fh in handles:
                 try:

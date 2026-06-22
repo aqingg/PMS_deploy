@@ -484,11 +484,11 @@ export default function Progress() {
       }
 
       const paths = workspaceResult?.paths || workspaceResult?.data?.paths || {};
-      const folders = [
-        paths.calibration_root,
-        paths.email_dir,
-        paths.tcd08_report_dir,
-      ].filter(Boolean);
+      const folders = (
+  Array.isArray(paths.folders)
+    ? paths.folders
+    : [paths.calibration_root, paths.email_dir, paths.tcd08_report_dir]
+).filter(Boolean);
 
       if (!createLocalFolders) {
         setStatus({
