@@ -242,7 +242,7 @@ export default function Progress() {
   const [modalCalibrationId, setModalCalibrationId] = useState("");
   const [status, setStatus] = useState({
     type: "info",
-    text: "点击“新增 CalibrationID”，输入名称后会复制已有 CalibrationID 的完整子树结构。",
+    text: "Here is workflow",
   });
 
   useEffect(() => {
@@ -299,15 +299,15 @@ export default function Progress() {
 
   const saveWorkflow = async (workflowToSave) => {
     if (!updateWorkFlow) {
-      return { success: false, message: "updateWorkFlow 不存在" };
+      return { success: false, message: "updateWorkFlow does not exist" };
     }
 
     if (!projectId) {
-      return { success: false, message: "projectId 缺失" };
+      return { success: false, message: "projectId is missing" };
     }
 
     if (!user?.username || user.username === "Unknown") {
-      return { success: false, message: "username 缺失" };
+      return { success: false, message: "username is missing" };
     }
 
     try {
@@ -325,12 +325,12 @@ export default function Progress() {
 
       return {
         success: false,
-        message: result?.message || "后端保存 workflow 失败",
+        message: result?.message || "Backend workflow save failed",
       };
     } catch (error) {
       return {
         success: false,
-        message: error?.message || "保存 workflow 时发生异常",
+        message: error?.message || "An exception occurred while saving workflow",
       };
     }
   };
@@ -340,7 +340,7 @@ export default function Progress() {
     setAddModalOpen(true);
     setStatus({
       type: "info",
-      text: "请输入新的 CalibrationID。新增时会复制 C.Calibration 下已有的完整子树结构。",
+      text: "Enter a new CalibrationID. The full subtree under C.Calibration will be copied.",
     });
   };
 
@@ -348,8 +348,8 @@ export default function Progress() {
     const cid = String(modalCalibrationId || "").trim();
 
     if (!cid) {
-      setStatus({ type: "error", text: "新增失败：CalibrationID 不能为空。" });
-      message.error("CalibrationID 不能为空");
+      setStatus({ type: "error", text: "Add failed: CalibrationID is required." });
+      message.error("CalibrationID is required");
       return;
     }
 
@@ -357,15 +357,15 @@ export default function Progress() {
     if (invalidPathChars.test(cid)) {
       setStatus({
         type: "error",
-        text: '新增失败：CalibrationID 不能包含非法字符 < > : " / \\ | ? *。',
+        text: 'Add failed: CalibrationID contains invalid characters.',
       });
-      message.error("CalibrationID 包含非法字符");
+      message.error("Invalid characters in CalibrationID");
       return;
     }
 
     if (cid.includes("..")) {
-      setStatus({ type: "error", text: "新增失败：CalibrationID 不能包含 '..'。" });
-      message.error("CalibrationID 不能包含 '..'");
+      setStatus({ type: "error", text: "Add failed: CalibrationID cannot contain '..'." });
+      message.error("CalibrationID cannot contain '..'");
       return;
     }
 
@@ -399,8 +399,8 @@ export default function Progress() {
 
     if (exists) {
       setExpandedKeys(getAllKeys(updated.taskTree));
-      setStatus({ type: "warning", text: `新增失败：CalibrationID 已存在：${cid}` });
-      message.warning(`CalibrationID 已存在：${cid}`);
+      setStatus({ type: "warning", text: `Add failed: CalibrationID already exists: ${cid}` });
+      message.warning(`CalibrationID already exists: ${cid}`);
       return;
     }
 
@@ -409,17 +409,17 @@ export default function Progress() {
 
     if (isDirectChild(calibrationRoot, selectedTaskId)) {
       templateNode = findNodeById(calibrationRoot.children, selectedTaskId);
-      templateSource = `选中节点 ${templateNode?.taskName || ""}`;
+      templateSource = `selected node ${templateNode?.taskName || ""}`;
     }
 
     if (!templateNode && calibrationRoot.children.length > 0) {
       templateNode = calibrationRoot.children[0];
-      templateSource = `已有节点 ${templateNode.taskName}`;
+      templateSource = `existing node ${templateNode.taskName}`;
     }
 
     if (!templateNode) {
       templateNode = makeFallbackCalibrationTemplate();
-      templateSource = "默认模板";
+      templateSource = "default template";
     }
 
     const { newNode } = cloneCalibrationSubtree(templateNode, cid);
@@ -437,7 +437,7 @@ export default function Progress() {
 
     fillTaskDetailsFromTree(updated, newNode);
 
-    // 关键：先更新本地树，保证点击确定后马上能看到子树变化。
+    // Critical: update the local tree first so the subtree change is visible immediately after clicking OK.
     setLocalWorkflow(updated);
     setExpandedKeys(getAllKeys(updated.taskTree));
     setSelectedTaskId(newNode.id);
@@ -445,9 +445,9 @@ export default function Progress() {
     setModalCalibrationId("");
     setStatus({
       type: "success",
-      text: `页面已新增 ${cid}。模板来源：${templateSource}。正在保存到后端 workflow...`,
+      text: `Added ${cid} on page. Template source: ${templateSource}. Saving workflow...`,
     });
-    message.success(`页面已新增 CalibrationID：${cid}`);
+    message.success(`CalibrationID added on page: ${cid}`);
 
     setSaving(true);
     const saveResult = await saveWorkflow(updated);
@@ -455,16 +455,16 @@ export default function Progress() {
     if (saveResult.success) {
       setStatus({
         type: "info",
-        text: `已新增 ${cid} 并保存 workflow。正在计算本地目录路径...`,
+        text: `${cid} added and workflow saved. Calculating local directory path...`,
       });
-      message.success(`workflow 保存成功：${cid}`);
+      message.success(`Workflow saved: ${cid}`);
 
       if (!createCalibrationWorkspace) {
         setStatus({
           type: "warning",
-          text: `已新增 ${cid} 并保存 workflow，但 createCalibrationWorkspace 方法不存在，未计算本地目录路径。`,
+          text: `${cid} added and workflow saved, but createCalibrationWorkspace is unavailable. No path calculated.`,
         });
-        message.warning("createCalibrationWorkspace 方法不存在");
+        message.warning("createCalibrationWorkspace method is unavailable");
         setSaving(false);
         return;
       }
@@ -474,11 +474,11 @@ export default function Progress() {
       if (!workspaceResult?.success) {
         setStatus({
           type: "warning",
-          text: `已新增 ${cid}，workflow 保存成功，但 8086 路径计算失败：${
-            workspaceResult?.message || "未知错误"
+          text: `${cid} added and workflow saved, but 8086 path calculation failed: ${
+            workspaceResult?.message || "Unknown error"
           }`,
         });
-        message.warning(`路径计算失败：${workspaceResult?.message || "未知错误"}`);
+        message.warning(`Path calculation failed: ${workspaceResult?.message || "Unknown error"}`);
         setSaving(false);
         return;
       }
@@ -493,16 +493,16 @@ export default function Progress() {
       if (!createLocalFolders) {
         setStatus({
           type: "warning",
-          text: `已新增 ${cid}，workflow 保存成功，8086 已返回路径，但本地 createLocalFolders 方法不存在，未在用户电脑创建目录。`,
+          text: `${cid} added and workflow saved, path returned, but createLocalFolders is unavailable. No local directory created.`,
         });
-        message.warning("createLocalFolders 方法不存在");
+        message.warning("createLocalFolders method is unavailable");
         setSaving(false);
         return;
       }
 
       setStatus({
         type: "info",
-        text: `已新增 ${cid}，8086 路径计算成功。正在通过 7175 本地客户端创建目录...`,
+        text: `${cid} path calculated. Creating directories via 7175 local client...`,
       });
 
       const localFolderResult = await createLocalFolders(folders);
@@ -512,44 +512,44 @@ export default function Progress() {
         setStatus({
           type: createdRoot ? "warning" : "success",
           text: createdRoot
-            ? `已新增 ${cid}，workflow 保存成功，7175 已在用户电脑创建本地目录。注意：原 workflow 未找到 C.Calibration，本页面已自动创建该根节点。`
-            : `已新增 ${cid}，workflow 保存成功，7175 已在用户电脑创建本地目录。`,
+            ? `${cid} added and workflow saved. Local directories created by 7175. Note: C.Calibration root was auto-created because it was missing.`
+            : `${cid} added and workflow saved. Local directories created by 7175.`,
         });
-        message.success(`本地目录创建成功：${cid}`);
+        message.success(`Local directories created: ${cid}`);
       } else {
         setStatus({
           type: "warning",
-          text: `已新增 ${cid}，workflow 保存成功，8086 已返回路径，但 7175 创建目录失败：${
-            localFolderResult?.message || "未知错误"
+          text: `${cid} added and workflow saved, 8086 path returned, but 7175 directory creation failed: ${
+            localFolderResult?.message || "Unknown error"
           }`,
         });
-        message.warning(`本地目录创建失败：${localFolderResult?.message || "未知错误"}`);
+        message.warning(`Failed to create local directories: ${localFolderResult?.message || "Unknown error"}`);
       }
     } else {
       setSaving(false);
       setStatus({
         type: "error",
-        text: `页面已经显示 ${cid}，但后端保存失败：${saveResult.message}`,
+        text: `${cid} is shown on page, but backend save failed: ${saveResult.message}`,
       });
-      message.error(`后端保存失败：${saveResult.message}`);
+      message.error(`Backend save failed: ${saveResult.message}`);
     }
   };
 
   const deleteSelectedTask = async () => {
     if (!selectedTaskId) {
-      setStatus({ type: "error", text: "删除失败：请先选中一个节点。" });
-      message.warning("请先选中一个节点");
+      setStatus({ type: "error", text: "Delete failed: please select a node first." });
+      message.warning("Please select a node first");
       return;
     }
 
     const target = findNodeById(taskTree, selectedTaskId);
     if (!target) {
-      setStatus({ type: "error", text: "删除失败：选中的节点不存在。" });
-      message.error("选中的节点不存在");
+      setStatus({ type: "error", text: "Delete failed: selected node does not exist." });
+      message.error("Selected node does not exist");
       return;
     }
 
-    const confirmed = window.confirm(`确定删除节点及其子节点：${target.taskName}？`);
+    const confirmed = window.confirm(`Delete node and its children: ${target.taskName}?`);
     if (!confirmed) return;
 
     const updated = clone(normalizeWorkflow(localWorkflow));
@@ -567,7 +567,7 @@ export default function Progress() {
     setSelectedTaskId(null);
     setStatus({
       type: "success",
-      text: `页面已删除节点：${target.taskName}。正在保存到后端 workflow...`,
+      text: `Node deleted on page: ${target.taskName}. Saving to backend workflow...`,
     });
 
     setSaving(true);
@@ -575,14 +575,14 @@ export default function Progress() {
     setSaving(false);
 
     if (saveResult.success) {
-      setStatus({ type: "success", text: `已删除 ${target.taskName}，并保存成功。` });
-      message.success("删除成功");
+      setStatus({ type: "success", text: `${target.taskName} deleted and saved.` });
+      message.success("Deleted successfully");
     } else {
       setStatus({
         type: "error",
-        text: `页面已经删除 ${target.taskName}，但后端保存失败：${saveResult.message}`,
+        text: `${target.taskName} removed on page, but backend save failed: ${saveResult.message}`,
       });
-      message.error(`后端保存失败：${saveResult.message}`);
+      message.error(`Backend save failed: ${saveResult.message}`);
     }
   };
 
@@ -628,7 +628,7 @@ export default function Progress() {
       >
         <Space size={8} wrap>
           <Button type="primary" size="small" onClick={openAddModal} disabled={saving}>
-            新增 CalibrationID
+            Add CalibrationID
           </Button>
 
           <Button
@@ -637,7 +637,7 @@ export default function Progress() {
             onClick={deleteSelectedTask}
             disabled={!selectedTaskId || saving}
           >
-            删除所选节点
+            Delete Selected Node
           </Button>
         </Space>
       </div>
@@ -667,7 +667,7 @@ export default function Progress() {
           <Alert
             type="warning"
             showIcon
-            message="当前 workflow 树为空。请确认项目已经加载 workflow。"
+            message="Workflow tree is empty. Please ensure the project has loaded a workflow."
           />
         ) : (
           <Tree
@@ -682,7 +682,7 @@ export default function Progress() {
       </div>
 
       <Modal
-        title="新增 CalibrationID"
+        title="Add CalibrationID"
         open={addModalOpen}
         onOk={addCalibrationIdByModal}
         onCancel={() => {
@@ -691,26 +691,25 @@ export default function Progress() {
             setModalCalibrationId("");
           }
         }}
-        okText="确定新增"
-        cancelText="取消"
+        okText="Add"
+        cancelText="Cancel"
         confirmLoading={saving}
         maskClosable={!saving}
         destroyOnClose
       >
         <Space direction="vertical" size={8} style={{ width: "100%" }}>
-          <Text>请输入新的 CalibrationID：</Text>
+          <Text>Enter new CalibrationID:</Text>
           <Input
             autoFocus
             value={modalCalibrationId}
             onChange={(event) => setModalCalibrationId(event.target.value)}
             onPressEnter={addCalibrationIdByModal}
-            placeholder="例如 ACQ_AAAA-BBBB-CC"
+            placeholder="e.g. ACQ_AAAA-BBBB-CC"
             disabled={saving}
             allowClear
           />
           <Text type="secondary">
-            新增时会复制 C.Calibration 下已有 CalibrationID 的完整子树；如果当前选中了
-            C.Calibration 下的某个 CalibrationID，则优先复制该选中节点。
+            A new node will copy the full subtree of an existing CalibrationID under C.Calibration.
           </Text>
         </Space>
       </Modal>
