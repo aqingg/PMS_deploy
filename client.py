@@ -223,7 +223,7 @@ def _derive_tcd08_email_dir(save_path: str) -> Path:
         .../C.Calibration/{CalibrationID}/06_Official_Release/TCD08_Report
 
     Preferred derived email_dir:
-        .../C.Calibration/{CalibrationID}/03_Results/Customer_Approval_Email
+        .../C.Calibration/{CalibrationID}/06_Official_Release/Customer_Approval_Email
 
     如果前端/后端显式传入 email_dir，则不会使用这个兜底推导。
     """
@@ -242,7 +242,7 @@ def _derive_tcd08_email_dir(save_path: str) -> Path:
     if not str(calibration_root) or str(calibration_root) == ".":
         raise ValueError(f"Cannot derive calibration root from save_path: {save_path}")
 
-    return calibration_root / "03_Results" / "Customer_Approval_Email"
+    return calibration_root / "06_Official_Release" / "Customer_Approval_Email"
 
 
 def _collect_upload_files(folder: Path):
