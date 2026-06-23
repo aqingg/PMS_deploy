@@ -194,63 +194,57 @@ export default function EditProjectPage() {
       .filter(Boolean);
   }
 
-  async function initializeDefaultCalibrationFolders() {
-    const calibrationIds = getDefaultCalibrationIds();
+ async function initializeDefaultCalibrationFolders() {
+  const calibrationIds = ["ACQ_CaliID", "VAL_CaliID"];
 
-    if (calibrationIds.length === 0) {
-      return;
-    }
+  let successCount = 0;
+  const failedIds = [];
 
-    if (!createCalibrationWorkspace || !createLocalFolders) {
-      messageApi.warning("目录初始化失败：前端缺少创建目录方法");
-      return;
-    }
+  for (const cid of calibrationIds) {
+    try {
+      const workspaceResult = await createCalibrationWorkspace(cid);
 
-    let successCount = 0;
-    const failedIds = [];
+      if (!workspaceResult?.success) {
+        console.error("createCalibrationWorkspace failed:", cid, workspaceResult);
+        failedIds.push(cid);
+        continue;
+      }
 
-    for (const cid of calibrationIds) {
-      try {
-        const workspaceResult = await createCalibrationWorkspace(cid);
+      const paths = workspaceResult.paths || {};
+      const folders = (
+        Array.isArray(paths.folders)
+          ? paths.folders
+          : [paths.calibration_root, paths.email_dir, paths.tcd08_report_dir]
+      ).filter(Boolean);
 
-        if (!workspaceResult?.success) {
-          failedIds.push(cid);
-          continue;
-        }
+      if (folders.length === 0) {
+        console.error("No folders returned:", cid, paths);
+        failedIds.push(cid);
+        continue;
+      }
 
-        const paths = workspaceResult.paths || {};
-        const folders = (
-          Array.isArray(paths.folders)
-            ? paths.folders
-            : [paths.calibration_root, paths.email_dir, paths.tcd08_report_dir]
-        ).filter(Boolean);
+      const localResult = await createLocalFolders(folders);
 
-        if (folders.length === 0) {
-          failedIds.push(cid);
-          continue;
-        }
-
-        const localResult = await createLocalFolders(folders);
-
-        if (localResult?.success) {
-          successCount += 1;
-        } else {
-          failedIds.push(cid);
-        }
-      } catch (error) {
-        console.error(`Initialize calibration folders failed for ${cid}:`, error);
+      if (localResult?.success) {
+        successCount += 1;
+      } else {
+        console.error("createLocalFolders failed:", cid, localResult);
         failedIds.push(cid);
       }
-    }
-
-    if (successCount > 0) {
-      messageApi.success(`CalibrationID 目录初始化完成：${successCount} 个`);
-    }
-
-    if (failedIds.length > 0) {
-      messageApi.warning(`部分 CalibrationID 目录初始化失败：${failedIds.join(", ")}`);
+    } catch (error) {
+      console.error(`Initialize calibration folders failed for ${cid}:`, error);
+      failedIds.push(cid);
     }
   }
+
+  if (successCount > 0) {
+    messageApi.success(`CalibrationID 目录初始化完成：${successCount} 个`);
+  }
+
+  if (failedIds.length > 0) {
+    messageApi.warning(`部分 CalibrationID 目录初始化失败：${failedIds.join(", ")}`);
+  }
+}
 
   async function handleSave(infoValuesOverride = null) {
     const sourceInfoValues = Array.isArray(infoValuesOverride)
