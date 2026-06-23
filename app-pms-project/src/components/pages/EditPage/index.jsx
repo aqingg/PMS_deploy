@@ -15,9 +15,21 @@ import { useAppContext } from "../../../context/AppContext";
 import ProjectInfoFill from "./ProjectInfoFill";
 
 export default function EditProjectPage() {
-  const { user, projectName, projectId, projectInfo, rewriteProjectInfo, SetUpApplicationFloder, 
-    teamMembers, loadTeamMembers, getProjectInfoFromPMS, getProjectFromPMS } =
-    useAppContext();
+  const {
+    user,
+    projectName,
+    projectId,
+    projectInfo,
+    projectWorkFlow,
+    rewriteProjectInfo,
+    SetUpApplicationFloder,
+    createCalibrationWorkspace,
+    createLocalFolders,
+    teamMembers,
+    loadTeamMembers,
+    getProjectInfoFromPMS,
+    getProjectFromPMS,
+  } = useAppContext();
 
   // modal 开关
   const [ownerModalVisible, setOwnerModalVisible] = useState(false);
@@ -92,10 +104,10 @@ export default function EditProjectPage() {
             const v = item.value;
             // ⭐ 统一转成 string
             if (Array.isArray(v)) {
-            return v.join(", ");
+              return v.join(", ");
             }
-          return v ?? "";
-        })
+            return v ?? "";
+          })
         )
       );
     }
@@ -153,11 +165,96 @@ export default function EditProjectPage() {
     }
   }
 
-  async function handleSave() {
+  function findTaskNodeByName(nodes, taskName) {
+    if (!Array.isArray(nodes)) return null;
+
+    for (const node of nodes) {
+      if (String(node?.taskName || "").trim() === taskName) {
+        return node;
+      }
+
+      const found = findTaskNodeByName(node?.children || [], taskName);
+      if (found) {
+        return found;
+      }
+    }
+
+    return null;
+  }
+
+  function getDefaultCalibrationIds() {
+    const calibrationRoot = findTaskNodeByName(projectWorkFlow?.taskTree || [], "C.Calibration");
+
+    if (!calibrationRoot || !Array.isArray(calibrationRoot.children)) {
+      return [];
+    }
+
+    return calibrationRoot.children
+      .map((child) => String(child?.taskName || "").trim())
+      .filter(Boolean);
+  }
+
+ async function initializeDefaultCalibrationFolders() {
+  const calibrationIds = ["ACQ_CaliID", "VAL_CaliID"];
+
+  let successCount = 0;
+  const failedIds = [];
+
+  for (const cid of calibrationIds) {
+    try {
+      const workspaceResult = await createCalibrationWorkspace(cid);
+
+      if (!workspaceResult?.success) {
+        console.error("createCalibrationWorkspace failed:", cid, workspaceResult);
+        failedIds.push(cid);
+        continue;
+      }
+
+      const paths = workspaceResult.paths || {};
+      const folders = (
+        Array.isArray(paths.folders)
+          ? paths.folders
+          : [paths.calibration_root, paths.email_dir, paths.tcd08_report_dir]
+      ).filter(Boolean);
+
+      if (folders.length === 0) {
+        console.error("No folders returned:", cid, paths);
+        failedIds.push(cid);
+        continue;
+      }
+
+      const localResult = await createLocalFolders(folders);
+
+      if (localResult?.success) {
+        successCount += 1;
+      } else {
+        console.error("createLocalFolders failed:", cid, localResult);
+        failedIds.push(cid);
+      }
+    } catch (error) {
+      console.error(`Initialize calibration folders failed for ${cid}:`, error);
+      failedIds.push(cid);
+    }
+  }
+
+  if (successCount > 0) {
+    messageApi.success(`CalibrationID 目录初始化完成：${successCount} 个`);
+  }
+
+  if (failedIds.length > 0) {
+    messageApi.warning(`部分 CalibrationID 目录初始化失败：${failedIds.join(", ")}`);
+  }
+}
+
+  async function handleSave(infoValuesOverride = null) {
+    const sourceInfoValues = Array.isArray(infoValuesOverride)
+      ? infoValuesOverride
+      : infoValues;
+
     const projectInfoData = grid.map((row, rIdx) =>
       row.map((item, cIdx) => ({
         ...item,
-        value: infoValues[rIdx][cIdx],
+        value: sourceInfoValues[rIdx]?.[cIdx] ?? "",
       }))
     );
 
@@ -176,9 +273,9 @@ export default function EditProjectPage() {
           messageApi.error("Failed to create floder");
         }
       } catch (error) {
-      messageApi.destroy();
-      console.error("Error while saving project info:", error);
-      messageApi.error("An unexpected error occurred. Please check the console.");
+        messageApi.destroy();
+        console.error("Error while saving project info:", error);
+        messageApi.error("An unexpected error occurred. Please check the console.");
       }
     }
 
@@ -202,6 +299,7 @@ export default function EditProjectPage() {
 
       if (result.success) {
         messageApi.success("Project Info Updated!");
+        await initializeDefaultCalibrationFolders();
       } else {
         messageApi.error(result.message || "Failed to update project info");
       }
@@ -236,7 +334,7 @@ export default function EditProjectPage() {
 
       const successData = await response.json();
       console.log('API调用成功，后端返回信息:', successData);
-      
+
       messageApi.success('文件已在服务器端成功生成！');
 
     } catch (error) {
@@ -297,7 +395,7 @@ export default function EditProjectPage() {
     setInfoValues(newInfo);
 
     // ⭐⭐⭐ 7. 自动保存项目（触发 Update Project Info）
-    handleSave();
+    handleSave(newInfo);
   };
 
 
@@ -354,7 +452,7 @@ export default function EditProjectPage() {
         messageApi.warning('No details found for this UUID in PMS.');
         return;
       }
-      
+
       // 数据更新
       const newInfo = infoValues.map(row => [...row]); 
 
@@ -372,7 +470,7 @@ export default function EditProjectPage() {
         if (pmsProjectDetail.data.hasOwnProperty(pmsKey)) {
           // 从坐标映射中查找该 label 对应的位置
           const coords = labelToCoordMap.get(formLabel);
-          
+
           if (coords) {
             const [rIdx, cIdx] = coords;
             let pmsValue = pmsProjectDetail.data[pmsKey];
@@ -442,7 +540,7 @@ export default function EditProjectPage() {
       } else {
         messageApi.error("Could not find a matching UUID for the selected project.");
       }
-      
+
       handleModalCancel();
     } else {
       messageApi.warning("Please select a project.");
@@ -484,7 +582,7 @@ export default function EditProjectPage() {
 
         <Col flex="none">
           <div style={{ display: "flex", gap: 12 }}>
-            
+
             {/* Auto Fill Links */}
             <Button
               type="default"
@@ -555,7 +653,7 @@ export default function EditProjectPage() {
                 fontWeight: 600,
               }}
               icon={<ExportOutlined style={{ fontSize: 20 }} />}
-              onClick={handleSave}
+              onClick={() => handleSave()}
             >
               Update Project Info
             </Button>
