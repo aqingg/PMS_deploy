@@ -161,22 +161,11 @@ export default function EditProjectPage() {
     }
   }
 
-  function getWorkflowNodeName(node) {
-    return String(
-      node?.taskName ||
-        node?.name ||
-        node?.title ||
-        node?.label ||
-        node?.key ||
-        ""
-    ).trim();
-  }
-
   function findTaskNodeByName(nodes, taskName) {
     if (!Array.isArray(nodes)) return null;
 
     for (const node of nodes) {
-      if (getWorkflowNodeName(node) === taskName) {
+      if (String(node?.taskName || "").trim() === taskName) {
         return node;
       }
       const found = findTaskNodeByName(node?.children || [], taskName);
@@ -187,37 +176,16 @@ export default function EditProjectPage() {
     return null;
   }
 
-  function getWorkflowRootCandidates() {
-    const candidates = [];
-
-    if (Array.isArray(projectWorkFlow?.taskTree)) {
-      candidates.push(projectWorkFlow.taskTree);
-    }
-    if (Array.isArray(projectWorkFlow?.children)) {
-      candidates.push(projectWorkFlow.children);
-    }
-    if (Array.isArray(projectWorkFlow)) {
-      candidates.push(projectWorkFlow);
-    }
-
-    return candidates;
-  }
-
   function getDefaultCalibrationIds() {
-    const rootCandidates = getWorkflowRootCandidates();
-
-    let calibrationRoot = null;
-    for (const nodes of rootCandidates) {
-      calibrationRoot = findTaskNodeByName(nodes, "C.Calibration");
-      if (calibrationRoot) break;
-    }
-
+    const calibrationRoot = findTaskNodeByName(
+      projectWorkFlow?.taskTree || [],
+      "C.Calibration"
+    );
     if (!calibrationRoot || !Array.isArray(calibrationRoot.children)) {
       return [];
     }
-
     return calibrationRoot.children
-      .map((child) => getWorkflowNodeName(child))
+      .map((child) => String(child?.taskName || "").trim())
       .filter(Boolean);
   }
 
@@ -296,23 +264,21 @@ export default function EditProjectPage() {
     }
 
     try {
-      messageApi.loading("正在从参数结构模板初始化 CalibrationID 目录...", 0);
+      messageApi.loading("正在从模板初始化 40.Application 目录结构...", 0);
       const copyResult = await copyApplicationTemplate(destinationApplicationDir, calibrationIds);
       messageApi.destroy();
 
       if (copyResult?.success) {
         const createdCount = Number(copyResult.created_count || 0);
         const skippedCount = Number(copyResult.skipped_count || 0);
-        const finalIds = Array.isArray(copyResult.calibration_ids)
-          ? copyResult.calibration_ids
-          : calibrationIds;
+        const copiedFilesCount = Number(copyResult.copied_files_count || 0);
         messageApi.success(
-          `CalibrationID 目录初始化完成：${finalIds.length} 个 ID，新增 ${createdCount} 个目录，已存在 ${skippedCount} 个目录。`
+          `40.Application 模板初始化完成。新增 ${createdCount} 个目录，复制 ${copiedFilesCount} 个文件，已存在 ${skippedCount} 个目录。`
         );
         console.log("copyApplicationTemplate success:", {
           selectedCalibrationId,
+          calibrationIds,
           destinationApplicationDir,
-          calibrationIds: finalIds,
           copyResult,
         });
       } else {
@@ -326,7 +292,8 @@ export default function EditProjectPage() {
     }
   }
 
-  async function handleSave(infoValuesOverride = null) {
+  async function handleSave(infoValuesOverride = null, options = {}) {
+    const { initializeFolders = true } = options || {};
     const sourceInfoValues = Array.isArray(infoValuesOverride)
       ? infoValuesOverride
       : infoValues;
@@ -342,7 +309,7 @@ export default function EditProjectPage() {
       .flat()
       .find((item) => item.label === "Public Link")?.value;
 
-    if (isValidUrl(publicLinkValue)) {
+    if (initializeFolders && isValidUrl(publicLinkValue)) {
       try {
         const result = await SetUpApplicationFloder(publicLinkValue);
         //const result = await SetUpApplicationFloder("C:/Users/SZO8SZH/Downloads/testoutput/");
@@ -378,7 +345,9 @@ export default function EditProjectPage() {
 
       if (result.success) {
         messageApi.success("Project Info Updated!");
-        await initializeDefaultCalibrationFolders();
+        if (initializeFolders) {
+          await initializeDefaultCalibrationFolders();
+        }
       } else {
         messageApi.error(result.message || "Failed to update project info");
       }
@@ -469,8 +438,9 @@ export default function EditProjectPage() {
     // 6. 更新前端 state
     setInfoValues(newInfo);
 
-    // ⭐⭐⭐ 7. 自动保存项目（触发 Update Project Info）
-    handleSave(newInfo);
+    // 7. 自动保存项目资料，但不触发目录初始化。
+    // 目录初始化只绑定在用户手动点击 Update Project Info。
+    handleSave(newInfo, { initializeFolders: false });
   }
 
   async function linktoPMS() {

@@ -612,10 +612,10 @@ export function AppProvider({ children }) {
 
   // 新 Copy Template 接口：给 EditPage / Progress 调用。
   // destinationApplicationDir 必须是本地项目的 40.Application 目录。
-  // calibrationIds 来自 workflow 中 C.Calibration 下的子节点。
+  // calibrationIds 来自 workflow 的 C.Calibration 子节点。
   const copyApplicationTemplate = async (destinationApplicationDir, calibrationIds = []) => {
     const target = String(destinationApplicationDir || "").trim();
-    const ids = Array.isArray(calibrationIds)
+    const normalizedCalibrationIds = Array.isArray(calibrationIds)
       ? calibrationIds.map((id) => String(id || "").trim()).filter(Boolean)
       : [];
 
@@ -630,7 +630,7 @@ export function AppProvider({ children }) {
       const res = await request("POST", API.LOCAL + API.LOCAL_COPY_APPLICATION_TEMPLATE, {
         data: {
           destination_application_dir: target,
-          calibration_ids: ids,
+          calibration_ids: normalizedCalibrationIds,
         },
       });
 
@@ -638,11 +638,12 @@ export function AppProvider({ children }) {
         return {
           success: true,
           destination_application_dir: res.data?.destination_application_dir || target,
-          destination_calibration_dir: res.data?.destination_calibration_dir,
-          calibration_ids: res.data?.calibration_ids || ids,
+          calibration_ids: res.data?.calibration_ids || normalizedCalibrationIds,
           created_count: res.data?.created_count ?? 0,
           existing_count: res.data?.existing_count ?? 0,
           skipped_count: res.data?.skipped_count ?? res.data?.existing_count ?? 0,
+          copied_files_count: res.data?.copied_files_count ?? 0,
+          skipped_existing_files_count: res.data?.skipped_existing_files_count ?? 0,
           data: res.data,
         };
       }

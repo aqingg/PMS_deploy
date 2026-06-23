@@ -170,24 +170,23 @@ class CopyApplicationTemplateRequest(BaseModel):
         example=r"C:\AppTools\00.APP-PMS\WUE7SZH\SomeProject",
         description="Project root path. Used only when destination_application_dir is not provided.",
     )
-    calibration_ids: List[str] = Field(
-        default_factory=list,
+    calibration_ids: Optional[List[str]] = Field(
+        default=None,
         example=["ACQ_CaliID", "VAL_CaliID"],
-        description=(
-            "CalibrationID names read from workflow. For each ID, the client creates "
-            "40.Application\\C.Calibration\\{CalibrationID} and copies the folder structure "
-            "inside 20.1_Template of parameter structure into it."
-        ),
+        description="CalibrationID folder names to create under 40.Application\\C.Calibration.",
     )
 
 
 # =================================================================================
 # Template Copy 配置
 # =================================================================================
+# Source 40.Application template folder on the mapped N drive.
 SOURCE_CALIBRATION_TEMPLATE = (
     r"N:\Prj\PS\32_Application\EPD5-File-Templates"
     r"\20.1_Template of folder structure\40.Application"
 )
+
+CALIBRATION_FOLDER_NAME = "C.Calibration"
 PARAMETER_STRUCTURE_TEMPLATE_NAME = "20.1_Template of parameter structure"
 DEFAULT_CALIBRATION_IDS = ["ACQ_CaliID", "VAL_CaliID"]
 
@@ -518,7 +517,7 @@ def open_link(link: str) -> str:
 
 
 # =================================================================================
-# Safe template folder copy helpers
+# Safe template copy helpers
 # =================================================================================
 def _resolve_application_destination(destination_application_dir: Optional[str], destination_path: Optional[str]) -> Path:
     """
@@ -539,126 +538,298 @@ def _resolve_application_destination(destination_application_dir: Optional[str],
     raise ValueError("destination_application_dir or destination_path is required")
 
 
-def _safe_copy_folder_tree(source_dir: Path, destination_dir: Path) -> dict:
-    """
-    Safe recursive copy for folder structure only.
+def _resolve_source_application_template() -> Path:
+    """Resolve and validate source 40.Application template folder."""
+    source_application_dir = Path(SOURCE_CALIBRATION_TEMPLATE)
+    if not source_application_dir.exists() or not source_application_dir.is_dir():
+        raise FileNotFoundError(f"Source 40.Application template folder not found: {source_application_dir}")
+    return source_application_dir
 
-    只递归复制文件夹结构：
-    - 创建缺失目录；
-    - 不复制模板里的文件；
-    - 不覆盖本地已有文件；
-    - 不删除本地已有内容。
+
+def _resolve_parameter_structure_template() -> Path:
+    """
+    Resolve the parameter-structure template folder.
+
+    Correct source layout:
+        SOURCE_CALIBRATION_TEMPLATE\\C.Calibration\\20.1_Template of parameter structure
+
+    This folder is a mother template. By default it is NOT copied as a folder named
+    '20.1_Template of parameter structure' into the local project. Its children are
+    expanded into each CalibrationID folder.
+    """
+    source_application_dir = _resolve_source_application_template()
+    parameter_template_dir = (
+        source_application_dir
+        / CALIBRATION_FOLDER_NAME
+        / PARAMETER_STRUCTURE_TEMPLATE_NAME
+    )
+
+    if not parameter_template_dir.exists() or not parameter_template_dir.is_dir():
+        raise FileNotFoundError(f"Parameter structure template folder not found: {parameter_template_dir}")
+
+    return parameter_template_dir
+
+
+def _normalize_calibration_ids(calibration_ids: Optional[List[str]]) -> List[str]:
+    """
+    Normalize CalibrationID names coming from frontend workflow.
+
+    The frontend should pass IDs read from workflow C.Calibration children.
+    If nothing valid is passed, fall back to the default two IDs.
+    """
+    raw_ids = calibration_ids or DEFAULT_CALIBRATION_IDS
+    normalized = []
+    seen = set()
+
+    invalid_exact = {
+        PARAMETER_STRUCTURE_TEMPLATE_NAME.lower(),
+        "20.1_template of parameter structure",
+    }
+    invalid_chars = set('<>:"/\\|?*')
+
+    for item in raw_ids:
+        value = str(item or "").strip()
+        if not value:
+            continue
+
+        value_lower = value.lower()
+        # The template folder is not a CalibrationID and must never become a target ID.
+        if value_lower in invalid_exact or "template" in value_lower:
+            continue
+
+        if value in {".", ".."} or any(ch in invalid_chars for ch in value):
+            raise ValueError(f"Invalid CalibrationID folder name: {value}")
+
+        if value_lower not in seen:
+            normalized.append(value)
+            seen.add(value_lower)
+
+    if not normalized:
+        normalized = DEFAULT_CALIBRATION_IDS[:]
+
+    return normalized
+
+
+def _normcase_abs(path: Path) -> str:
+    """Case-insensitive normalized absolute path string for Windows-safe comparisons."""
+    return os.path.normcase(os.path.abspath(os.path.normpath(str(path))))
+
+
+def _is_same_or_child_path(path: Path, parent: Path) -> bool:
+    """Return True when path is parent itself or located under parent."""
+    path_norm = _normcase_abs(path)
+    parent_norm = _normcase_abs(parent)
+    try:
+        return os.path.commonpath([path_norm, parent_norm]) == parent_norm
+    except ValueError:
+        return False
+
+
+def _safe_copy_tree(source_dir: Path, destination_dir: Path, skip_source_dirs: Optional[List[Path]] = None) -> dict:
+    """
+    Safe recursive copy for folders AND files.
+
+    - source_dir itself is not copied as a named folder; its child content is expanded
+      into destination_dir;
+    - missing folders are created;
+    - missing files are copied;
+    - existing files are NOT overwritten;
+    - existing local folders/content are NOT deleted.
     """
     if not source_dir.exists() or not source_dir.is_dir():
         raise FileNotFoundError(f"Source template folder not found: {source_dir}")
 
-    destination_dir.mkdir(parents=True, exist_ok=True)
+    skip_dirs = [Path(p) for p in (skip_source_dirs or [])]
 
     created_dirs = []
     existing_dirs = []
+    copied_files = []
+    skipped_existing_files = []
+    skipped_template_dirs = []
+    seen_targets = set()
 
     for root, dirs, files in os.walk(source_dir):
         root_path = Path(root)
+
+        # If current root itself is inside a skipped source directory, skip it entirely.
+        if any(_is_same_or_child_path(root_path, skip_dir) for skip_dir in skip_dirs):
+            skipped_template_dirs.append(str(root_path))
+            dirs[:] = []
+            continue
+
+        # Prevent os.walk from entering skipped child directories.
+        kept_dirs = []
+        for dirname in dirs:
+            child_dir = root_path / dirname
+            if any(_is_same_or_child_path(child_dir, skip_dir) for skip_dir in skip_dirs):
+                skipped_template_dirs.append(str(child_dir))
+                continue
+            kept_dirs.append(dirname)
+        dirs[:] = kept_dirs
+
         rel_root = root_path.relative_to(source_dir)
         target_root = destination_dir if str(rel_root) == "." else destination_dir / rel_root
+        target_key = os.path.normcase(os.path.normpath(str(target_root)))
 
-        if target_root.exists():
-            existing_dirs.append(str(target_root))
-        else:
-            target_root.mkdir(parents=True, exist_ok=True)
-            created_dirs.append(str(target_root))
-
-        for dirname in dirs:
-            target_dir = target_root / dirname
-            if target_dir.exists():
-                existing_dirs.append(str(target_dir))
+        if target_key not in seen_targets:
+            seen_targets.add(target_key)
+            if target_root.exists():
+                existing_dirs.append(str(target_root))
             else:
-                target_dir.mkdir(parents=True, exist_ok=True)
-                created_dirs.append(str(target_dir))
+                target_root.mkdir(parents=True, exist_ok=True)
+                created_dirs.append(str(target_root))
+
+        for filename in files:
+            source_file = root_path / filename
+            target_file = target_root / filename
+            if target_file.exists():
+                skipped_existing_files.append(str(target_file))
+                continue
+            target_root.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(str(source_file), str(target_file))
+            copied_files.append(str(target_file))
 
     return {
         "source": str(source_dir),
         "destination": str(destination_dir),
         "created_count": len(created_dirs),
         "existing_count": len(existing_dirs),
-        "skipped_count": len(existing_dirs),
+        "copied_files_count": len(copied_files),
+        "skipped_existing_files_count": len(skipped_existing_files),
+        "skipped_template_dirs_count": len(set(skipped_template_dirs)),
         "created_dirs": created_dirs,
         "existing_dirs": existing_dirs,
-        "copied_files_count": 0,
-        "mode": "safe_folder_structure_only",
+        "copied_files": copied_files,
+        "skipped_existing_files": skipped_existing_files,
+        "skipped_template_dirs": sorted(set(skipped_template_dirs)),
+        "mode": "safe_copy_folders_and_files_no_overwrite",
     }
 
 
-def _normalize_calibration_ids(calibration_ids: Optional[List[str]]) -> List[str]:
-    """Normalize CalibrationID values passed from workflow and remove duplicates."""
-    normalized_ids = []
-    seen = set()
+def _copy_full_application_template(destination_application_dir: Path) -> dict:
+    """
+    Copy the whole source 40.Application template into local 40.Application.
 
-    for item in calibration_ids or []:
-        value = str(item or "").strip()
-        if not value:
-            continue
-        key = value.lower()
-        if key in seen:
-            continue
-        seen.add(key)
-        normalized_ids.append(value)
+    The parameter-template folder under C.Calibration is skipped here because it is a
+    mother template. Its contents are expanded into every CalibrationID folder later.
+    This keeps local 40.Application\\C.Calibration clean while still preserving A/B/D
+    and all other normal 40.Application content.
+    """
+    source_application_dir = _resolve_source_application_template()
+    parameter_template_dir = _resolve_parameter_structure_template()
+    destination_application_dir.mkdir(parents=True, exist_ok=True)
 
-    return normalized_ids or DEFAULT_CALIBRATION_IDS.copy()
+    return _safe_copy_tree(
+        source_application_dir,
+        destination_application_dir,
+        skip_source_dirs=[parameter_template_dir],
+    )
 
 
-def _copy_parameter_template_to_calibration_ids(
-    source_application_dir: Path,
+def _copy_parameter_structure_to_calibration_ids(
     destination_application_dir: Path,
     calibration_ids: Optional[List[str]],
 ) -> dict:
     """
-    Expand the parameter structure template into every CalibrationID folder.
-
-    Source template:
-        ...\40.Application\20.1_Template of parameter structure
-
-    Destination result:
-        ...\40.Application\C.Calibration\{CalibrationID}\<template child folders>
-
-    The template folder itself is not copied into the destination. Only its
-    folder structure is copied into each CalibrationID folder.
+    Create CalibrationID folders under local 40.Application\\C.Calibration and
+    expand the parameter-structure template into every CalibrationID folder.
     """
-    source_application_dir = Path(source_application_dir)
-    parameter_template_dir = source_application_dir / PARAMETER_STRUCTURE_TEMPLATE_NAME
+    parameter_template_dir = _resolve_parameter_structure_template()
+    normalized_ids = _normalize_calibration_ids(calibration_ids)
 
-    if not parameter_template_dir.exists() or not parameter_template_dir.is_dir():
-        raise FileNotFoundError(f"Parameter structure template folder not found: {parameter_template_dir}")
+    destination_application_dir.mkdir(parents=True, exist_ok=True)
+    destination_calibration_dir = destination_application_dir / CALIBRATION_FOLDER_NAME
+    destination_calibration_dir.mkdir(parents=True, exist_ok=True)
 
-    destination_application_dir = Path(destination_application_dir)
-    calibration_root_dir = destination_application_dir / "C.Calibration"
-    calibration_root_dir.mkdir(parents=True, exist_ok=True)
+    total_created_dirs = []
+    total_existing_dirs = []
+    total_copied_files = []
+    total_skipped_existing_files = []
+    per_id_results = []
+    target_dirs = []
 
-    ids = _normalize_calibration_ids(calibration_ids)
-    results = []
-    total_created = 0
-    total_existing = 0
-
-    for calibration_id in ids:
-        target_calibration_dir = calibration_root_dir / calibration_id
-        copy_result = _safe_copy_folder_tree(parameter_template_dir, target_calibration_dir)
-        copy_result["calibration_id"] = calibration_id
-        results.append(copy_result)
-        total_created += int(copy_result.get("created_count", 0))
-        total_existing += int(copy_result.get("existing_count", 0))
+    for calibration_id in normalized_ids:
+        target_calibration_dir = destination_calibration_dir / calibration_id
+        result = _safe_copy_tree(parameter_template_dir, target_calibration_dir)
+        target_dirs.append(str(target_calibration_dir))
+        total_created_dirs.extend(result.get("created_dirs", []))
+        total_existing_dirs.extend(result.get("existing_dirs", []))
+        total_copied_files.extend(result.get("copied_files", []))
+        total_skipped_existing_files.extend(result.get("skipped_existing_files", []))
+        per_id_results.append(
+            {
+                "calibration_id": calibration_id,
+                "target_dir": str(target_calibration_dir),
+                "created_count": result.get("created_count", 0),
+                "existing_count": result.get("existing_count", 0),
+                "copied_files_count": result.get("copied_files_count", 0),
+                "skipped_existing_files_count": result.get("skipped_existing_files_count", 0),
+                "created_dirs": result.get("created_dirs", []),
+                "existing_dirs": result.get("existing_dirs", []),
+                "copied_files": result.get("copied_files", []),
+                "skipped_existing_files": result.get("skipped_existing_files", []),
+            }
+        )
 
     return {
-        "source_application_dir": str(source_application_dir),
         "parameter_template_dir": str(parameter_template_dir),
         "destination_application_dir": str(destination_application_dir),
-        "destination_calibration_dir": str(calibration_root_dir),
-        "calibration_ids": ids,
-        "created_count": total_created,
-        "existing_count": total_existing,
-        "skipped_count": total_existing,
-        "copied_files_count": 0,
+        "destination_calibration_dir": str(destination_calibration_dir),
+        "calibration_ids": normalized_ids,
+        "target_dirs": target_dirs,
+        "created_count": len(total_created_dirs),
+        "existing_count": len(total_existing_dirs),
+        "copied_files_count": len(total_copied_files),
+        "skipped_existing_files_count": len(total_skipped_existing_files),
+        "created_dirs": total_created_dirs,
+        "existing_dirs": total_existing_dirs,
+        "copied_files": total_copied_files,
+        "skipped_existing_files": total_skipped_existing_files,
+        "per_id_results": per_id_results,
         "mode": "safe_parameter_structure_to_calibration_ids",
-        "results": results,
+    }
+
+
+def _copy_application_template_with_calibration_ids(
+    destination_application_dir: Path,
+    calibration_ids: Optional[List[str]],
+) -> dict:
+    """
+    Correct two-stage Copy flow:
+
+    1. Safe-copy the full 40.Application template into the local 40.Application,
+       preserving A/B/C/D and all normal folders/files.
+    2. Expand C.Calibration\20.1_Template of parameter structure into every
+       CalibrationID folder passed by the frontend workflow.
+    """
+    app_result = _copy_full_application_template(destination_application_dir)
+    parameter_result = _copy_parameter_structure_to_calibration_ids(
+        destination_application_dir,
+        calibration_ids,
+    )
+
+    total_created_count = app_result.get("created_count", 0) + parameter_result.get("created_count", 0)
+    total_existing_count = app_result.get("existing_count", 0) + parameter_result.get("existing_count", 0)
+    total_copied_files_count = app_result.get("copied_files_count", 0) + parameter_result.get("copied_files_count", 0)
+    total_skipped_files_count = app_result.get("skipped_existing_files_count", 0) + parameter_result.get("skipped_existing_files_count", 0)
+
+    return {
+        "source": str(Path(SOURCE_CALIBRATION_TEMPLATE)),
+        "destination_application_dir": str(destination_application_dir),
+        "destination": str(destination_application_dir),
+        "parameter_template_dir": parameter_result.get("parameter_template_dir"),
+        "destination_calibration_dir": parameter_result.get("destination_calibration_dir"),
+        "calibration_ids": parameter_result.get("calibration_ids", []),
+        "target_dirs": parameter_result.get("target_dirs", []),
+        "created_count": total_created_count,
+        "existing_count": total_existing_count,
+        "skipped_count": total_existing_count,
+        "copied_files_count": total_copied_files_count,
+        "skipped_existing_files_count": total_skipped_files_count,
+        "application_template_result": app_result,
+        "parameter_structure_result": parameter_result,
+        "per_id_results": parameter_result.get("per_id_results", []),
+        "mode": "safe_full_40_application_plus_parameter_structure",
     }
 
 
@@ -812,32 +983,36 @@ def api_create_folders(req: CreateFoldersRequest):
 @app.post("/copyApplicationTemplate")
 def api_copy_application_template(req: CopyApplicationTemplateRequest):
     """
-    Safe initialize CalibrationID folders from the parameter structure template.
+    Initialize local 40.Application from the full template, then expand the
+    C.Calibration parameter-structure template into every workflow CalibrationID.
 
-    Source:
-        N:\...\40.Application\20.1_Template of parameter structure
+    Correct behavior:
+    1. Safe-copy:
+        N:/.../40.Application/*
+       into:
+        <local>/40.Application/*
+       preserving A/B/C/D and normal files/folders, without overwriting existing files.
 
-    Destination:
-        <local 40.Application>\C.Calibration\{CalibrationID}
+    2. Safe-expand:
+        N:/.../40.Application/C.Calibration/20.1_Template of parameter structure/*
+       into:
+        <local>/40.Application/C.Calibration/<CalibrationID>/*
 
-    This endpoint intentionally copies folders only. It does not copy files,
-    does not overwrite anything, and does not copy the template folder itself.
+    The local project does not need to keep the mother template folder itself.
     """
     try:
-        source_application = Path(SOURCE_CALIBRATION_TEMPLATE)
-        destination_application = _resolve_application_destination(
+        destination_application_dir = _resolve_application_destination(
             req.destination_application_dir,
             req.destination_path,
         )
-        result = _copy_parameter_template_to_calibration_ids(
-            source_application,
-            destination_application,
-            req.calibration_ids,
+        result = _copy_application_template_with_calibration_ids(
+            destination_application_dir=destination_application_dir,
+            calibration_ids=req.calibration_ids,
         )
         return {
             "success": True,
             "status": "success",
-            "message": "CalibrationID folders initialized from parameter structure template.",
+            "message": "40.Application template copied and CalibrationID folders initialized.",
             **result,
         }
     except FileNotFoundError as exc:
@@ -850,6 +1025,8 @@ def api_copy_application_template(req: CopyApplicationTemplateRequest):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Permission error during template copy: {exc}",
         ) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -857,20 +1034,19 @@ def api_copy_application_template(req: CopyApplicationTemplateRequest):
         ) from exc
 
 
-# 兼容旧前端：保留 /copy-folder，但内部使用默认 CalibrationID 初始化参数结构。
+# 兼容旧前端：保留 /copy-folder。没有 calibration_ids 时使用默认 ACQ_CaliID / VAL_CaliID。
 @app.post("/copy-folder")
 async def copy_folder_to_destination(request_data: CopyRequest):
     try:
-        destination = _resolve_application_destination(None, request_data.destination_path)
-        result = _copy_parameter_template_to_calibration_ids(
-            Path(SOURCE_CALIBRATION_TEMPLATE),
-            destination,
-            DEFAULT_CALIBRATION_IDS,
+        destination_application_dir = _resolve_application_destination(None, request_data.destination_path)
+        result = _copy_application_template_with_calibration_ids(
+            destination_application_dir=destination_application_dir,
+            calibration_ids=DEFAULT_CALIBRATION_IDS,
         )
         return {
             "success": True,
             "status": "success",
-            "message": "CalibrationID folders initialized from parameter structure template.",
+            "message": "40.Application template copied and default CalibrationID folders initialized.",
             **result,
         }
     except FileNotFoundError as exc:
@@ -883,6 +1059,8 @@ async def copy_folder_to_destination(request_data: CopyRequest):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Permission error during template copy: {exc}",
         ) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
