@@ -1,15 +1,16 @@
 // ---------------------------------------------------------
-// AppContext.js   —— 前端 B（完整修复版）
+// AppContext.js —— 前端 B（完整修复版）
+// Copy Template 最小方案：新增 copyApplicationTemplate()
 // ---------------------------------------------------------
+
 import React, {
   createContext,
   useState,
   useEffect,
   useCallback,
   useContext,
-  useRef
+  useRef,
 } from "react";
-
 import axios from "axios";
 import { message } from "antd";
 
@@ -17,38 +18,38 @@ export const AppContext = createContext(null);
 export const useAppContext = () => useContext(AppContext);
 
 export function AppProvider({ children }) {
-
   // =====================================================
   // 0. API 管理（全局统一）
   // =====================================================
   const API = {
     LOCAL: "http://127.0.0.1:7175",
     LOCAL_CREATE_FOLDERS: "/createFolders",
+    LOCAL_COPY_APPLICATION_TEMPLATE: "/copyApplicationTemplate",
 
-    // 🔥 调试时建议用本地： http://127.0.0.1:8086/app-puma
-    //BASE: "https://oss-dthub.apac.bosch.com/app-puma",
-     BASE: "http://127.0.0.1:8086/app-puma",
+    // 调试时建议用本地： http://127.0.0.1:8086/app-puma
+    // BASE: "https://oss-dthub.apac.bosch.com/app-puma",
+    BASE: "http://127.0.0.1:8086/app-puma",
+
     PROJECT_GET: "/project/getProject",
     PROJECT_CREATE: "/project/createProject",
     PROJECT_CREATE_CALIBRATION_WORKSPACE: "/project/createCalibrationWorkspace",
     PROJECT_INFO_UPDATE: "/project/updateProjectInfo",
     PROJECT_WF_UPDATE: "/project/updateWorkFlow",
     PROJECT_GETPATH: "/project/getPath",
-    
+
     // Parameter
     PROJECT_GETUUID: "/project/getProjectUUID",
-
     TEMPLATE_TASK_DETAIL: "/template/getTaskDetail",
     TEMPLATE_TEAM: "/template/teamMembers",
     TEMPLATE_WF: "/project/getWorkFlowTemplate",
-
-    SSE: "/sse/stream", 
-    PMS: "http://127.0.0.1:8000/api/v1/projects/info"
+    SSE: "/sse/stream",
+    PMS: "http://127.0.0.1:8000/api/v1/projects/info",
   };
 
-  const SimpleProjectInfoList = "https://apiroutecccn.apac.bosch.com/openapi/pmsserverprod/api/getSimpleProjectInfoList";
+  const SimpleProjectInfoList =
+    "https://apiroutecccn.apac.bosch.com/openapi/pmsserverprod/api/getSimpleProjectInfoList";
   const gatewayKey = "PN9rSrBi6770yG35WSoN25yAPiWaqbBS";
-  
+
   const request = useCallback(
     (method, url, { params = {}, data = {} } = {}) =>
       axios({ method, url, params, data }),
@@ -67,18 +68,13 @@ export function AppProvider({ children }) {
   const [projectProgress, setProjectProgress] = useState(0);
   const [messageApi, contextHolder] = message.useMessage();
   const [loading, setLoading] = useState(false);
-
   const [needCreate, setNeedCreate] = useState(false);
-  const [selectableDepartments, setSelectableDepartments] = useState([]); // ⭐永远保持为数组
+  const [selectableDepartments, setSelectableDepartments] = useState([]); // ⭐ 永远保持为数组
   const [selectedDepartment, setSelectedDepartment] = useState(null);
-
   const [, setEventSource] = useState(null);
   const [refreshFlag, setRefreshFlag] = useState(0);
-
   const projectIdRef = useRef(null);
-
   const [teamMembers, setTeamMembers] = useState([]);
-
 
   // =====================================================
   // ⭐ 解析 URL + localStorage
@@ -117,12 +113,13 @@ export function AppProvider({ children }) {
       // 读取 userinfo
       const userinfo = await request("GET", API.LOCAL + "/userinfo");
       const username = userinfo.data?.machine_id;
-
       if (!username) return;
 
       let tmpUser = { username, department: "Unknown" };
-
-      let info = null, wf = null, rate = 0, pname = null;
+      let info = null;
+      let wf = null;
+      let rate = 0;
+      let pname = null;
 
       if (pid) {
         const res = await request("GET", API.BASE + API.PROJECT_GET, {
@@ -132,7 +129,9 @@ export function AppProvider({ children }) {
         // ⭐ 项目不存在 OR 无权限 → needCreate
         if (res.data.exists === false) {
           setNeedCreate(true);
-          setSelectableDepartments(Array.isArray(res.data.departments) ? res.data.departments : []);
+          setSelectableDepartments(
+            Array.isArray(res.data.departments) ? res.data.departments : []
+          );
           setUser(tmpUser);
           return;
         }
@@ -140,7 +139,6 @@ export function AppProvider({ children }) {
         // 正常获取项目
         const data = res.data.data;
         tmpUser.department = data.department;
-        info = data.projectInfo;
         info = structuredClone(data.projectInfo);
         wf = data.projectWorkFlow;
         pname = data.projectName;
@@ -152,7 +150,6 @@ export function AppProvider({ children }) {
       setProjectWorkFlow(wf);
       setProjectProgress(rate);
       setProjectName(pname);
-
     } catch (err) {
       console.error("initApp failed:", err);
     } finally {
@@ -178,11 +175,10 @@ export function AppProvider({ children }) {
     if (!user.username || user.username === "Unknown") return;
 
     const url = API.BASE + API.SSE + `?user=${user.username}`;
-    console.log("📡 Connecting SSE:", url);
+    console.log(" Connecting SSE:", url);
 
     const es = new EventSource(url);
-
-    es.onopen = () => console.log("🟢 SSE Connected");
+    es.onopen = () => console.log(" SSE Connected");
 
     es.onmessage = (ev) => {
       if (!ev.data) return;
@@ -195,53 +191,38 @@ export function AppProvider({ children }) {
       }
 
       const { event, payload } = msg;
-
       const currentPid = projectIdRef.current;
 
-      // ==================================================
       // 1) 项目信息更新
-      // ==================================================
-  if (event === "ProjectUpdated" && payload.projectId === currentPid) {
-    setMsgQueue(q => [...q, { evt: "ProjectUpdated", payload }]);
-    setRefreshFlag(v => v + 1);
-    return;
-  }
+      if (event === "ProjectUpdated" && payload.projectId === currentPid) {
+        setMsgQueue((q) => [...q, { evt: "ProjectUpdated", payload }]);
+        setRefreshFlag((v) => v + 1);
+        return;
+      }
 
-      // ==================================================
       // 2) 工作流更新
-      // ==================================================
-  if (event === "WorkflowUpdated" && payload.projectId === currentPid) {
-    setMsgQueue(q => [...q, { evt: "WorkflowUpdated", payload }]);
-    setRefreshFlag(v => v + 1);
-    return;
-  }
+      if (event === "WorkflowUpdated" && payload.projectId === currentPid) {
+        setMsgQueue((q) => [...q, { evt: "WorkflowUpdated", payload }]);
+        setRefreshFlag((v) => v + 1);
+        return;
+      }
 
-
-      // ==================================================
       // 3) 当前项目被删除
-      // ==================================================
-  if (event === "ProjectDeleted" && payload.projectId === currentPid) {
-    messageApi.error("❌ 当前项目已被删除");
-    localStorage.removeItem("projectId");
-    window.location.href = "/";
-    return;
-  }
-
-
-      // ==================================================
-      // 4) 其他事件忽略
-      // ==================================================
+      if (event === "ProjectDeleted" && payload.projectId === currentPid) {
+        messageApi.error("❌ 当前项目已被删除");
+        localStorage.removeItem("projectId");
+        window.location.href = "/";
+      }
     };
 
     es.onerror = () => {
-      console.log("🔴 SSE disconnected, reconnecting...");
+      console.log(" SSE disconnected, reconnecting...");
       es.close();
       setTimeout(connectSSE, 2000);
     };
 
     setEventSource(es);
   }, [user.username, API.BASE, API.SSE, messageApi]);
-
 
   useEffect(() => {
     connectSSE();
@@ -257,13 +238,7 @@ export function AppProvider({ children }) {
   // =====================================================
   // ⭐ 文件夹功能 —— requestPathAndExecute
   // =====================================================
-  const getRealPathFromBackend = async ({
-    label,
-    taskId,
-    projectId,
-    user,
-    type,
-  }) => {
+  const getRealPathFromBackend = async ({ label, taskId, projectId, user, type }) => {
     const res = await axios.get(API.BASE + API.PROJECT_GETPATH, {
       params: {
         label,
@@ -285,37 +260,30 @@ export function AppProvider({ children }) {
       messageApi.error("后端未返回有效路径");
     }
 
-    console.log("📁 Path from backend:", realPath);
+    console.log(" Path from backend:", realPath);
     return realPath;
   };
 
   const getOfficeFiles = async (folderPath) => {
-    if (!folderPath || typeof folderPath !== 'string') {
+    if (!folderPath || typeof folderPath !== "string") {
       console.error("提供的文件夹路径无效。");
       messageApi.error("提供的文件夹路径无效。");
       return [];
     }
 
     try {
-      // 使用模板字符串拼接URL，更清晰
       const url = `${API.LOCAL}/getOfficeFiles`;
-
-      const response = await axios.get(url, {
-        params: {
-          folder_path: folderPath
-        }
-      });
-
+      const response = await axios.get(url, { params: { folder_path: folderPath } });
       return response.data;
-
     } catch (error) {
-      // 如果请求失败（如网络错误、404路径未找到、500服务器错误等），在这里捕获
       if (error.response) {
-        // 服务器返回了错误状态码 (4xx, 5xx)
-        console.error(`获取文件列表失败: ${error.response.status} - ${error.response.data.detail || error.response.statusText}`);
+        console.error(
+          `获取文件列表失败: ${error.response.status} - ${
+            error.response.data.detail || error.response.statusText
+          }`
+        );
         messageApi.error("获取文件列表失败");
       } else {
-        // 网络问题或请求设置问题
         console.error("网络或请求错误:", error.message);
         messageApi.error("网络或请求错误");
       }
@@ -323,12 +291,7 @@ export function AppProvider({ children }) {
     }
   };
 
-  const requestPathAndExecute = async ({
-    label,
-    taskId,
-    mode,   // "open" | "copy"
-    type,   // "local" | "public" | "cloud"
-  }) => {
+  const requestPathAndExecute = async ({ label, taskId, mode, type }) => {
     if (!projectId || !user?.username) {
       console.warn("❗ 缺少 projectId 或 user，无法打开路径");
       return;
@@ -346,18 +309,16 @@ export function AppProvider({ children }) {
 
       // ② 通知本地客户端（7175）打开 / 复制路径
       const clientEndpoint =
-        mode === "open"
-          ? API.LOCAL + "/openPath"
-          : API.LOCAL + "/copyPath";
+        mode === "open" ? API.LOCAL + "/openPath" : API.LOCAL + "/copyPath";
 
       await axios.get(clientEndpoint, { params: { path: realPath } });
 
-      // ⭐⭐ 在这里添加成功提示 ⭐⭐
       if (mode === "open") {
         messageApi.success(`已打开 ${type} 文件夹`);
       } else {
         messageApi.success(`已复制 ${type} 路径到剪贴板`);
       }
+
       console.log(`✨ ${mode === "open" ? "open" : "copy"} success →`, realPath);
     } catch (err) {
       console.error("❌ requestPathAndExecute error:", err);
@@ -370,25 +331,18 @@ export function AppProvider({ children }) {
   // =====================================================
   const actions = {
     // Local
-    openLocal: (payload) =>
-      requestPathAndExecute({ ...payload, mode: "open", type: "local" }),
-
-    copyLocal: (payload) =>
-      requestPathAndExecute({ ...payload, mode: "copy", type: "local" }),
+    openLocal: (payload) => requestPathAndExecute({ ...payload, mode: "open", type: "local" }),
+    copyLocal: (payload) => requestPathAndExecute({ ...payload, mode: "copy", type: "local" }),
 
     // Public
     openPublic: (payload) =>
       requestPathAndExecute({ ...payload, mode: "open", type: "public" }),
-
     copyPublic: (payload) =>
       requestPathAndExecute({ ...payload, mode: "copy", type: "public" }),
 
     // Cloud / SharePoint
-    openCloud: (payload) =>
-      requestPathAndExecute({ ...payload, mode: "open", type: "cloud" }),
-
-    copyCloud: (payload) =>
-      requestPathAndExecute({ ...payload, mode: "copy", type: "cloud" }),
+    openCloud: (payload) => requestPathAndExecute({ ...payload, mode: "open", type: "cloud" }),
+    copyCloud: (payload) => requestPathAndExecute({ ...payload, mode: "copy", type: "cloud" }),
   };
 
   // =====================================================
@@ -397,7 +351,6 @@ export function AppProvider({ children }) {
   const createProject = async () => {
     try {
       const name = window.prompt("请输入项目名");
-
       await request("POST", API.BASE + API.PROJECT_CREATE, {
         data: {
           username: user.username,
@@ -407,7 +360,6 @@ export function AppProvider({ children }) {
           editors: [user.username],
         },
       });
-
       setNeedCreate(false);
       setSelectedDepartment(null);
       initApp();
@@ -418,9 +370,10 @@ export function AppProvider({ children }) {
 
   const rewriteProjectInfo = async (finalData) => {
     try {
-      const res = await request("POST", API.BASE + API.PROJECT_INFO_UPDATE, { data: finalData });
-      //setProjectInfo(res.data.data.projectInfo);
-      // 🔒 防止 Context 持有可变引用
+      const res = await request("POST", API.BASE + API.PROJECT_INFO_UPDATE, {
+        data: finalData,
+      });
+      // 防止 Context 持有可变引用
       setProjectInfo(structuredClone(res.data.data.projectInfo));
       setProjectProgress(res.data.data.projectInfoRate ?? 0);
       return { success: true };
@@ -431,7 +384,9 @@ export function AppProvider({ children }) {
 
   const updateWorkFlow = async (finalData) => {
     try {
-      const res = await request("POST", API.BASE + API.PROJECT_WF_UPDATE, { data: finalData });
+      const res = await request("POST", API.BASE + API.PROJECT_WF_UPDATE, {
+        data: finalData,
+      });
       setProjectWorkFlow(res.data.data.projectWorkFlow);
       return { success: true };
     } catch (err) {
@@ -442,7 +397,7 @@ export function AppProvider({ children }) {
   const getTaskDetail = async (taskName) => {
     try {
       const res = await request("GET", API.BASE + API.TEMPLATE_TASK_DETAIL, {
-        params: { taskName }
+        params: { taskName },
       });
       return { success: true, data: res.data };
     } catch {
@@ -453,8 +408,7 @@ export function AppProvider({ children }) {
   const getWorkFlowTemplate = async () => {
     try {
       const res = await request("GET", API.BASE + API.TEMPLATE_WF);
-      if (res.data?.success)
-        return { success: true, data: res.data.data };
+      if (res.data?.success) return { success: true, data: res.data.data };
       return { success: false };
     } catch {
       return { success: false };
@@ -476,34 +430,29 @@ export function AppProvider({ children }) {
     try {
       const url = `${SimpleProjectInfoList}?gatewayKey=${gatewayKey}`;
       const res = await request("Get", url);
-
       const validProjects = res.data.data
-        .filter(item => item.product_category?.startsWith("AB1"))
-        .filter(item => item.status !== "Canceled");
-      
+        .filter((item) => item.product_category?.startsWith("AB1"))
+        .filter((item) => item.status !== "Canceled");
       return validProjects;
-
     } catch (error) {
       console.error("Failed to execute getProjectFromPMS:", error);
       return [];
     }
   };
 
-  // 根据 UUID 获取 项目详细信息
+  // 根据 UUID 获取项目详细信息
   const getProjectInfoFromPMS = async (uuid) => {
     try {
       const url = `${API.LOCAL}/PMSInfo/${uuid}`;
       const res = await request("Get", url);
-      console.log(res.data)
+      console.log(res.data);
       return res;
     } catch (error) {
       return {};
     }
   };
 
-  // 在此处定义获取不同 parameter 的函数
   const getProjectUUID = async (pid) => {
-    // 如果没有传入 projectId，则使用当前上下文中的 projectId
     const targetProjectId = pid || projectId;
     if (!targetProjectId) {
       console.error("getProjectUUID: Project ID is missing.");
@@ -512,17 +461,15 @@ export function AppProvider({ children }) {
     }
 
     try {
-      // 构造完整的请求 URL，包含路径参数
       const url = `${API.BASE}${API.PROJECT_GETUUID}/${targetProjectId}`;
       const res = await request("GET", url);
 
-      // 检查后端返回的数据结构
       if (res.data.uuid) {
         return { success: true, uuid: res.data.uuid };
-      } else {
-        messageApi.error(res.data?.message || "获取项目 UUID 失败");
-        return { success: false, message: res.data?.message };
       }
+
+      messageApi.error(res.data?.message || "获取项目 UUID 失败");
+      return { success: false, message: res.data?.message };
     } catch (err) {
       console.error("getProjectUUID request failed:", err);
       messageApi.error("请求项目 UUID 时出错");
@@ -530,75 +477,64 @@ export function AppProvider({ children }) {
     }
   };
 
-  // 添加新函数后在此处统一调用
   const getParameter = async (parametername) => {
     switch (parametername) {
-      case "uuid":
+      case "uuid": {
         const result = await getProjectUUID();
         if (result && result.uuid) {
-            const para = result.uuid;
-            return {success: true, parameter: para};
-        } else {
-            const errorMessage = "获取 UUID 失败";
-            console.warn(errorMessage);
-            messageApi.error(errorMessage);
-            return { success: false, parameter: "", message: errorMessage };
+          const para = result.uuid;
+          return { success: true, parameter: para };
         }
+
+        const errorMessage = "获取 UUID 失败";
+        console.warn(errorMessage);
+        messageApi.error(errorMessage);
+        return { success: false, parameter: "", message: errorMessage };
+      }
 
       case "projectid": {
-        const projectId = localStorage.getItem('projectId');
-
-        if (projectId) {
-          return { success: true, parameter: projectId };
-        } else {
-          const errorMessage = `在 Local Storage 中未找到 'projectid'`;
-          console.warn(errorMessage);
-          messageApi.error(errorMessage);
-          return { success: false, parameter: "", message: errorMessage };
+        const storedProjectId = localStorage.getItem("projectId");
+        if (storedProjectId) {
+          return { success: true, parameter: storedProjectId };
         }
-      }
-        
-      default:
-        // 处理未知的参数名，返回一个表示失败的对象或 null/undefined。
-        const errorMessage = `getParameter: 不支持的参数名 "${parametername}"`
+
+        const errorMessage = `在 Local Storage 中未找到 'projectid'`;
         console.warn(errorMessage);
-        messageApi.error(errorMessage)
+        messageApi.error(errorMessage);
         return { success: false, parameter: "", message: errorMessage };
+      }
+
+      default: {
+        const errorMessage = `getParameter: 不支持的参数名 "${parametername}"`;
+        console.warn(errorMessage);
+        messageApi.error(errorMessage);
+        return { success: false, parameter: "", message: errorMessage };
+      }
     }
   };
 
+  // 兼容旧入口：仍调用 /copy-folder，不影响旧代码。
   const SetUpApplicationFloder = async (publicLinkValue) => {
-      const url = `${API.LOCAL}/copy-folder`;
-      const payload = {
-        'destination_path': publicLinkValue 
-      };
-      const res = await request("POST", url, { data: payload });
-      return res.status
+    const url = `${API.LOCAL}/copy-folder`;
+    const payload = { destination_path: publicLinkValue };
+    const res = await request("POST", url, { data: payload });
+    return res.status;
   };
 
   const createCalibrationWorkspace = async (calibrationId) => {
     if (!projectId) {
       console.warn("createCalibrationWorkspace: projectId is missing");
-      return {
-        success: false,
-        message: "projectId is missing",
-      };
+      return { success: false, message: "projectId is missing" };
     }
 
     if (!user?.username || user.username === "Unknown") {
       console.warn("createCalibrationWorkspace: username is missing");
-      return {
-        success: false,
-        message: "username is missing",
-      };
+      return { success: false, message: "username is missing" };
     }
 
     if (!calibrationId || String(calibrationId).trim() === "") {
       console.warn("createCalibrationWorkspace: calibrationId is missing");
-      return {
-        success: false,
-        message: "calibrationId is missing",
-      };
+      return { success: false, message: "calibrationId is missing" };
     }
 
     try {
@@ -627,17 +563,12 @@ export function AppProvider({ children }) {
       };
     } catch (err) {
       console.error("createCalibrationWorkspace failed:", err);
-
       const detail =
         err.response?.data?.detail ||
         err.response?.data?.message ||
         err.message ||
         "createCalibrationWorkspace request failed";
-
-      return {
-        success: false,
-        message: detail,
-      };
+      return { success: false, message: detail };
     }
   };
 
@@ -647,17 +578,12 @@ export function AppProvider({ children }) {
       : [];
 
     if (folderList.length === 0) {
-      return {
-        success: false,
-        message: "folders is empty",
-      };
+      return { success: false, message: "folders is empty" };
     }
 
     try {
       const res = await request("POST", API.LOCAL + API.LOCAL_CREATE_FOLDERS, {
-        data: {
-          folders: folderList,
-        },
+        data: { folders: folderList },
       });
 
       if (res.data?.success) {
@@ -675,44 +601,90 @@ export function AppProvider({ children }) {
       };
     } catch (err) {
       console.error("createLocalFolders failed:", err);
-
       const detail =
         err.response?.data?.detail ||
         err.response?.data?.message ||
         err.message ||
         "createLocalFolders request failed";
+      return { success: false, message: detail };
+    }
+  };
+
+  // 新 Copy Template 接口：给 EditPage / Progress 调用。
+  // destinationApplicationDir 必须是本地项目的 40.Application 目录。
+  // calibrationIds 来自 workflow 的 C.Calibration 子节点。
+  const copyApplicationTemplate = async (destinationApplicationDir, calibrationIds = []) => {
+    const target = String(destinationApplicationDir || "").trim();
+    const normalizedCalibrationIds = Array.isArray(calibrationIds)
+      ? calibrationIds.map((id) => String(id || "").trim()).filter(Boolean)
+      : [];
+
+    if (!target) {
+      return {
+        success: false,
+        message: "destinationApplicationDir is empty",
+      };
+    }
+
+    try {
+      const res = await request("POST", API.LOCAL + API.LOCAL_COPY_APPLICATION_TEMPLATE, {
+        data: {
+          destination_application_dir: target,
+          calibration_ids: normalizedCalibrationIds,
+        },
+      });
+
+      if (res.data?.success) {
+        return {
+          success: true,
+          destination_application_dir: res.data?.destination_application_dir || target,
+          calibration_ids: res.data?.calibration_ids || normalizedCalibrationIds,
+          created_count: res.data?.created_count ?? 0,
+          existing_count: res.data?.existing_count ?? 0,
+          skipped_count: res.data?.skipped_count ?? res.data?.existing_count ?? 0,
+          copied_files_count: res.data?.copied_files_count ?? 0,
+          skipped_existing_files_count: res.data?.skipped_existing_files_count ?? 0,
+          data: res.data,
+        };
+      }
 
       return {
         success: false,
-        message: detail,
+        message: res.data?.message || "copyApplicationTemplate failed",
+        data: res.data,
       };
+    } catch (err) {
+      console.error("copyApplicationTemplate failed:", err);
+      const detail =
+        err.response?.data?.detail ||
+        err.response?.data?.message ||
+        err.message ||
+        "copyApplicationTemplate request failed";
+      return { success: false, message: detail };
     }
   };
 
   useEffect(() => {
-    if (msgQueue.length === 0) return;
+    if (msgQueue.length === 0) return undefined;
 
     const timer = setTimeout(() => {
-      const users = Array.from(new Set(msgQueue.map(m =>
-        m.payload.username || "未知用户"
-      )));
-
-      const projectEvents = msgQueue.filter(m => m.evt === "ProjectUpdated");
-      const wfEvents = msgQueue.filter(m => m.evt === "WorkflowUpdated");
-
+      const users = Array.from(
+        new Set(msgQueue.map((m) => m.payload.username || "未知用户"))
+      );
+      const projectEvents = msgQueue.filter((m) => m.evt === "ProjectUpdated");
+      const wfEvents = msgQueue.filter((m) => m.evt === "WorkflowUpdated");
       const parts = [];
+
       if (projectEvents.length > 0) {
-        parts.push(`📁 项目更新 x${projectEvents.length}`);
+        parts.push(` 项目更新 x${projectEvents.length}`);
       }
       if (wfEvents.length > 0) {
-        parts.push(`🔧 工作流更新 x${wfEvents.length}`);
+        parts.push(` 工作流更新 x${wfEvents.length}`);
       }
 
       const finalMsg = `${parts.join("，")}（${users.join("、")}）`;
-
       messageApi.info(finalMsg);
-
-      setMsgQueue([]); // 清空队列
+      setMsgQueue([]);
     }, 1000);
 
     return () => clearTimeout(timer);
@@ -744,13 +716,11 @@ export function AppProvider({ children }) {
           projectProgress,
           loading,
           projectName,
-
           needCreate,
           selectableDepartments,
           selectedDepartment,
           setSelectedDepartment,
           createProject,
-
           rewriteProjectInfo,
           updateWorkFlow,
           getTaskDetail,
@@ -761,7 +731,7 @@ export function AppProvider({ children }) {
           SetUpApplicationFloder,
           createCalibrationWorkspace,
           createLocalFolders,
-
+          copyApplicationTemplate,
           teamMembers,
           loadTeamMembers,
           getProjectFromPMS,

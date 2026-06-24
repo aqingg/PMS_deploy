@@ -10,9 +10,8 @@ import {
   Modal,
   Select,
 } from "antd";
-import { ImportOutlined, ExportOutlined, LinkOutlined  } from "@ant-design/icons";
+import { ImportOutlined, ExportOutlined, LinkOutlined } from "@ant-design/icons";
 import { useAppContext } from "../../../context/AppContext";
-import ProjectInfoFill from "./ProjectInfoFill";
 
 export default function EditProjectPage() {
   const {
@@ -24,7 +23,7 @@ export default function EditProjectPage() {
     rewriteProjectInfo,
     SetUpApplicationFloder,
     createCalibrationWorkspace,
-    createLocalFolders,
+    copyApplicationTemplate,
     teamMembers,
     loadTeamMembers,
     getProjectInfoFromPMS,
@@ -37,7 +36,6 @@ export default function EditProjectPage() {
 
   // 多选数据
   const [proxiesSelected, setProxiesSelected] = useState([]);
-
   const [messageApi, contextHolder] = message.useMessage();
 
   // ⭐ 可编辑状态（初始化来自 context）
@@ -46,9 +44,7 @@ export default function EditProjectPage() {
   const [infoValues, setInfoValues] = useState([]);
   const [ownerFilter] = useState("");
   const [proxiesFilter] = useState("");
-
   const [uuidValue, setUuidValue] = useState("");
-
   const [pmsData, setPmsData] = useState([]);
   const [customerModalVisible, setCustomerModalVisible] = useState(false);
   const [projectModalVisible, setProjectModalVisible] = useState(false);
@@ -77,13 +73,11 @@ export default function EditProjectPage() {
 
   function openProxiesModal() {
     loadTeamMembers();
-
     // ⭐ 把之前的 proxiesValue 解析回数组
     if (proxiesValue) {
-      const arr = proxiesValue.split(",").map(v => v.trim());
+      const arr = proxiesValue.split(",").map((v) => v.trim());
       setProxiesSelected(arr);
     }
-
     setProxiesModalVisible(true);
   }
 
@@ -118,14 +112,13 @@ export default function EditProjectPage() {
   const grid = projectInfo.projectInfo || [];
   const owner = projectInfo.owner || { label: "Owner", value: "" };
   const proxies = projectInfo.proxies || { label: "Proxies", value: "" };
-  const uuid = projectInfo.uuid || {label: "UUID", value: "" };
+  const uuid = projectInfo.uuid || { label: "UUID", value: "" };
 
   // =================================================================================
   // ⭐ 二维表单行渲染
   // =================================================================================
   const renderRow = (row, rowIndex) => {
     const count = row.length;
-
     let span = 24;
     if (count === 2) span = 12;
     else if (count === 3) span = 8;
@@ -133,19 +126,22 @@ export default function EditProjectPage() {
     else if (count > 4) span = 3;
 
     return (
-      <Row key={rowIndex} gutter={24} style={{ marginBottom: 12 }}>
+      <Row gutter={24} key={rowIndex} style={{ marginBottom: 8 }}>
         {row.map((item, colIndex) => (
           <Col span={span} key={colIndex}>
-            <ProjectInfoFill
-              label={item.label}
-              value={infoValues[rowIndex]?.[colIndex] ?? ""}
-              keys={item.keys}
-              onChange={(val) => {
-                const newInfo = [...infoValues];
-                newInfo[rowIndex][colIndex] = val;
-                setInfoValues(newInfo);
-              }}
-            />
+            <Form.Item label={item.label}>
+              <Input
+                value={infoValues[rowIndex]?.[colIndex] ?? ""}
+                style={{ height: 32 }}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  const newInfo = infoValues.map((r) => [...r]);
+                  if (!newInfo[rowIndex]) newInfo[rowIndex] = [];
+                  newInfo[rowIndex][colIndex] = val;
+                  setInfoValues(newInfo);
+                }}
+              />
+            </Form.Item>
           </Col>
         ))}
       </Row>
@@ -155,7 +151,7 @@ export default function EditProjectPage() {
   function isValidUrl(string) {
     // 如果链接不是必需的，这里返回 true
     if (!string) {
-      return false; 
+      return false;
     }
     try {
       new URL(string);
@@ -172,81 +168,132 @@ export default function EditProjectPage() {
       if (String(node?.taskName || "").trim() === taskName) {
         return node;
       }
-
       const found = findTaskNodeByName(node?.children || [], taskName);
       if (found) {
         return found;
+      }
+    }
+    return null;
+  }
+
+  function getDefaultCalibrationIds() {
+    const calibrationRoot = findTaskNodeByName(
+      projectWorkFlow?.taskTree || [],
+      "C.Calibration"
+    );
+    if (!calibrationRoot || !Array.isArray(calibrationRoot.children)) {
+      return [];
+    }
+    return calibrationRoot.children
+      .map((child) => String(child?.taskName || "").trim())
+      .filter(Boolean);
+  }
+
+  function deriveApplicationDirFromWorkspace(paths = {}) {
+    if (paths.application_dir) return paths.application_dir;
+    if (paths.applicationDir) return paths.applicationDir;
+
+    const candidates = [
+      paths.calibration_root,
+      paths.calibration_dir,
+      paths.email_dir,
+      paths.tcd08_report_dir,
+      ...(Array.isArray(paths.folders) ? paths.folders : []),
+    ].filter(Boolean);
+
+    for (const value of candidates) {
+      const rawPath = String(value).trim();
+      const normalized = rawPath.replace(/\//g, "\\");
+      const lower = normalized.toLowerCase();
+      const marker = "\\40.application";
+      const index = lower.lastIndexOf(marker);
+
+      if (index >= 0) {
+        return normalized.slice(0, index + marker.length);
+      }
+
+      if (lower.endsWith("40.application")) {
+        return normalized;
       }
     }
 
     return null;
   }
 
-  function getDefaultCalibrationIds() {
-    const calibrationRoot = findTaskNodeByName(projectWorkFlow?.taskTree || [], "C.Calibration");
+  async function initializeDefaultCalibrationFolders() {
+    const workflowCalibrationIds = getDefaultCalibrationIds();
+    const calibrationIds =
+      workflowCalibrationIds.length > 0
+        ? workflowCalibrationIds
+        : ["ACQ_CaliID", "VAL_CaliID"];
 
-    if (!calibrationRoot || !Array.isArray(calibrationRoot.children)) {
-      return [];
+    let workspaceResult = null;
+    let selectedCalibrationId = null;
+    const failedIds = [];
+
+    for (const cid of calibrationIds) {
+      try {
+        const result = await createCalibrationWorkspace(cid);
+        if (result?.success) {
+          workspaceResult = result;
+          selectedCalibrationId = cid;
+          break;
+        }
+        console.error("createCalibrationWorkspace failed:", cid, result);
+        failedIds.push(cid);
+      } catch (error) {
+        console.error(`Initialize calibration workspace failed for ${cid}:`, error);
+        failedIds.push(cid);
+      }
     }
 
-    return calibrationRoot.children
-      .map((child) => String(child?.taskName || "").trim())
-      .filter(Boolean);
-  }
+    if (!workspaceResult?.success) {
+      messageApi.warning(
+        `无法计算本地 40.Application 路径：${failedIds.join(", ") || "No CalibrationID"}`
+      );
+      return;
+    }
 
- async function initializeDefaultCalibrationFolders() {
-  const calibrationIds = ["ACQ_CaliID", "VAL_CaliID"];
+    const paths = workspaceResult.paths || {};
+    const destinationApplicationDir = deriveApplicationDirFromWorkspace(paths);
 
-  let successCount = 0;
-  const failedIds = [];
+    if (!destinationApplicationDir) {
+      console.error("Cannot derive 40.Application path from workspace paths:", paths);
+      messageApi.warning("无法从后端返回路径中推导 40.Application 目录，请检查 Local Link。 ");
+      return;
+    }
 
-  for (const cid of calibrationIds) {
     try {
-      const workspaceResult = await createCalibrationWorkspace(cid);
+      messageApi.loading("正在从模板初始化 40.Application 目录结构...", 0);
+      const copyResult = await copyApplicationTemplate(destinationApplicationDir, calibrationIds);
+      messageApi.destroy();
 
-      if (!workspaceResult?.success) {
-        console.error("createCalibrationWorkspace failed:", cid, workspaceResult);
-        failedIds.push(cid);
-        continue;
-      }
-
-      const paths = workspaceResult.paths || {};
-      const folders = (
-        Array.isArray(paths.folders)
-          ? paths.folders
-          : [paths.calibration_root, paths.email_dir, paths.tcd08_report_dir]
-      ).filter(Boolean);
-
-      if (folders.length === 0) {
-        console.error("No folders returned:", cid, paths);
-        failedIds.push(cid);
-        continue;
-      }
-
-      const localResult = await createLocalFolders(folders);
-
-      if (localResult?.success) {
-        successCount += 1;
+      if (copyResult?.success) {
+        const createdCount = Number(copyResult.created_count || 0);
+        const skippedCount = Number(copyResult.skipped_count || 0);
+        const copiedFilesCount = Number(copyResult.copied_files_count || 0);
+        messageApi.success(
+          `40.Application 模板初始化完成。新增 ${createdCount} 个目录，复制 ${copiedFilesCount} 个文件，已存在 ${skippedCount} 个目录。`
+        );
+        console.log("copyApplicationTemplate success:", {
+          selectedCalibrationId,
+          calibrationIds,
+          destinationApplicationDir,
+          copyResult,
+        });
       } else {
-        console.error("createLocalFolders failed:", cid, localResult);
-        failedIds.push(cid);
+        console.error("copyApplicationTemplate failed:", copyResult);
+        messageApi.error(copyResult?.message || "40.Application 模板目录初始化失败");
       }
     } catch (error) {
-      console.error(`Initialize calibration folders failed for ${cid}:`, error);
-      failedIds.push(cid);
+      messageApi.destroy();
+      console.error("copyApplicationTemplate failed:", error);
+      messageApi.error("40.Application 模板目录初始化失败，请确认 7175 Client 已启动且 N 盘可访问。");
     }
   }
 
-  if (successCount > 0) {
-    messageApi.success(`CalibrationID 目录初始化完成：${successCount} 个`);
-  }
-
-  if (failedIds.length > 0) {
-    messageApi.warning(`部分 CalibrationID 目录初始化失败：${failedIds.join(", ")}`);
-  }
-}
-
-  async function handleSave(infoValuesOverride = null) {
+  async function handleSave(infoValuesOverride = null, options = {}) {
+    const { initializeFolders = true } = options || {};
     const sourceInfoValues = Array.isArray(infoValuesOverride)
       ? infoValuesOverride
       : infoValues;
@@ -260,10 +307,9 @@ export default function EditProjectPage() {
 
     const publicLinkValue = projectInfoData
       .flat()
-      .find(item => item.label === 'Public Link')
-      ?.value;
+      .find((item) => item.label === "Public Link")?.value;
 
-    if (isValidUrl(publicLinkValue)) {
+    if (initializeFolders && isValidUrl(publicLinkValue)) {
       try {
         const result = await SetUpApplicationFloder(publicLinkValue);
         //const result = await SetUpApplicationFloder("C:/Users/SZO8SZH/Downloads/testoutput/");
@@ -293,13 +339,15 @@ export default function EditProjectPage() {
     };
 
     try {
-      messageApi.loading('Updating project info...', 0);
+      messageApi.loading("Updating project info...", 0);
       const result = await rewriteProjectInfo(finalData);
       messageApi.destroy();
 
       if (result.success) {
         messageApi.success("Project Info Updated!");
-        await initializeDefaultCalibrationFolders();
+        if (initializeFolders) {
+          await initializeDefaultCalibrationFolders();
+        }
       } else {
         messageApi.error(result.message || "Failed to update project info");
       }
@@ -308,45 +356,42 @@ export default function EditProjectPage() {
       console.error("Error while saving project info:", error);
       messageApi.error("An unexpected error occurred. Please check the console.");
     }
-  };
+  }
 
   async function handleExportFile() {
-    const projectId = localStorage.getItem('projectId');
+    const projectId = localStorage.getItem("projectId");
 
     if (!projectId) {
-      console.error('在 LocalStorage 中未找到 projectId');
-      messageApi.error('无法导出文件，项目ID丢失！');
+      console.error("在 LocalStorage 中未找到 projectId");
+      messageApi.error("无法导出文件，项目ID丢失！");
       return;
     }
 
-    const apiUrl = `http://127.0.0.1:7175/GeneralInfo/${projectId}`; 
+    const apiUrl = `http://127.0.0.1:7175/GeneralInfo/${projectId}`;
 
     try {
       const response = await fetch(apiUrl, {
-        method: 'GET',
+        method: "GET",
       });
 
       if (!response.ok) {
-        const errorData = await response.json(); 
-        console.error('API返回错误:', errorData.detail || `HTTP status ${response.status}`);
+        const errorData = await response.json();
+        console.error("API返回错误:", errorData.detail || `HTTP status ${response.status}`);
         throw new Error(errorData.detail || `服务器错误: ${response.status}`);
       }
 
       const successData = await response.json();
-      console.log('API调用成功，后端返回信息:', successData);
-
-      messageApi.success('文件已在服务器端成功生成！');
-
+      console.log("API调用成功，后端返回信息:", successData);
+      messageApi.success("文件已在服务器端成功生成！");
     } catch (error) {
-      console.error('导出文件时发生错误:', error);
+      console.error("导出文件时发生错误:", error);
       message.destroy();
       messageApi.error(`导出失败: ${error.message}`);
     }
   }
 
   function handleAutoFillLinks() {
-    const newInfo = [...infoValues];
-
+    const newInfo = infoValues.map((row) => [...row]);
     let oemValue = "";
     let localPos = null;
     let publicPos = null;
@@ -379,7 +424,6 @@ export default function EditProjectPage() {
     // ⭐ 4. 自动构造路径（使用 "\"）
     const baseA = "C:\\AppTools\\00.APP-PMS\\PlayGround";
     const baseB = "\\\\bosch.com\\dfsrb\\DfsCN\\DIV\\CC\\Prj\\PS\\00_General\\10_Migrated_2_ILM\\99_PlayGround";
-
     const localPath = `${baseA}\\${safeOEM}\\${safeProjectName}`;
     const publicPath = `${baseB}\\${safeOEM}\\${safeProjectName}`;
 
@@ -394,10 +438,10 @@ export default function EditProjectPage() {
     // 6. 更新前端 state
     setInfoValues(newInfo);
 
-    // ⭐⭐⭐ 7. 自动保存项目（触发 Update Project Info）
-    handleSave(newInfo);
-  };
-
+    // 7. 自动保存项目资料，但不触发目录初始化。
+    // 目录初始化只绑定在用户手动点击 Update Project Info。
+    handleSave(newInfo, { initializeFolders: false });
+  }
 
   async function linktoPMS() {
     if (!uuidValue) {
@@ -408,32 +452,28 @@ export default function EditProjectPage() {
     try {
       const Baseurl = "https://cccn.apac.bosch.com/pms/#/WorkSpace_AddEditProject";
       const url = `${Baseurl}?projectid=${uuidValue}`;
-
-      window.open(url, '_blank', 'noopener,noreferrer');
-    }catch (error) {
+      window.open(url, "_blank", "noopener,noreferrer");
+    } catch (error) {
       console.error("An unexpected error occurred while trying to link to PMS:", error);
       messageApi.error("An unexpected error occurred. Please try again or contact support.");
     }
-  };
+  }
 
   const pmsToFormKeyMap = {
-    "OEM": "oem",
+    OEM: "oem",
     "Product Category": "ab_generation",
-    "Market": "TargetMarket",
-    "Status": "Status",
+    Market: "TargetMarket",
+    Status: "Status",
     "SOP Date": "sop",
-
-    "Project Leader":"project_leader",
+    "Project Leader": "project_leader",
     "MCR No.": "MCR_No",
     "ECU Direction": "ConnectorDirection",
     "BOSCH PIN": "Digit10OemPn",
     "Customer PIN": "customerOemPn",
-
     "Inertial Sensor": "internal_sensor_configuration",
     "Peripheral Sensor": "peripheral_sensor_configuration",
     "Vehicle Type": "type",
-
-    "Fire Loops": "FlConfiguration"
+    "Fire Loops": "FlConfiguration",
   };
 
   async function handleImportFromPMS() {
@@ -444,18 +484,17 @@ export default function EditProjectPage() {
 
     try {
       // 获取项目信息
-      messageApi.loading('Importing from PMS...');
+      messageApi.loading("Importing from PMS...");
       const pmsProjectDetail = await getProjectInfoFromPMS(uuidValue);
 
       // 检查返回值
       if (!pmsProjectDetail || Object.keys(pmsProjectDetail).length === 0) {
-        messageApi.warning('No details found for this UUID in PMS.');
+        messageApi.warning("No details found for this UUID in PMS.");
         return;
       }
 
       // 数据更新
-      const newInfo = infoValues.map(row => [...row]); 
-
+      const newInfo = infoValues.map((row) => [...row]);
       const labelToCoordMap = new Map();
       grid.forEach((row, rIdx) => {
         row.forEach((cell, cIdx) => {
@@ -470,7 +509,6 @@ export default function EditProjectPage() {
         if (pmsProjectDetail.data.hasOwnProperty(pmsKey)) {
           // 从坐标映射中查找该 label 对应的位置
           const coords = labelToCoordMap.get(formLabel);
-
           if (coords) {
             const [rIdx, cIdx] = coords;
             let pmsValue = pmsProjectDetail.data[pmsKey];
@@ -492,13 +530,12 @@ export default function EditProjectPage() {
 
       // 使用更新后的数据
       setInfoValues(newInfo);
-
-      messageApi.success('Project Info successfully imported from PMS!');
+      messageApi.success("Project Info successfully imported from PMS!");
     } catch (error) {
       console.error("Error fetching from PMS:", error);
-      messageApi.error('Failed to fetch data from PMS.');
+      messageApi.error("Failed to fetch data from PMS.");
     }
-  };
+  }
 
   async function getUUIDFromPMS() {
     try {
@@ -515,7 +552,7 @@ export default function EditProjectPage() {
       console.error("Error fetching from PMS:", error);
       messageApi.error("Failed to fetch data from PMS.");
     }
-  };
+  }
 
   function handleCustomerSelectOk() {
     if (selectedCustomer) {
@@ -524,7 +561,7 @@ export default function EditProjectPage() {
     } else {
       messageApi.warning("Please select a customer.");
     }
-  };
+  }
 
   function handleProjectSelectOk() {
     if (selectedCustomer && selectedProject) {
@@ -540,33 +577,31 @@ export default function EditProjectPage() {
       } else {
         messageApi.error("Could not find a matching UUID for the selected project.");
       }
-
       handleModalCancel();
     } else {
       messageApi.warning("Please select a project.");
     }
-  };
+  }
 
   function handleModalCancel() {
-      setCustomerModalVisible(false);
-      setProjectModalVisible(false);
-      setSelectedCustomer(null);
-      setSelectedProject(null);
-      setPmsData([]);
-  };
+    setCustomerModalVisible(false);
+    setProjectModalVisible(false);
+    setSelectedCustomer(null);
+    setSelectedProject(null);
+    setPmsData([]);
+  }
 
   // 过滤重复的 customer_name
-  const customerOptions = Array.from(new Set(pmsData.map(item => item.customer_name)))
+  const customerOptions = Array.from(new Set(pmsData.map((item) => item.customer_name)))
     .filter(Boolean) // 过滤掉空值
     .sort()
-    .map(name => ({ label: name, value: name }));
+    .map((name) => ({ label: name, value: name }));
 
   // 根据选择的 customer 获取对应的 project_name
   const projectOptions = pmsData
-    .filter(item => item.customer_name === selectedCustomer)
-    .map(item => ({ label: item.project_name, value: item.project_name }))
+    .filter((item) => item.customer_name === selectedCustomer)
+    .map((item) => ({ label: item.project_name, value: item.project_name }))
     .sort((a, b) => a.label.localeCompare(b.label));
-
 
   // =================================================================================
   // ⭐ UI
@@ -574,15 +609,12 @@ export default function EditProjectPage() {
   return (
     <div style={{ position: "relative" }}>
       {contextHolder}
-
       <Row align="middle">
         <Col flex="auto">
           <h1 className="text-2xl font-bold m-0">{projectName}</h1>
         </Col>
-
         <Col flex="none">
           <div style={{ display: "flex", gap: 12 }}>
-
             {/* Auto Fill Links */}
             <Button
               type="default"
@@ -614,7 +646,7 @@ export default function EditProjectPage() {
             </Button>
 
             {/* Jump To PMS */}
-            <Button 
+            <Button
               type="primary"
               style={{
                 height: 40,
@@ -657,11 +689,10 @@ export default function EditProjectPage() {
             >
               Update Project Info
             </Button>
-
           </div>
         </Col>
-
       </Row>
+
       <Divider />
 
       {/* 主表单 */}
@@ -673,9 +704,7 @@ export default function EditProjectPage() {
       >
         <Row gutter={24} style={{ marginBottom: 8 }}>
           <Col span={12}>
-            <Form.Item
-              label={owner.label}
-            >
+            <Form.Item label={owner.label}>
               <Input
                 value={ownerValue}
                 readOnly
@@ -685,9 +714,7 @@ export default function EditProjectPage() {
             </Form.Item>
           </Col>
           <Col span={12}>
-            <Form.Item
-              label={proxies.label}
-            >
+            <Form.Item label={proxies.label}>
               <Input
                 value={proxiesValue}
                 readOnly
@@ -697,9 +724,7 @@ export default function EditProjectPage() {
             </Form.Item>
           </Col>
           <Col span={12}>
-            <Form.Item
-              label={uuid.label}
-            >
+            <Form.Item label={uuid.label}>
               <Input
                 value={uuidValue}
                 readOnly
@@ -709,7 +734,9 @@ export default function EditProjectPage() {
             </Form.Item>
           </Col>
         </Row>
+
         <Divider />
+
         {grid.map((row, index) => renderRow(row, index))}
       </Form>
 
@@ -720,7 +747,9 @@ export default function EditProjectPage() {
         onCancel={handleModalCancel}
         destroyOnHidden
       >
-        <p style={{marginTop: 16, marginBottom: 8}}>Please select the customer name from the PMS data.</p>
+        <p style={{ marginTop: 16, marginBottom: 8 }}>
+          Please select the customer name from the PMS data.
+        </p>
         <Select
           showSearch
           style={{ width: "100%" }}
@@ -741,11 +770,11 @@ export default function EditProjectPage() {
         onCancel={handleModalCancel}
         destroyOnHidden
       >
-        <div style={{marginTop: 16, marginBottom: 8}}>
-            <p>
-                Customer: <strong>{selectedCustomer}</strong>
-            </p>
-            <p>Please select the project name to import its UUID.</p>
+        <div style={{ marginTop: 16, marginBottom: 8 }}>
+          <p>
+            Customer: <strong>{selectedCustomer}</strong>
+          </p>
+          <p>Please select the project name to import its UUID.</p>
         </div>
         <Select
           showSearch
@@ -791,7 +820,6 @@ export default function EditProjectPage() {
           options={proxiesFiltered.map((name) => ({ label: name, value: name }))}
         />
       </Modal>
-
     </div>
   );
 }
