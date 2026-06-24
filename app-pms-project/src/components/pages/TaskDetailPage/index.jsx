@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback  } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useParams } from "react-router-dom";
 import {
   Button,
@@ -11,7 +11,6 @@ import {
   Tooltip,
   Modal,
   Form,
-  Spin,
 } from "antd";
 
 import WorkFlow from "./WorkFlow";
@@ -27,9 +26,20 @@ import {
 
 export default function TaskDetailPage() {
   const [messageApi, contextHolder] = message.useMessage();
-  const { projectId, taskId } = useParams();
-  const { projectWorkFlow, projectName, projectInfo, getParameter, getRealPathFromBackend, getOfficeFiles, user, updateWorkFlow, getWorkFlowTemplate } =
-  useAppContext();
+  const { projectId: routeProjectId, taskId } = useParams();
+  const {
+    projectId: contextProjectId,
+    projectWorkFlow,
+    projectName,
+    projectInfo,
+    getParameter,
+    getRealPathFromBackend,
+    getOfficeFiles,
+    user,
+    updateWorkFlow,
+    getWorkFlowTemplate,
+    renameCalibrationWorkspace,
+  } = useAppContext();
 
   const [currentTask, setCurrentTask] = useState(null);
 
@@ -48,22 +58,58 @@ export default function TaskDetailPage() {
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [newTaskName, setNewTaskName] = useState("");
 
-  // 操作执行中等待弹窗
-  const [loadingModalOpen, setLoadingModalOpen] = useState(false);
-  const [loadingText, setLoadingText] = useState("");
-
   // 允许中文，不允许真正危险字符
   const ILLEGAL_REGEX = /[/\\<>{}[\]"'`|]/g;
+
+  const getEffectiveProjectId = useCallback(() => {
+    const fromRoute = routeProjectId ? Number(routeProjectId) : null;
+    if (Number.isFinite(fromRoute) && fromRoute > 0) return fromRoute;
+
+    const fromContext = contextProjectId ? Number(contextProjectId) : null;
+    if (Number.isFinite(fromContext) && fromContext > 0) return fromContext;
+
+    const stored = localStorage.getItem("projectId");
+    const fromStorage = stored ? Number(stored) : null;
+    if (Number.isFinite(fromStorage) && fromStorage > 0) return fromStorage;
+
+    return null;
+  }, [routeProjectId, contextProjectId]);
+
+  const getNodeName = useCallback((node) => {
+    return String(
+      node?.taskName || node?.name || node?.title || node?.label || ""
+    ).trim();
+  }, []);
+
+  const isCalibrationParentName = useCallback((name) => {
+    const normalized = String(name || "")
+      .trim()
+      .toLowerCase()
+      .replace(/[\s._-]+/g, "");
+
+    return normalized === "ccalibration" || normalized === "calibration";
+  }, []);
 
   // ================================
   // 工具函数：根据 UUID 找任务节点
   // ================================
   const findTaskNodeById = useCallback((nodes, id) => {
-    for (const node of nodes) {
+    for (const node of nodes || []) {
       if (node.id === id) return node;
       if (node.children?.length) {
         const res = findTaskNodeById(node.children, id);
         if (res) return res;
+      }
+    }
+    return null;
+  }, []);
+
+  const findParentNodeById = useCallback((nodes, id, parent = null) => {
+    for (const node of nodes || []) {
+      if (node.id === id) return parent;
+      if (node.children?.length) {
+        const result = findParentNodeById(node.children, id, node);
+        if (result) return result;
       }
     }
     return null;
@@ -107,6 +153,9 @@ export default function TaskDetailPage() {
     if (!detail) {
       setTaskNotFound(true);
       setTaskDescription("No workflow template defined for this task.");
+      setTaskInputs([]);
+      setTaskOutputs([]);
+      setTaskOperation(null);
       return;
     }
 
@@ -133,29 +182,53 @@ export default function TaskDetailPage() {
   // 更新状态
   // ================================
   const updateStatus = async (newStatus) => {
+    const effectiveProjectId = getEffectiveProjectId();
+    if (!effectiveProjectId) {
+      messageApi.error("缺少项目ID，无法更新状态");
+      return;
+    }
+
     const updated = JSON.parse(JSON.stringify(projectWorkFlow));
     const task = findTaskNodeById(updated.taskTree, taskId);
 
-    if (!task) return;
+    if (!task) {
+      messageApi.error("当前任务节点不存在");
+      return;
+    }
 
     task.status = newStatus;
 
-    await updateWorkFlow({
+    const res = await updateWorkFlow({
       username: user.username,
       department: user.department,
       workflow: updated,
-      projectId: Number(projectId),
+      projectId: effectiveProjectId,
     });
+
+    if (res?.success) {
+      setCurrentTask({ ...task });
+      return;
+    }
+
+    messageApi.error("Status update failed");
   };
 
   // ================================
   // 保存任务名
   // ================================
   const updateTaskName = async () => {
-    const cleaned = newTaskName.replace(ILLEGAL_REGEX, "");
+    const cleaned = newTaskName.trim().replace(ILLEGAL_REGEX, "");
+    const hasIllegalChars = ILLEGAL_REGEX.test(newTaskName);
+    ILLEGAL_REGEX.lastIndex = 0;
 
     if (!cleaned.trim()) {
       messageApi.error("Task name cannot be empty");
+      return;
+    }
+
+    const effectiveProjectId = getEffectiveProjectId();
+    if (!effectiveProjectId) {
+      messageApi.error("缺少项目ID，无法保存任务名称");
       return;
     }
 
@@ -164,17 +237,82 @@ export default function TaskDetailPage() {
 
     if (!node) return;
 
+    const oldTaskName = getNodeName(node);
+    const parentNode = findParentNodeById(updated.taskTree, taskId);
+    const parentName = getNodeName(parentNode);
+    const isCalibrationChild =
+      isCalibrationParentName(parentName) && !isCalibrationParentName(oldTaskName);
+
+    if (isCalibrationChild) {
+      if (hasIllegalChars) {
+        messageApi.error("CalibrationID 不能包含 Windows 非法字符");
+        return;
+      }
+
+      const siblingNames = (parentNode.children || [])
+        .filter((item) => item.id !== taskId)
+        .map((item) => getNodeName(item))
+        .filter(Boolean);
+
+      if (siblingNames.includes(cleaned)) {
+        messageApi.error(`CalibrationID 已存在：${cleaned}`);
+        return;
+      }
+
+      if (cleaned === oldTaskName) {
+        setEditModalOpen(false);
+        return;
+      }
+
+      Modal.confirm({
+        title: "同步重命名本地目录？",
+        content: `检测到 CalibrationID 从 ${oldTaskName} 改为 ${cleaned}。是否同时重命名本地目录？`,
+        okText: "同步重命名",
+        cancelText: "取消",
+        onOk: async () => {
+          const localResult = await renameCalibrationWorkspace({
+            oldCalibrationId: oldTaskName,
+            newCalibrationId: cleaned,
+          });
+
+          if (!localResult?.success) {
+            messageApi.error(localResult?.message || "本地目录重命名失败");
+            return;
+          }
+
+          node.taskName = cleaned;
+
+          const res = await updateWorkFlow({
+            username: user.username,
+            department: user.department,
+            workflow: updated,
+            projectId: effectiveProjectId,
+          });
+
+          if (res?.success) {
+            setCurrentTask({ ...node });
+            setEditModalOpen(false);
+            messageApi.success("CalibrationID 已同步重命名");
+          } else {
+            messageApi.error("本地目录已重命名，但 workflow 保存失败");
+          }
+        },
+      });
+
+      return;
+    }
+
     node.taskName = cleaned; // 修改 taskTree 的名字
 
     const res = await updateWorkFlow({
       username: user.username,
       department: user.department,
       workflow: updated,
-      projectId: Number(projectId),
+      projectId: effectiveProjectId,
     });
 
-    if (res.success) {
-      //messageApi.success("Task name updated!");
+    if (res?.success) {
+      setCurrentTask({ ...node });
       setEditModalOpen(false);
     } else {
       messageApi.error("Update failed");
@@ -192,8 +330,13 @@ export default function TaskDetailPage() {
       throw new Error("配置错误：'need_parameter' 必须是一个数组。");
     }
 
+    const effectiveProjectId = getEffectiveProjectId();
+    if (!effectiveProjectId) {
+      throw new Error("缺少项目ID，无法执行操作");
+    }
+
     // 创建一个Promise数组，每个Promise负责获取一个参数
-    const parameterPromises = parameterNames.map(name => getParameter(name));
+    const parameterPromises = parameterNames.map((name) => getParameter(name));
 
     // 并行等待所有参数获取完成
     const parameterResults = await Promise.all(parameterPromises);
@@ -202,11 +345,23 @@ export default function TaskDetailPage() {
 
     let input_files = [];
     if (!isTCD08Fill) {
-      const input_path = await getRealPathFromBackend({ label: taskInputs[0].label, taskId, projectId, user, type });
+      const input_path = await getRealPathFromBackend({
+        label: taskInputs[0].label,
+        taskId,
+        projectId: effectiveProjectId,
+        user,
+        type,
+      });
       input_files = await getOfficeFiles(input_path);
     }
 
-    const output_path = await getRealPathFromBackend({ label: taskOutputs[0].label, taskId, projectId, user, type });
+    const output_path = await getRealPathFromBackend({
+      label: taskOutputs[0].label,
+      taskId,
+      projectId: effectiveProjectId,
+      user,
+      type,
+    });
 
     // 1. 构建最终请求体
     let { url, method, body } = operation_detail;
@@ -222,7 +377,7 @@ export default function TaskDetailPage() {
     finalBody.save_path = output_path;
     if (isTCD08Fill) {
       finalBody.project_info = projectInfo;
-      finalBody.projectId = Number(projectId);
+      finalBody.projectId = effectiveProjectId;
       finalBody.taskId = taskId;
     }
 
@@ -230,7 +385,7 @@ export default function TaskDetailPage() {
     const response = await fetch(url, {
       method: method,
       headers: {
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
       },
       body: finalBody ? JSON.stringify(finalBody) : undefined,
     });
@@ -248,7 +403,7 @@ export default function TaskDetailPage() {
       }
       throw new Error(errorMessage);
     }
-    
+
     // 4. 成功处理
     try {
       return await response.json();
@@ -291,7 +446,7 @@ export default function TaskDetailPage() {
 
       {/* ===== Main Content ===== */}
       <Card size="small" style={{ marginTop: 12, padding: 16 }}>
-        {/* ⭐ 状态按钮永远显示 */}
+        {/* ⭐ 状态按钮永远显示：恢复原始图标，不使用普通按钮/弹窗 */}
         <div style={{ marginBottom: 16, display: "flex", gap: 18 }}>
           <Tooltip title="Pending">
             <PauseCircleOutlined
@@ -302,6 +457,7 @@ export default function TaskDetailPage() {
 
           <Tooltip title="Ongoing">
             <SyncOutlined
+              spin
               style={{ fontSize: 28, color: "#1677ff", cursor: "pointer" }}
               onClick={() => updateStatus("Ongoing")}
             />
@@ -331,9 +487,7 @@ export default function TaskDetailPage() {
             inputs={taskInputs}
             outputs={taskOutputs}
             operation={taskOperation}
-            operationLabel={
-              taskOperation?.operation_name || "Manual Operation"
-            }
+            operationLabel={taskOperation?.operation_name || "Manual Operation"}
             onOperationClick={() => {
               if (!taskOperation) {
                 message.warning("This task requires manual operation.");
@@ -343,14 +497,13 @@ export default function TaskDetailPage() {
               // 下面的内容需要按照 Operation 的 type 进行处理
               const { operation_name, operation_detail } = taskOperation;
               let { type } = operation_detail;
-              //这里增加了弹窗提示等待功能！！！
-              // 显示加载弹窗，并告知用户操作已开始
-              setLoadingText(`正在执行: ${operation_name}，请稍候...`);
-              setLoadingModalOpen(true);
+
+              // 显示加载提示，并告知用户操作已开始
+              const hideLoading = message.loading(`正在执行: ${operation_name}...`, 0);
 
               void (async () => {
                 try {
-                  switch(type) {
+                  switch (type) {
                     case "httpWithParameter":
                       await handleHttpWithParameter(operation_detail);
                       break;
@@ -363,10 +516,10 @@ export default function TaskDetailPage() {
                   // 捕获上面抛出的自定义错误或网络错误
                   console.error("操作失败:", error);
                   // 向用户显示更具体的错误信息
-                  messageApi.error(error.message || "操作失败，请查看控制台获取详情。");
+                  message.error(error.message || "操作失败，请查看控制台获取详情。");
                 } finally {
-                  // 确保无论成功或失败，都关闭加载弹窗
-                  setLoadingModalOpen(false);
+                  // 确保无论成功或失败，都关闭加载提示
+                  hideLoading();
                 }
               })();
             }}
@@ -393,6 +546,12 @@ export default function TaskDetailPage() {
           type="primary"
           style={{ marginTop: 12 }}
           onClick={async () => {
+            const effectiveProjectId = getEffectiveProjectId();
+            if (!effectiveProjectId) {
+              messageApi.error("缺少项目ID，无法保存评论");
+              return;
+            }
+
             const updated = JSON.parse(JSON.stringify(projectWorkFlow));
             const task = findTaskNodeById(updated.taskTree, taskId);
 
@@ -402,10 +561,10 @@ export default function TaskDetailPage() {
               username: user.username,
               department: user.department,
               workflow: updated,
-              projectId: Number(projectId),
+              projectId: effectiveProjectId,
             });
 
-            res.success
+            res?.success
               ? messageApi.success("Comment saved!")
               : messageApi.error("Save failed");
           }}
@@ -434,23 +593,6 @@ export default function TaskDetailPage() {
             />
           </Form.Item>
         </Form>
-      </Modal>
-
-      {/* 操作执行中等待弹窗 */}
-      <Modal
-        title="请稍候"
-        open={loadingModalOpen}
-        footer={null}
-        closable={false}
-        maskClosable={false}
-        centered
-      >
-        <div style={{ textAlign: "center", padding: "24px 0" }}>
-          <Spin size="large" />
-          <p style={{ marginTop: 16, marginBottom: 0, fontSize: 15 }}>
-            {loadingText}
-          </p>
-        </div>
       </Modal>
     </div>
   );

@@ -177,6 +177,30 @@ class CopyApplicationTemplateRequest(BaseModel):
     )
 
 
+
+class RenameCalibrationFolderRequest(BaseModel):
+    destination_application_dir: Optional[str] = Field(
+        default=None,
+        example=r"C:\AppTools\00.APP-PMS\WUE7SZH\SomeProject\40.Application",
+        description="Target 40.Application directory on the local machine.",
+    )
+    destination_path: Optional[str] = Field(
+        default=None,
+        example=r"C:\AppTools\00.APP-PMS\WUE7SZH\SomeProject",
+        description="Project root path. Used only when destination_application_dir is not provided.",
+    )
+    old_calibration_id: str = Field(
+        ...,
+        example="ACQ_CaliID",
+        description="Current CalibrationID folder name under 40.Application\\C.Calibration.",
+    )
+    new_calibration_id: str = Field(
+        ...,
+        example="ACQ_08D9-6FFE-02",
+        description="New CalibrationID folder name under 40.Application\\C.Calibration.",
+    )
+
+
 # =================================================================================
 # Template Copy 配置
 # =================================================================================
@@ -610,6 +634,103 @@ def _normalize_calibration_ids(calibration_ids: Optional[List[str]]) -> List[str
     return normalized
 
 
+def _normalize_calibration_id_for_rename(value: str, field_name: str) -> str:
+    """Validate one CalibrationID folder name for local rename operations."""
+    cleaned = str(value or "").strip()
+    if not cleaned:
+        raise ValueError(f"{field_name} is required")
+
+    invalid_exact = {
+        PARAMETER_STRUCTURE_TEMPLATE_NAME.lower(),
+        "20.1_template of parameter structure",
+    }
+    invalid_chars = set('<>:"/\\|?*')
+    cleaned_lower = cleaned.lower()
+
+    if cleaned in {".", ".."} or cleaned_lower in invalid_exact or "template" in cleaned_lower:
+        raise ValueError(f"Invalid {field_name}: {cleaned}")
+
+    if any(ch in invalid_chars for ch in cleaned):
+        raise ValueError(f"Invalid {field_name}: {cleaned}")
+
+    return cleaned
+
+
+def _rename_calibration_folder(
+    destination_application_dir: Path,
+    old_calibration_id: str,
+    new_calibration_id: str,
+) -> dict:
+    """
+    Rename one CalibrationID folder under 40.Application\\C.Calibration.
+
+    This function only renames the folder itself. It does not copy, delete,
+    rebuild, or change any files/subfolders inside the CalibrationID folder.
+    """
+    old_id = _normalize_calibration_id_for_rename(old_calibration_id, "old_calibration_id")
+    new_id = _normalize_calibration_id_for_rename(new_calibration_id, "new_calibration_id")
+
+    destination_application_dir = _norm_path(str(destination_application_dir))
+    calibration_dir = destination_application_dir / CALIBRATION_FOLDER_NAME
+    old_dir = calibration_dir / old_id
+    new_dir = calibration_dir / new_id
+
+    if _normcase_abs(old_dir) == _normcase_abs(new_dir):
+        # Windows is case-insensitive. For a pure case-only rename, use a temp hop.
+        if old_dir.name == new_dir.name:
+            return {
+                "success": True,
+                "renamed": False,
+                "message": "Calibration folder name is unchanged.",
+                "application_dir": str(destination_application_dir),
+                "calibration_dir": str(calibration_dir),
+                "old_calibration_id": old_id,
+                "new_calibration_id": new_id,
+                "old_path": str(old_dir),
+                "new_path": str(new_dir),
+            }
+
+        if not old_dir.exists() or not old_dir.is_dir():
+            raise FileNotFoundError(f"Source CalibrationID folder not found: {old_dir}")
+
+        temp_dir = calibration_dir / f".__rename_tmp_{int(time.time() * 1000)}_{os.getpid()}"
+        while temp_dir.exists():
+            temp_dir = calibration_dir / f".__rename_tmp_{int(time.time() * 1000)}_{os.getpid()}"
+        old_dir.rename(temp_dir)
+        temp_dir.rename(new_dir)
+        return {
+            "success": True,
+            "renamed": True,
+            "message": "Calibration folder renamed.",
+            "application_dir": str(destination_application_dir),
+            "calibration_dir": str(calibration_dir),
+            "old_calibration_id": old_id,
+            "new_calibration_id": new_id,
+            "old_path": str(old_dir),
+            "new_path": str(new_dir),
+        }
+
+    if not calibration_dir.exists() or not calibration_dir.is_dir():
+        raise FileNotFoundError(f"C.Calibration folder not found: {calibration_dir}")
+    if not old_dir.exists() or not old_dir.is_dir():
+        raise FileNotFoundError(f"Source CalibrationID folder not found: {old_dir}")
+    if new_dir.exists():
+        raise FileExistsError(f"Target CalibrationID folder already exists: {new_dir}")
+
+    old_dir.rename(new_dir)
+    return {
+        "success": True,
+        "renamed": True,
+        "message": "Calibration folder renamed.",
+        "application_dir": str(destination_application_dir),
+        "calibration_dir": str(calibration_dir),
+        "old_calibration_id": old_id,
+        "new_calibration_id": new_id,
+        "old_path": str(old_dir),
+        "new_path": str(new_dir),
+    }
+
+
 def _normcase_abs(path: Path) -> str:
     """Case-insensitive normalized absolute path string for Windows-safe comparisons."""
     return os.path.normcase(os.path.abspath(os.path.normpath(str(path))))
@@ -978,6 +1099,43 @@ def api_create_folders(req: CreateFoldersRequest):
         "message": "Folders created on local client",
         "folders": created_folders,
     }
+
+
+@app.post("/renameCalibrationFolder")
+def api_rename_calibration_folder(req: RenameCalibrationFolderRequest):
+    """
+    Rename a local CalibrationID folder under 40.Application\\C.Calibration.
+
+    This endpoint only changes the folder name. It does not modify the folder's
+    child directories/files and does not run any template copy logic.
+    """
+    try:
+        destination_application_dir = _resolve_application_destination(
+            req.destination_application_dir,
+            req.destination_path,
+        )
+        result = _rename_calibration_folder(
+            destination_application_dir=destination_application_dir,
+            old_calibration_id=req.old_calibration_id,
+            new_calibration_id=req.new_calibration_id,
+        )
+        return result
+    except FileExistsError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Permission error during CalibrationID folder rename: {exc}",
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Unexpected error during CalibrationID folder rename: {exc}",
+        ) from exc
 
 
 @app.post("/copyApplicationTemplate")

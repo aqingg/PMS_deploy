@@ -1,5 +1,21 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Typography, Tree, Space, message, Button, Modal, Input, Alert } from "antd";
+import {
+  Typography,
+  Tree,
+  Space,
+  message,
+  Button,
+  Modal,
+  Input,
+  Alert,
+  Tooltip,
+} from "antd";
+import {
+  PauseCircleOutlined,
+  SyncOutlined,
+  CheckCircleOutlined,
+  MinusCircleOutlined,
+} from "@ant-design/icons";
 import ProgressBar from "../ProgressBar";
 import { useAppContext } from "../../../context/AppContext";
 
@@ -76,7 +92,6 @@ const findNodeByTaskName = (nodes, taskName) => {
       if (found) return found;
     }
   }
-
   return null;
 };
 
@@ -220,6 +235,73 @@ const fillTaskDetailsFromTree = (workflow, newNode) => {
   walk(newNode);
 };
 
+const normalizeStatus = (status) => {
+  const value = String(status || "Pending").trim().toLowerCase();
+  if (value === "ongoing" || value === "in progress" || value === "in_progress") {
+    return "Ongoing";
+  }
+  if (value === "done" || value === "success" || value === "finished") {
+    return "Done";
+  }
+  if (value === "decline" || value === "declined" || value === "rejected") {
+    return "Decline";
+  }
+  return "Pending";
+};
+
+const renderStatusIcon = (status) => {
+  const normalized = normalizeStatus(status);
+  const iconStyle = {
+    fontSize: 15,
+    flex: "0 0 auto",
+    lineHeight: 1,
+  };
+
+  switch (normalized) {
+    case "Ongoing":
+      return (
+        <Tooltip title="Ongoing">
+          <SyncOutlined spin style={{ ...iconStyle, color: "#1677ff" }} />
+        </Tooltip>
+      );
+    case "Done":
+      return (
+        <Tooltip title="Done">
+          <CheckCircleOutlined style={{ ...iconStyle, color: "#52c41a" }} />
+        </Tooltip>
+      );
+    case "Decline":
+      return (
+        <Tooltip title="Decline">
+          <MinusCircleOutlined style={{ ...iconStyle, color: "#707070" }} />
+        </Tooltip>
+      );
+    case "Pending":
+    default:
+      return (
+        <Tooltip title="Pending">
+          <PauseCircleOutlined style={{ ...iconStyle, color: "#b9900a" }} />
+        </Tooltip>
+      );
+  }
+};
+
+const renderTreeTitle = (item) => {
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 6,
+        minWidth: 0,
+      }}
+    >
+      {renderStatusIcon(item.status)}
+      <span>{item.taskName || "Unnamed Task"}</span>
+    </span>
+  );
+};
+
 export default function Progress() {
   const {
     projectWorkFlow,
@@ -229,8 +311,7 @@ export default function Progress() {
     projectId,
     createCalibrationWorkspace,
     createLocalFolders,
-  } =
-    useAppContext();
+  } = useAppContext();
 
   const [localWorkflow, setLocalWorkflow] = useState(() =>
     normalizeWorkflow(projectWorkFlow)
@@ -290,7 +371,7 @@ export default function Progress() {
     const convert = (nodes) =>
       (nodes || []).map((item) => ({
         key: item.id,
-        title: item.taskName || "Unnamed Task",
+        title: renderTreeTitle(item),
         children: item.children?.length ? convert(item.children) : [],
       }));
 
@@ -340,7 +421,7 @@ export default function Progress() {
     setAddModalOpen(true);
     setStatus({
       type: "info",
-      text: "Enter a new CalibrationID. The full subtree under C.Calibration will be copied.",
+      text: "Enter a new CalibrationID.\nThe full subtree under C.Calibration will be copied.",
     });
   };
 
@@ -357,7 +438,7 @@ export default function Progress() {
     if (invalidPathChars.test(cid)) {
       setStatus({
         type: "error",
-        text: 'Add failed: CalibrationID contains invalid characters.',
+        text: "Add failed: CalibrationID contains invalid characters.",
       });
       message.error("Invalid characters in CalibrationID");
       return;
@@ -393,8 +474,7 @@ export default function Progress() {
     }
 
     const exists = calibrationRoot.children.some(
-      (child) =>
-        String(child.taskName || "").trim().toLowerCase() === cid.toLowerCase()
+      (child) => String(child.taskName || "").trim().toLowerCase() === cid.toLowerCase()
     );
 
     if (exists) {
@@ -437,7 +517,6 @@ export default function Progress() {
 
     fillTaskDetailsFromTree(updated, newNode);
 
-    // Critical: update the local tree first so the subtree change is visible immediately after clicking OK.
     setLocalWorkflow(updated);
     setExpandedKeys(getAllKeys(updated.taskTree));
     setSelectedTaskId(newNode.id);
@@ -455,14 +534,14 @@ export default function Progress() {
     if (saveResult.success) {
       setStatus({
         type: "info",
-        text: `${cid} added and workflow saved. Calculating local directory path...`,
+        text: `${cid} added and workflow saved.\nCalculating local directory path...`,
       });
       message.success(`Workflow saved: ${cid}`);
 
       if (!createCalibrationWorkspace) {
         setStatus({
           type: "warning",
-          text: `${cid} added and workflow saved, but createCalibrationWorkspace is unavailable. No path calculated.`,
+          text: `${cid} added and workflow saved, but createCalibrationWorkspace is unavailable.\nNo path calculated.`,
         });
         message.warning("createCalibrationWorkspace method is unavailable");
         setSaving(false);
@@ -470,7 +549,6 @@ export default function Progress() {
       }
 
       const workspaceResult = await createCalibrationWorkspace(cid);
-
       if (!workspaceResult?.success) {
         setStatus({
           type: "warning",
@@ -485,15 +563,15 @@ export default function Progress() {
 
       const paths = workspaceResult?.paths || workspaceResult?.data?.paths || {};
       const folders = (
-  Array.isArray(paths.folders)
-    ? paths.folders
-    : [paths.calibration_root, paths.email_dir, paths.tcd08_report_dir]
-).filter(Boolean);
+        Array.isArray(paths.folders)
+          ? paths.folders
+          : [paths.calibration_root, paths.email_dir, paths.tcd08_report_dir]
+      ).filter(Boolean);
 
       if (!createLocalFolders) {
         setStatus({
           type: "warning",
-          text: `${cid} added and workflow saved, path returned, but createLocalFolders is unavailable. No local directory created.`,
+          text: `${cid} added and workflow saved, path returned, but createLocalFolders is unavailable.\nNo local directory created.`,
         });
         message.warning("createLocalFolders method is unavailable");
         setSaving(false);
@@ -512,8 +590,8 @@ export default function Progress() {
         setStatus({
           type: createdRoot ? "warning" : "success",
           text: createdRoot
-            ? `${cid} added and workflow saved. Local directories created by 7175. Note: C.Calibration root was auto-created because it was missing.`
-            : `${cid} added and workflow saved. Local directories created by 7175.`,
+            ? `${cid} added and workflow saved. Local directories created by 7175.\nNote: C.Calibration root was auto-created because it was missing.`
+            : `${cid} added and workflow saved.\nLocal directories created by 7175.`,
         });
         message.success(`Local directories created: ${cid}`);
       } else {
@@ -567,7 +645,7 @@ export default function Progress() {
     setSelectedTaskId(null);
     setStatus({
       type: "success",
-      text: `Node deleted on page: ${target.taskName}. Saving to backend workflow...`,
+      text: `Node deleted on page: ${target.taskName}.\nSaving to backend workflow...`,
     });
 
     setSaving(true);
@@ -589,6 +667,7 @@ export default function Progress() {
   const onSelect = (keys, info) => {
     const id = keys?.[0] || info?.node?.key || null;
     setSelectedTaskId(id);
+
     if (id && projectId) {
       window.location.hash = `#/task/${projectId}/${id}`;
     }
@@ -597,89 +676,47 @@ export default function Progress() {
   return (
     <div
       style={{
+        padding: "0 12px",
         height: "100%",
-        minHeight: 0,
-        display: "flex",
-        flexDirection: "column",
-        padding: 12,
+        maxHeight: "100%",
+        overflow: "auto",
         boxSizing: "border-box",
-        overflow: "hidden",
       }}
     >
-      <div style={{ flex: "0 0 auto", marginBottom: 10 }}>
-        <Space direction="vertical" size={4} style={{ width: "100%" }}>
-          <Title level={5} style={{ margin: 0 }}>
-            Project Detail
-          </Title>
-          <Text type="secondary">Whole Project Progress</Text>
-          <ProgressBar percent={overallProgress} />
-        </Space>
-      </div>
+      <Title level={5} style={{ marginTop: 8 }}>
+        Project Detail
+      </Title>
 
-      <div
-        style={{
-          flex: "0 0 auto",
-          border: "1px solid #e5e7eb",
-          borderRadius: 6,
-          padding: 8,
-          marginBottom: 8,
-          background: "#fafafa",
-        }}
-      >
-        <Space size={8} wrap>
-          <Button type="primary" size="small" onClick={openAddModal} disabled={saving}>
-            Add CalibrationID
-          </Button>
+      <Text type="secondary">Whole Project Progress</Text>
+      <ProgressBar percent={overallProgress} />
 
-          <Button
-            danger
-            size="small"
-            onClick={deleteSelectedTask}
-            disabled={!selectedTaskId || saving}
-          >
-            Delete Selected Node
-          </Button>
-        </Space>
-      </div>
+      <Space style={{ marginTop: 12, marginBottom: 12 }}>
+        <Button type="primary" size="small" onClick={openAddModal} disabled={saving}>
+          Add CalibrationID
+        </Button>
+        <Button danger size="small" onClick={deleteSelectedTask} disabled={saving}>
+          Delete Selected Node
+        </Button>
+      </Space>
 
-      <div style={{ flex: "0 0 auto", marginBottom: 8 }}>
-        <Alert
-          showIcon
-          type={status.type}
-          message={status.text}
-          style={{ paddingTop: 6, paddingBottom: 6 }}
+      <Alert
+        type={status.type || "info"}
+        message={status.text || "Here is workflow"}
+        showIcon
+        style={{ marginBottom: 12, whiteSpace: "pre-line" }}
+      />
+
+      {treeData.length === 0 ? (
+        <Text type="secondary">No workflow data.</Text>
+      ) : (
+        <Tree
+          treeData={treeData}
+          expandedKeys={expandedKeys}
+          selectedKeys={selectedTaskId ? [selectedTaskId] : []}
+          onExpand={(keys) => setExpandedKeys(keys)}
+          onSelect={onSelect}
         />
-      </div>
-
-      <div
-        style={{
-          flex: "1 1 auto",
-          minHeight: 0,
-          overflow: "auto",
-          border: "1px solid #f0f0f0",
-          borderRadius: 6,
-          padding: 8,
-          paddingRight: 14,
-          background: "#fff",
-        }}
-      >
-        {treeData.length === 0 ? (
-          <Alert
-            type="warning"
-            showIcon
-            message="Workflow tree is empty. Please ensure the project has loaded a workflow."
-          />
-        ) : (
-          <Tree
-            blockNode
-            treeData={treeData}
-            expandedKeys={expandedKeys}
-            selectedKeys={selectedTaskId ? [selectedTaskId] : []}
-            onExpand={(keys) => setExpandedKeys(keys)}
-            onSelect={onSelect}
-          />
-        )}
-      </div>
+      )}
 
       <Modal
         title="Add CalibrationID"
@@ -697,21 +734,19 @@ export default function Progress() {
         maskClosable={!saving}
         destroyOnClose
       >
-        <Space direction="vertical" size={8} style={{ width: "100%" }}>
-          <Text>Enter new CalibrationID:</Text>
-          <Input
-            autoFocus
-            value={modalCalibrationId}
-            onChange={(event) => setModalCalibrationId(event.target.value)}
-            onPressEnter={addCalibrationIdByModal}
-            placeholder="e.g. ACQ_AAAA-BBBB-CC"
-            disabled={saving}
-            allowClear
-          />
-          <Text type="secondary">
-            A new node will copy the full subtree of an existing CalibrationID under C.Calibration.
-          </Text>
-        </Space>
+        <Text>Enter new CalibrationID:</Text>
+        <Input
+          style={{ marginTop: 8 }}
+          value={modalCalibrationId}
+          onChange={(event) => setModalCalibrationId(event.target.value)}
+          onPressEnter={addCalibrationIdByModal}
+          placeholder="e.g. ACQ_AAAA-BBBB-CC"
+          disabled={saving}
+          allowClear
+        />
+        <Text type="secondary" style={{ display: "block", marginTop: 8 }}>
+          A new node will copy the full subtree of an existing CalibrationID under C.Calibration.
+        </Text>
       </Modal>
     </div>
   );

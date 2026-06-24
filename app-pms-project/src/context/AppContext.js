@@ -25,6 +25,7 @@ export function AppProvider({ children }) {
     LOCAL: "http://127.0.0.1:7175",
     LOCAL_CREATE_FOLDERS: "/createFolders",
     LOCAL_COPY_APPLICATION_TEMPLATE: "/copyApplicationTemplate",
+    LOCAL_RENAME_CALIBRATION_FOLDER: "/renameCalibrationFolder",
 
     // 调试时建议用本地： http://127.0.0.1:8086/app-puma
     // BASE: "https://oss-dthub.apac.bosch.com/app-puma",
@@ -664,6 +665,64 @@ export function AppProvider({ children }) {
     }
   };
 
+
+  // Rename CalibrationID 本地文件夹：给 TaskDetailPage 的 Edit Task Name 使用。
+  // 只改 40.Application\C.Calibration\{CalibrationID} 文件夹名称，
+  // 不复制、不删除、不修改其子目录内容。
+  const renameCalibrationFolder = async (
+    destinationApplicationDir,
+    oldCalibrationId,
+    newCalibrationId
+  ) => {
+    const target = String(destinationApplicationDir || "").trim();
+    const oldId = String(oldCalibrationId || "").trim();
+    const newId = String(newCalibrationId || "").trim();
+
+    if (!target) {
+      return { success: false, message: "destinationApplicationDir is empty" };
+    }
+    if (!oldId) {
+      return { success: false, message: "oldCalibrationId is empty" };
+    }
+    if (!newId) {
+      return { success: false, message: "newCalibrationId is empty" };
+    }
+
+    try {
+      const res = await request("POST", API.LOCAL + API.LOCAL_RENAME_CALIBRATION_FOLDER, {
+        data: {
+          destination_application_dir: target,
+          old_calibration_id: oldId,
+          new_calibration_id: newId,
+        },
+      });
+
+      if (res.data?.success) {
+        return {
+          success: true,
+          renamed: Boolean(res.data?.renamed),
+          old_path: res.data?.old_path,
+          new_path: res.data?.new_path,
+          data: res.data,
+        };
+      }
+
+      return {
+        success: false,
+        message: res.data?.message || "renameCalibrationFolder failed",
+        data: res.data,
+      };
+    } catch (err) {
+      console.error("renameCalibrationFolder failed:", err);
+      const detail =
+        err.response?.data?.detail ||
+        err.response?.data?.message ||
+        err.message ||
+        "renameCalibrationFolder request failed";
+      return { success: false, message: detail };
+    }
+  };
+
   useEffect(() => {
     if (msgQueue.length === 0) return undefined;
 
@@ -732,6 +791,7 @@ export function AppProvider({ children }) {
           createCalibrationWorkspace,
           createLocalFolders,
           copyApplicationTemplate,
+          renameCalibrationFolder,
           teamMembers,
           loadTeamMembers,
           getProjectFromPMS,
