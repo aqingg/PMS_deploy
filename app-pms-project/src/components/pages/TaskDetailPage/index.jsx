@@ -27,6 +27,7 @@ import {
 export default function TaskDetailPage() {
   const [messageApi, contextHolder] = message.useMessage();
   const { projectId: routeProjectId, taskId } = useParams();
+
   const {
     projectId: contextProjectId,
     projectWorkFlow,
@@ -38,6 +39,8 @@ export default function TaskDetailPage() {
     user,
     updateWorkFlow,
     getWorkFlowTemplate,
+    createCalibrationWorkspace,
+    renameCalibrationFolder,
     renameCalibrationWorkspace,
   } = useAppContext();
 
@@ -57,9 +60,11 @@ export default function TaskDetailPage() {
   // Modal
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [newTaskName, setNewTaskName] = useState("");
+  const [savingTaskName, setSavingTaskName] = useState(false);
 
   // 允许中文，不允许真正危险字符
   const ILLEGAL_REGEX = /[/\\<>{}[\]"'`|]/g;
+  const WINDOWS_ILLEGAL_REGEX = /[<>:"/\\|?*]/;
 
   const getEffectiveProjectId = useCallback(() => {
     const fromRoute = routeProjectId ? Number(routeProjectId) : null;
@@ -89,6 +94,65 @@ export default function TaskDetailPage() {
 
     return normalized === "ccalibration" || normalized === "calibration";
   }, []);
+
+  const inferApplicationDirFromCalibrationRoot = useCallback((calibrationRoot) => {
+    const value = String(calibrationRoot || "").trim();
+    if (!value) return "";
+
+    const match = value.match(/^(.*?[\\/]40\.Application)(?:[\\/]|$)/i);
+    if (match?.[1]) return match[1];
+
+    // fallback：calibration_root 通常是 ...\40.Application\C.Calibration\{CalibrationID}
+    const parts = value.split(/[\\/]+/).filter(Boolean);
+    const idx = parts.findIndex((part) => part.toLowerCase() === "40.application");
+    if (idx >= 0) {
+      const prefix = value.startsWith("\\\\") ? "\\\\" : "";
+      const driveMatch = value.match(/^[A-Za-z]:/);
+      if (driveMatch) {
+        return parts.slice(0, idx + 1).join("\\");
+      }
+      return prefix + parts.slice(0, idx + 1).join("\\");
+    }
+
+    return "";
+  }, []);
+
+  const resolveApplicationDir = useCallback(
+    async (calibrationId) => {
+      if (!createCalibrationWorkspace) {
+        return {
+          success: false,
+          message: "createCalibrationWorkspace is unavailable",
+        };
+      }
+
+      const workspaceResult = await createCalibrationWorkspace(calibrationId);
+      if (!workspaceResult?.success) {
+        return {
+          success: false,
+          message: workspaceResult?.message || "8086 path calculation failed",
+        };
+      }
+
+      const paths = workspaceResult?.paths || workspaceResult?.data?.paths || {};
+      const calibrationRoot = paths.calibration_root || paths.calibrationRoot || "";
+      const applicationDir = inferApplicationDirFromCalibrationRoot(calibrationRoot);
+
+      if (!applicationDir) {
+        return {
+          success: false,
+          message: "Failed to infer 40.Application path from calibration_root",
+        };
+      }
+
+      return {
+        success: true,
+        applicationDir,
+        paths,
+      };
+    },
+    [createCalibrationWorkspace, inferApplicationDirFromCalibrationRoot]
+  );
 
   // ================================
   // 工具函数：根据 UUID 找任务节点
@@ -217,9 +281,11 @@ export default function TaskDetailPage() {
   // 保存任务名
   // ================================
   const updateTaskName = async () => {
-    const cleaned = newTaskName.trim().replace(ILLEGAL_REGEX, "");
-    const hasIllegalChars = ILLEGAL_REGEX.test(newTaskName);
-    ILLEGAL_REGEX.lastIndex = 0;
+    if (savingTaskName) return;
+
+    const rawName = String(newTaskName || "");
+    const cleaned = rawName.trim().replace(ILLEGAL_REGEX, "");
+    const hasIllegalChars = WINDOWS_ILLEGAL_REGEX.test(rawName);
 
     if (!cleaned.trim()) {
       messageApi.error("Task name cannot be empty");
@@ -235,7 +301,10 @@ export default function TaskDetailPage() {
     const updated = JSON.parse(JSON.stringify(projectWorkFlow));
     const node = findTaskNodeById(updated.taskTree, taskId);
 
-    if (!node) return;
+    if (!node) {
+      messageApi.error("当前任务节点不存在");
+      return;
+    }
 
     const oldTaskName = getNodeName(node);
     const parentNode = findParentNodeById(updated.taskTree, taskId);
@@ -251,10 +320,10 @@ export default function TaskDetailPage() {
 
       const siblingNames = (parentNode.children || [])
         .filter((item) => item.id !== taskId)
-        .map((item) => getNodeName(item))
+        .map((item) => getNodeName(item).toLowerCase())
         .filter(Boolean);
 
-      if (siblingNames.includes(cleaned)) {
+      if (siblingNames.includes(cleaned.toLowerCase())) {
         messageApi.error(`CalibrationID 已存在：${cleaned}`);
         return;
       }
@@ -264,58 +333,94 @@ export default function TaskDetailPage() {
         return;
       }
 
-      Modal.confirm({
-        title: "同步重命名本地目录？",
-        content: `检测到 CalibrationID 从 ${oldTaskName} 改为 ${cleaned}。是否同时重命名本地目录？`,
-        okText: "同步重命名",
-        cancelText: "取消",
-        onOk: async () => {
-          const localResult = await renameCalibrationWorkspace({
+      const renameCalibration = renameCalibrationFolder || renameCalibrationWorkspace;
+      if (!renameCalibration) {
+        messageApi.error("本地目录重命名函数不可用");
+        return;
+      }
+
+      setSavingTaskName(true);
+      try {
+        const pathResult = await resolveApplicationDir(oldTaskName);
+        if (!pathResult.success) {
+          messageApi.error(pathResult.message || "无法计算本地目录路径");
+          return;
+        }
+
+        let localResult = null;
+
+        // 当前 AppContext 标准签名：renameCalibrationFolder(destinationApplicationDir, oldId, newId)
+        // 同时兼容旧签名：renameCalibrationWorkspace({ oldCalibrationId, newCalibrationId, destinationApplicationDir })
+        if (renameCalibration === renameCalibrationFolder) {
+          localResult = await renameCalibration(
+            pathResult.applicationDir,
+            oldTaskName,
+            cleaned
+          );
+        } else {
+          localResult = await renameCalibration({
+            destinationApplicationDir: pathResult.applicationDir,
+            destination_application_dir: pathResult.applicationDir,
             oldCalibrationId: oldTaskName,
+            old_calibration_id: oldTaskName,
             newCalibrationId: cleaned,
+            new_calibration_id: cleaned,
           });
+        }
 
-          if (!localResult?.success) {
-            messageApi.error(localResult?.message || "本地目录重命名失败");
-            return;
-          }
+        if (!localResult?.success) {
+          messageApi.error(localResult?.message || "本地目录重命名失败");
+          return;
+        }
 
-          node.taskName = cleaned;
+        node.taskName = cleaned;
 
-          const res = await updateWorkFlow({
-            username: user.username,
-            department: user.department,
-            workflow: updated,
-            projectId: effectiveProjectId,
-          });
+        const res = await updateWorkFlow({
+          username: user.username,
+          department: user.department,
+          workflow: updated,
+          projectId: effectiveProjectId,
+        });
 
-          if (res?.success) {
-            setCurrentTask({ ...node });
-            setEditModalOpen(false);
-            messageApi.success("CalibrationID 已同步重命名");
-          } else {
-            messageApi.error("本地目录已重命名，但 workflow 保存失败");
-          }
-        },
-      });
+        if (res?.success) {
+          setCurrentTask({ ...node });
+          setEditModalOpen(false);
+          messageApi.success("CalibrationID 已同步重命名");
+        } else {
+          messageApi.error("本地目录已重命名，但 workflow 保存失败");
+        }
+      } catch (error) {
+        console.error("Rename CalibrationID failed:", error);
+        messageApi.error(error?.message || "本地目录重命名失败");
+      } finally {
+        setSavingTaskName(false);
+      }
 
       return;
     }
 
-    node.taskName = cleaned; // 修改 taskTree 的名字
+    setSavingTaskName(true);
+    try {
+      node.taskName = cleaned;
 
-    const res = await updateWorkFlow({
-      username: user.username,
-      department: user.department,
-      workflow: updated,
-      projectId: effectiveProjectId,
-    });
+      const res = await updateWorkFlow({
+        username: user.username,
+        department: user.department,
+        workflow: updated,
+        projectId: effectiveProjectId,
+      });
 
-    if (res?.success) {
-      setCurrentTask({ ...node });
-      setEditModalOpen(false);
-    } else {
-      messageApi.error("Update failed");
+      if (res?.success) {
+        setCurrentTask({ ...node });
+        setEditModalOpen(false);
+      } else {
+        messageApi.error("Update failed");
+      }
+    } catch (error) {
+      console.error("Update task name failed:", error);
+      messageApi.error(error?.message || "Update failed");
+    } finally {
+      setSavingTaskName(false);
     }
   };
 
@@ -457,7 +562,7 @@ export default function TaskDetailPage() {
 
           <Tooltip title="Ongoing">
             <SyncOutlined
-              spin
+              spin={currentTask.status === "Ongoing"}
               style={{ fontSize: 28, color: "#1677ff", cursor: "pointer" }}
               onClick={() => updateStatus("Ongoing")}
             />
@@ -487,7 +592,9 @@ export default function TaskDetailPage() {
             inputs={taskInputs}
             outputs={taskOutputs}
             operation={taskOperation}
-            operationLabel={taskOperation?.operation_name || "Manual Operation"}
+            operationLabel={
+              taskOperation?.operation_name || "Manual Operation"
+            }
             onOperationClick={() => {
               if (!taskOperation) {
                 message.warning("This task requires manual operation.");
@@ -578,8 +685,14 @@ export default function TaskDetailPage() {
         title="Edit Task Name"
         open={editModalOpen}
         onOk={updateTaskName}
-        onCancel={() => setEditModalOpen(false)}
+        onCancel={() => {
+          if (!savingTaskName) {
+            setEditModalOpen(false);
+          }
+        }}
         okText="Save"
+        confirmLoading={savingTaskName}
+        maskClosable={!savingTaskName}
       >
         <Form layout="vertical">
           <Form.Item label="Task Name">
@@ -590,6 +703,8 @@ export default function TaskDetailPage() {
               onBlur={(e) =>
                 setNewTaskName(e.target.value.replace(ILLEGAL_REGEX, ""))
               }
+              onPressEnter={updateTaskName}
+              disabled={savingTaskName}
             />
           </Form.Item>
         </Form>
