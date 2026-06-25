@@ -11,11 +11,10 @@ import {
   Tooltip,
   Modal,
   Form,
+  Spin,
 } from "antd";
-
 import WorkFlow from "./WorkFlow";
 import { useAppContext } from "../../../context/AppContext";
-
 import {
   PauseCircleOutlined,
   SyncOutlined,
@@ -54,17 +53,41 @@ export default function TaskDetailPage() {
   const [taskOutputs, setTaskOutputs] = useState([]);
   const [taskOperation, setTaskOperation] = useState(null);
   const [taskDescription, setTaskDescription] = useState("");
-
   const [taskNotFound, setTaskNotFound] = useState(false);
 
-  // Modal
+  // Modal — Edit Task Name
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [newTaskName, setNewTaskName] = useState("");
   const [savingTaskName, setSavingTaskName] = useState(false);
 
+  // Modal — Operation Loading
+  const [operationRunning, setOperationRunning] = useState(false);
+  const [operationText, setOperationText] = useState("");
+
+  // Modal — Missing Email
+  const [missingEmailModalOpen, setMissingEmailModalOpen] = useState(false);
+
   // 允许中文，不允许真正危险字符
   const ILLEGAL_REGEX = /[/\\<>{}[\]"'`|]/g;
   const WINDOWS_ILLEGAL_REGEX = /[<>:"/\\|?*]/;
+
+  // TCD08 缺少 email 时固定显示的友好提示
+  const MISSING_EMAIL_TIP = "请先放置email";
+
+  const isMissingEmailError = (messageText) => {
+    const normalized = String(messageText || "").toLowerCase();
+
+    return (
+      normalized.includes("no files found in email folder") ||
+      normalized.includes("email folder not found") ||
+      normalized.includes("customer_approval_email") ||
+      normalized.includes("请先放置email")
+    );
+  };
+
+  const showMissingEmailModal = () => {
+    setMissingEmailModalOpen(true);
+  };
 
   const getEffectiveProjectId = useCallback(() => {
     const fromRoute = routeProjectId ? Number(routeProjectId) : null;
@@ -105,12 +128,15 @@ export default function TaskDetailPage() {
     // fallback：calibration_root 通常是 ...\40.Application\C.Calibration\{CalibrationID}
     const parts = value.split(/[\\/]+/).filter(Boolean);
     const idx = parts.findIndex((part) => part.toLowerCase() === "40.application");
+
     if (idx >= 0) {
       const prefix = value.startsWith("\\\\") ? "\\\\" : "";
       const driveMatch = value.match(/^[A-Za-z]:/);
+
       if (driveMatch) {
         return parts.slice(0, idx + 1).join("\\");
       }
+
       return prefix + parts.slice(0, idx + 1).join("\\");
     }
 
@@ -127,6 +153,7 @@ export default function TaskDetailPage() {
       }
 
       const workspaceResult = await createCalibrationWorkspace(calibrationId);
+
       if (!workspaceResult?.success) {
         return {
           success: false,
@@ -160,22 +187,26 @@ export default function TaskDetailPage() {
   const findTaskNodeById = useCallback((nodes, id) => {
     for (const node of nodes || []) {
       if (node.id === id) return node;
+
       if (node.children?.length) {
         const res = findTaskNodeById(node.children, id);
         if (res) return res;
       }
     }
+
     return null;
   }, []);
 
   const findParentNodeById = useCallback((nodes, id, parent = null) => {
     for (const node of nodes || []) {
       if (node.id === id) return parent;
+
       if (node.children?.length) {
         const result = findParentNodeById(node.children, id, node);
         if (result) return result;
       }
     }
+
     return null;
   }, []);
 
@@ -195,6 +226,7 @@ export default function TaskDetailPage() {
   useEffect(() => {
     const loadTemplate = async () => {
       const res = await getWorkFlowTemplate();
+
       if (res.success) {
         setTemplate(res.data);
       } else {
@@ -247,6 +279,7 @@ export default function TaskDetailPage() {
   // ================================
   const updateStatus = async (newStatus) => {
     const effectiveProjectId = getEffectiveProjectId();
+
     if (!effectiveProjectId) {
       messageApi.error("缺少项目ID，无法更新状态");
       return;
@@ -293,6 +326,7 @@ export default function TaskDetailPage() {
     }
 
     const effectiveProjectId = getEffectiveProjectId();
+
     if (!effectiveProjectId) {
       messageApi.error("缺少项目ID，无法保存任务名称");
       return;
@@ -334,14 +368,17 @@ export default function TaskDetailPage() {
       }
 
       const renameCalibration = renameCalibrationFolder || renameCalibrationWorkspace;
+
       if (!renameCalibration) {
         messageApi.error("本地目录重命名函数不可用");
         return;
       }
 
       setSavingTaskName(true);
+
       try {
         const pathResult = await resolveApplicationDir(oldTaskName);
+
         if (!pathResult.success) {
           messageApi.error(pathResult.message || "无法计算本地目录路径");
           return;
@@ -400,6 +437,7 @@ export default function TaskDetailPage() {
     }
 
     setSavingTaskName(true);
+
     try {
       node.taskName = cleaned;
 
@@ -430,12 +468,14 @@ export default function TaskDetailPage() {
   async function handleHttpWithParameter(operation_detail) {
     // 0. 获取需要注入的参数名列表
     const { need_parameter: parameterNames } = operation_detail;
+
     // 校验输入是否为数组
     if (!Array.isArray(parameterNames)) {
       throw new Error("配置错误：'need_parameter' 必须是一个数组。");
     }
 
     const effectiveProjectId = getEffectiveProjectId();
+
     if (!effectiveProjectId) {
       throw new Error("缺少项目ID，无法执行操作");
     }
@@ -445,10 +485,12 @@ export default function TaskDetailPage() {
 
     // 并行等待所有参数获取完成
     const parameterResults = await Promise.all(parameterPromises);
+
     const type = "local";
     const isTCD08Fill = operation_detail.url?.includes("/fillTCD08Report");
 
     let input_files = [];
+
     if (!isTCD08Fill) {
       const input_path = await getRealPathFromBackend({
         label: taskInputs[0].label,
@@ -457,6 +499,7 @@ export default function TaskDetailPage() {
         user,
         type,
       });
+
       input_files = await getOfficeFiles(input_path);
     }
 
@@ -480,6 +523,7 @@ export default function TaskDetailPage() {
 
     finalBody.template_paths = input_files;
     finalBody.save_path = output_path;
+
     if (isTCD08Fill) {
       finalBody.project_info = projectInfo;
       finalBody.projectId = effectiveProjectId;
@@ -495,27 +539,112 @@ export default function TaskDetailPage() {
       body: finalBody ? JSON.stringify(finalBody) : undefined,
     });
 
-    // 3. 错误处理
+    // 3. 错误处理：7175/FastAPI 通常把错误放在 detail 字段里
     if (!response.ok) {
       let errorMessage = `请求失败: ${response.status} ${response.statusText}`;
+
       try {
         const errorData = await response.json();
-        if (errorData && errorData.message) {
-          errorMessage = errorData.message;
+        const detail = errorData?.detail || errorData?.message || errorData?.error;
+
+        if (detail) {
+          errorMessage = Array.isArray(detail)
+            ? detail.map((item) => item?.msg || JSON.stringify(item)).join("; ")
+            : String(detail);
         }
       } catch (e) {
-        // 响应体不是JSON或为空
+        // 响应体不是 JSON 或为空时，保留默认 HTTP 错误
       }
-      throw new Error(errorMessage);
+
+      const error = new Error(
+        isTCD08Fill && isMissingEmailError(errorMessage)
+          ? MISSING_EMAIL_TIP
+          : errorMessage
+      );
+      error.status = response.status;
+      error.originalMessage = errorMessage;
+      error.isMissingEmail = isTCD08Fill && isMissingEmailError(errorMessage);
+      throw error;
     }
 
-    // 4. 成功处理
+    // 4. 成功处理：如果业务层返回 success:false，也按失败处理
     try {
-      return await response.json();
+      const result = await response.json();
+
+      if (result && result.success === false) {
+        const detail = result.detail || result.message || result.error || "操作失败";
+        const error = new Error(
+          isTCD08Fill && isMissingEmailError(detail) ? MISSING_EMAIL_TIP : String(detail)
+        );
+        error.originalMessage = String(detail);
+        error.isMissingEmail = isTCD08Fill && isMissingEmailError(detail);
+        throw error;
+      }
+
+      return result;
     } catch (e) {
-      return null; // 响应体为空或不是JSON
+      if (e?.isMissingEmail) {
+        throw e;
+      }
+      return null; // 响应体为空或不是 JSON
     }
   }
+
+  const executeOperation = () => {
+    if (!taskOperation) {
+      messageApi.warning("This task requires manual operation.");
+      return;
+    }
+
+    if (operationRunning) {
+      return;
+    }
+
+    // 下面的内容需要按照 Operation 的 type 进行处理
+    const { operation_name, operation_detail } = taskOperation;
+    const { type } = operation_detail;
+
+    setOperationText(`正在执行: ${operation_name}，请稍候...`);
+    setOperationRunning(true);
+
+    void (async () => {
+      let caughtError = null;
+
+      try {
+        switch (type) {
+          case "httpWithParameter":
+            await handleHttpWithParameter(operation_detail);
+            messageApi.success(`${operation_name} 执行完成`);
+            break;
+          case "httpWithoutParameter":
+            break;
+          default:
+            break;
+        }
+      } catch (error) {
+        caughtError = error;
+        console.error("操作失败:", error);
+      } finally {
+        setOperationRunning(false);
+        setOperationText("");
+      }
+
+      if (!caughtError) {
+        return;
+      }
+
+      if (caughtError.isMissingEmail || isMissingEmailError(caughtError.message)) {
+        showMissingEmailModal();
+        return;
+      }
+
+      Modal.error({
+        title: "操作失败",
+        content: caughtError.message || "操作失败，请查看控制台获取详情。",
+        okText: "确定",
+      });
+    })();
+  };
 
   // ================================
   // UI
@@ -547,6 +676,7 @@ export default function TaskDetailPage() {
           </p>
         </Col>
       </Row>
+
       <Divider />
 
       {/* ===== Main Content ===== */}
@@ -592,44 +722,8 @@ export default function TaskDetailPage() {
             inputs={taskInputs}
             outputs={taskOutputs}
             operation={taskOperation}
-            operationLabel={
-              taskOperation?.operation_name || "Manual Operation"
-            }
-            onOperationClick={() => {
-              if (!taskOperation) {
-                message.warning("This task requires manual operation.");
-                return;
-              }
-
-              // 下面的内容需要按照 Operation 的 type 进行处理
-              const { operation_name, operation_detail } = taskOperation;
-              let { type } = operation_detail;
-
-              // 显示加载提示，并告知用户操作已开始
-              const hideLoading = message.loading(`正在执行: ${operation_name}...`, 0);
-
-              void (async () => {
-                try {
-                  switch (type) {
-                    case "httpWithParameter":
-                      await handleHttpWithParameter(operation_detail);
-                      break;
-                    case "httpWithoutParameter":
-                      break;
-                    default:
-                      break;
-                  }
-                } catch (error) {
-                  // 捕获上面抛出的自定义错误或网络错误
-                  console.error("操作失败:", error);
-                  // 向用户显示更具体的错误信息
-                  message.error(error.message || "操作失败，请查看控制台获取详情。");
-                } finally {
-                  // 确保无论成功或失败，都关闭加载提示
-                  hideLoading();
-                }
-              })();
-            }}
+            operationLabel={taskOperation?.operation_name || "Manual Operation"}
+            onOperationClick={executeOperation}
           />
         )}
       </Card>
@@ -649,11 +743,13 @@ export default function TaskDetailPage() {
             })
           }
         />
+
         <Button
           type="primary"
           style={{ marginTop: 12 }}
           onClick={async () => {
             const effectiveProjectId = getEffectiveProjectId();
+
             if (!effectiveProjectId) {
               messageApi.error("缺少项目ID，无法保存评论");
               return;
@@ -661,7 +757,6 @@ export default function TaskDetailPage() {
 
             const updated = JSON.parse(JSON.stringify(projectWorkFlow));
             const task = findTaskNodeById(updated.taskTree, taskId);
-
             task.comment = currentTask.comment;
 
             const res = await updateWorkFlow({
@@ -708,6 +803,49 @@ export default function TaskDetailPage() {
             />
           </Form.Item>
         </Form>
+      </Modal>
+
+      {/* Operation Loading Modal */}
+      <Modal
+        open={operationRunning}
+        title="操作执行中"
+        footer={null}
+        closable={false}
+        maskClosable={false}
+        keyboard={false}
+        centered
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <Spin />
+          <span>{operationText || "正在执行，请稍候..."}</span>
+        </div>
+        <div style={{ marginTop: 12, color: "#666" }}>
+          请不要关闭页面，也不要重复点击按钮。
+        </div>
+      </Modal>
+
+      {/* Missing Email Modal: 必须点击确认才关闭 */}
+      <Modal
+        open={missingEmailModalOpen}
+        title="缺少 Email 文件"
+        closable={false}
+        maskClosable={false}
+        keyboard={false}
+        centered
+        footer={[
+          <Button
+            key="confirmMissingEmail"
+            type="primary"
+            onClick={() => setMissingEmailModalOpen(false)}
+          >
+            确定
+          </Button>,
+        ]}
+      >
+        <div style={{ fontSize: 16, lineHeight: 1.8 }}>{MISSING_EMAIL_TIP}</div>
+        <div style={{ marginTop: 8, color: "#666" }}>
+          请将 Email 文件放入当前 CalibrationID 的 Customer_Approval_Email 文件夹后，再重新点击 Fill_TCD08。
+        </div>
       </Modal>
     </div>
   );
