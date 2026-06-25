@@ -72,7 +72,7 @@ export default function TaskDetailPage() {
   const WINDOWS_ILLEGAL_REGEX = /[<>:"/\\|?*]/;
 
   // TCD08 缺少 email 时固定显示的友好提示
-  const MISSING_EMAIL_TIP = "请先放置email";
+  const MISSING_EMAIL_TIP = "Please place the email first.";
 
   const isMissingEmailError = (messageText) => {
     const normalized = String(messageText || "").toLowerCase();
@@ -81,7 +81,7 @@ export default function TaskDetailPage() {
       normalized.includes("no files found in email folder") ||
       normalized.includes("email folder not found") ||
       normalized.includes("customer_approval_email") ||
-      normalized.includes("请先放置email")
+      normalized.includes("Please place the email first.")
     );
   };
 
@@ -281,7 +281,7 @@ export default function TaskDetailPage() {
     const effectiveProjectId = getEffectiveProjectId();
 
     if (!effectiveProjectId) {
-      messageApi.error("缺少项目ID，无法更新状态");
+      messageApi.error("Project ID is missing. Status cannot be updated.");
       return;
     }
 
@@ -289,7 +289,7 @@ export default function TaskDetailPage() {
     const task = findTaskNodeById(updated.taskTree, taskId);
 
     if (!task) {
-      messageApi.error("当前任务节点不存在");
+      messageApi.error("The current task node does not exist.");
       return;
     }
 
@@ -328,7 +328,7 @@ export default function TaskDetailPage() {
     const effectiveProjectId = getEffectiveProjectId();
 
     if (!effectiveProjectId) {
-      messageApi.error("缺少项目ID，无法保存任务名称");
+      messageApi.error("Project ID is missing. Task name cannot be saved.");
       return;
     }
 
@@ -336,7 +336,7 @@ export default function TaskDetailPage() {
     const node = findTaskNodeById(updated.taskTree, taskId);
 
     if (!node) {
-      messageApi.error("当前任务节点不存在");
+      messageApi.error("The current task node does not exist.");
       return;
     }
 
@@ -348,7 +348,7 @@ export default function TaskDetailPage() {
 
     if (isCalibrationChild) {
       if (hasIllegalChars) {
-        messageApi.error("CalibrationID 不能包含 Windows 非法字符");
+        messageApi.error("CalibrationID cannot contain invalid Windows path characters.");
         return;
       }
 
@@ -358,7 +358,7 @@ export default function TaskDetailPage() {
         .filter(Boolean);
 
       if (siblingNames.includes(cleaned.toLowerCase())) {
-        messageApi.error(`CalibrationID 已存在：${cleaned}`);
+        messageApi.error(`CalibrationID already exists: ${cleaned}`);
         return;
       }
 
@@ -370,7 +370,7 @@ export default function TaskDetailPage() {
       const renameCalibration = renameCalibrationFolder || renameCalibrationWorkspace;
 
       if (!renameCalibration) {
-        messageApi.error("本地目录重命名函数不可用");
+        messageApi.error("The local folder rename function is unavailable.");
         return;
       }
 
@@ -380,7 +380,7 @@ export default function TaskDetailPage() {
         const pathResult = await resolveApplicationDir(oldTaskName);
 
         if (!pathResult.success) {
-          messageApi.error(pathResult.message || "无法计算本地目录路径");
+          messageApi.error(pathResult.message || "Failed to calculate the local folder path.");
           return;
         }
 
@@ -406,7 +406,7 @@ export default function TaskDetailPage() {
         }
 
         if (!localResult?.success) {
-          messageApi.error(localResult?.message || "本地目录重命名失败");
+          messageApi.error(localResult?.message || "Local folder rename failed.");
           return;
         }
 
@@ -422,13 +422,13 @@ export default function TaskDetailPage() {
         if (res?.success) {
           setCurrentTask({ ...node });
           setEditModalOpen(false);
-          messageApi.success("CalibrationID 已同步重命名");
+          messageApi.success("CalibrationID has been renamed and synced.");
         } else {
-          messageApi.error("本地目录已重命名，但 workflow 保存失败");
+          messageApi.error("The local folder has been renamed, but workflow save failed.");
         }
       } catch (error) {
         console.error("Rename CalibrationID failed:", error);
-        messageApi.error(error?.message || "本地目录重命名失败");
+        messageApi.error(error?.message || "Local folder rename failed.");
       } finally {
         setSavingTaskName(false);
       }
@@ -471,13 +471,13 @@ export default function TaskDetailPage() {
 
     // 校验输入是否为数组
     if (!Array.isArray(parameterNames)) {
-      throw new Error("配置错误：'need_parameter' 必须是一个数组。");
+      throw new Error("Configuration error: 'need_parameter' must be an array.");
     }
 
     const effectiveProjectId = getEffectiveProjectId();
 
     if (!effectiveProjectId) {
-      throw new Error("缺少项目ID，无法执行操作");
+      throw new Error("Project ID is missing. Operation cannot be executed.");
     }
 
     // 创建一个Promise数组，每个Promise负责获取一个参数
@@ -541,7 +541,7 @@ export default function TaskDetailPage() {
 
     // 3. 错误处理：7175/FastAPI 通常把错误放在 detail 字段里
     if (!response.ok) {
-      let errorMessage = `请求失败: ${response.status} ${response.statusText}`;
+      let errorMessage = `Request failed: ${response.status} ${response.statusText}`;
 
       try {
         const errorData = await response.json();
@@ -572,7 +572,7 @@ export default function TaskDetailPage() {
       const result = await response.json();
 
       if (result && result.success === false) {
-        const detail = result.detail || result.message || result.error || "操作失败";
+        const detail = result.detail || result.message || result.error || "Operation Failed";
         const error = new Error(
           isTCD08Fill && isMissingEmailError(detail) ? MISSING_EMAIL_TIP : String(detail)
         );
@@ -604,7 +604,7 @@ export default function TaskDetailPage() {
     const { operation_name, operation_detail } = taskOperation;
     const { type } = operation_detail;
 
-    setOperationText(`正在执行: ${operation_name}，请稍候...`);
+    setOperationText(`Executing: ${operation_name}. Please wait...`);
     setOperationRunning(true);
 
     void (async () => {
@@ -614,7 +614,7 @@ export default function TaskDetailPage() {
         switch (type) {
           case "httpWithParameter":
             await handleHttpWithParameter(operation_detail);
-            messageApi.success(`${operation_name} 执行完成`);
+            messageApi.success(`${operation_name} completed successfully.`);
             break;
           case "httpWithoutParameter":
             break;
@@ -623,7 +623,7 @@ export default function TaskDetailPage() {
         }
       } catch (error) {
         caughtError = error;
-        console.error("操作失败:", error);
+        console.error("Operation Failed:", error);
       } finally {
         setOperationRunning(false);
         setOperationText("");
@@ -639,9 +639,9 @@ export default function TaskDetailPage() {
       }
 
       Modal.error({
-        title: "操作失败",
-        content: caughtError.message || "操作失败，请查看控制台获取详情。",
-        okText: "确定",
+        title: "Operation Failed",
+        content: caughtError.message || "Operation failed. Please check the console for details.",
+        okText: "OK",
       });
     })();
   };
@@ -751,7 +751,7 @@ export default function TaskDetailPage() {
             const effectiveProjectId = getEffectiveProjectId();
 
             if (!effectiveProjectId) {
-              messageApi.error("缺少项目ID，无法保存评论");
+              messageApi.error("Project ID is missing. Comment cannot be saved.");
               return;
             }
 
@@ -808,7 +808,7 @@ export default function TaskDetailPage() {
       {/* Operation Loading Modal */}
       <Modal
         open={operationRunning}
-        title="操作执行中"
+        title="Operation in Progress"
         footer={null}
         closable={false}
         maskClosable={false}
@@ -817,17 +817,17 @@ export default function TaskDetailPage() {
       >
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <Spin />
-          <span>{operationText || "正在执行，请稍候..."}</span>
+          <span>{operationText || "Executing. Please wait..."}</span>
         </div>
         <div style={{ marginTop: 12, color: "#666" }}>
-          请不要关闭页面，也不要重复点击按钮。
+          Please do not close this page or click the button repeatedly.
         </div>
       </Modal>
 
       {/* Missing Email Modal: 必须点击确认才关闭 */}
       <Modal
         open={missingEmailModalOpen}
-        title="缺少 Email 文件"
+        title="Missing Email Files"
         closable={false}
         maskClosable={false}
         keyboard={false}
@@ -838,13 +838,13 @@ export default function TaskDetailPage() {
             type="primary"
             onClick={() => setMissingEmailModalOpen(false)}
           >
-            确定
+            OK
           </Button>,
         ]}
       >
         <div style={{ fontSize: 16, lineHeight: 1.8 }}>{MISSING_EMAIL_TIP}</div>
         <div style={{ marginTop: 8, color: "#666" }}>
-          请将 Email 文件放入当前 CalibrationID 的 Customer_Approval_Email 文件夹后，再重新点击 Fill_TCD08。
+          Please place the email files in the Customer_Approval_Email folder of the current CalibrationID, then click Fill_TCD08 again.
         </div>
       </Modal>
     </div>
