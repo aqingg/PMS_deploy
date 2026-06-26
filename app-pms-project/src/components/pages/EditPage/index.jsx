@@ -73,11 +73,13 @@ export default function EditProjectPage() {
 
   function openProxiesModal() {
     loadTeamMembers();
+
     // ⭐ 把之前的 proxiesValue 解析回数组
     if (proxiesValue) {
       const arr = proxiesValue.split(",").map((v) => v.trim());
       setProxiesSelected(arr);
     }
+
     setProxiesModalVisible(true);
   }
 
@@ -96,10 +98,12 @@ export default function EditProjectPage() {
         projectInfo.projectInfo.map((row) =>
           row.map((item) => {
             const v = item.value;
+
             // ⭐ 统一转成 string
             if (Array.isArray(v)) {
               return v.join(", ");
             }
+
             return v ?? "";
           })
         )
@@ -125,25 +129,60 @@ export default function EditProjectPage() {
     else if (count === 4) span = 6;
     else if (count > 4) span = 3;
 
+    const updateInfoValue = (colIndex, val) => {
+      const newInfo = infoValues.map((r) => [...r]);
+      if (!newInfo[rowIndex]) newInfo[rowIndex] = [];
+      newInfo[rowIndex][colIndex] = val;
+      setInfoValues(newInfo);
+    };
+
+    const parseMultiValue = (value) => {
+      if (Array.isArray(value)) {
+        return value.map((v) => String(v).trim()).filter(Boolean);
+      }
+      if (typeof value !== "string") {
+        return [];
+      }
+      return value
+        .split(",")
+        .map((v) => v.trim())
+        .filter(Boolean);
+    };
+
     return (
       <Row gutter={24} key={rowIndex} style={{ marginBottom: 8 }}>
-        {row.map((item, colIndex) => (
-          <Col span={span} key={colIndex}>
-            <Form.Item label={item.label}>
-              <Input
-                value={infoValues[rowIndex]?.[colIndex] ?? ""}
-                style={{ height: 32 }}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  const newInfo = infoValues.map((r) => [...r]);
-                  if (!newInfo[rowIndex]) newInfo[rowIndex] = [];
-                  newInfo[rowIndex][colIndex] = val;
-                  setInfoValues(newInfo);
-                }}
-              />
-            </Form.Item>
-          </Col>
-        ))}
+        {row.map((item, colIndex) => {
+          const hasOptions = Array.isArray(item.keys) && item.keys.length > 0;
+
+          return (
+            <Col span={span} key={colIndex}>
+              <Form.Item label={item.label}>
+                {hasOptions ? (
+                  <Select
+                    mode="multiple"
+                    allowClear
+                    showSearch
+                    value={parseMultiValue(infoValues[rowIndex]?.[colIndex] ?? "")}
+                    style={{ width: "100%", height: 32 }}
+                    options={item.keys.map((key) => ({ label: key, value: key }))}
+                    onChange={(val) => {
+                      updateInfoValue(colIndex, val.join(", "));
+                    }}
+                  />
+                ) : (
+                  <Input
+                    value={infoValues[rowIndex]?.[colIndex] ?? ""}
+                    style={{ height: 32 }}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      updateInfoValue(colIndex, val);
+                    }}
+                  />
+                )}
+              </Form.Item>
+            </Col>
+          );
+        })}
       </Row>
     );
   };
@@ -168,11 +207,13 @@ export default function EditProjectPage() {
       if (String(node?.taskName || "").trim() === taskName) {
         return node;
       }
+
       const found = findTaskNodeByName(node?.children || [], taskName);
       if (found) {
         return found;
       }
     }
+
     return null;
   }
 
@@ -181,9 +222,11 @@ export default function EditProjectPage() {
       projectWorkFlow?.taskTree || [],
       "C.Calibration"
     );
+
     if (!calibrationRoot || !Array.isArray(calibrationRoot.children)) {
       return [];
     }
+
     return calibrationRoot.children
       .map((child) => String(child?.taskName || "").trim())
       .filter(Boolean);
@@ -207,7 +250,6 @@ export default function EditProjectPage() {
       const lower = normalized.toLowerCase();
       const marker = "\\40.application";
       const index = lower.lastIndexOf(marker);
-
       if (index >= 0) {
         return normalized.slice(0, index + marker.length);
       }
@@ -230,7 +272,6 @@ export default function EditProjectPage() {
     let workspaceResult = null;
     let selectedCalibrationId = null;
     const failedIds = [];
-
     for (const cid of calibrationIds) {
       try {
         const result = await createCalibrationWorkspace(cid);
@@ -256,7 +297,6 @@ export default function EditProjectPage() {
 
     const paths = workspaceResult.paths || {};
     const destinationApplicationDir = deriveApplicationDirFromWorkspace(paths);
-
     if (!destinationApplicationDir) {
       console.error("Cannot derive 40.Application path from workspace paths:", paths);
       messageApi.warning("无法从后端返回路径中推导 40.Application 目录，请检查 Local Link。 ");
@@ -272,6 +312,7 @@ export default function EditProjectPage() {
         const createdCount = Number(copyResult.created_count || 0);
         const skippedCount = Number(copyResult.skipped_count || 0);
         const copiedFilesCount = Number(copyResult.copied_files_count || 0);
+
         messageApi.success(
           `40.Application 模板初始化完成。新增 ${createdCount} 个目录，复制 ${copiedFilesCount} 个文件，已存在 ${skippedCount} 个目录。`
         );
@@ -313,6 +354,7 @@ export default function EditProjectPage() {
       try {
         const result = await SetUpApplicationFloder(publicLinkValue);
         //const result = await SetUpApplicationFloder("C:/Users/SZO8SZH/Downloads/testoutput/");
+
         if (result >= 200 && result < 300) {
           messageApi.success("Create Floder Success");
         } else {
@@ -392,6 +434,7 @@ export default function EditProjectPage() {
 
   function handleAutoFillLinks() {
     const newInfo = infoValues.map((row) => [...row]);
+
     let oemValue = "";
     let localPos = null;
     let publicPos = null;
@@ -402,9 +445,11 @@ export default function EditProjectPage() {
         if (cell.label === "OEM") {
           oemValue = newInfo[rIdx][cIdx] || "";
         }
+
         if (cell.label === "Local Link") {
           localPos = { rIdx, cIdx };
         }
+
         if (cell.label === "Public Link") {
           publicPos = { rIdx, cIdx };
         }
@@ -431,6 +476,7 @@ export default function EditProjectPage() {
     if (localPos) {
       newInfo[localPos.rIdx][localPos.cIdx] = localPath;
     }
+
     if (publicPos) {
       newInfo[publicPos.rIdx][publicPos.cIdx] = publicPath;
     }
@@ -496,6 +542,7 @@ export default function EditProjectPage() {
       // 数据更新
       const newInfo = infoValues.map((row) => [...row]);
       const labelToCoordMap = new Map();
+
       grid.forEach((row, rIdx) => {
         row.forEach((cell, cIdx) => {
           labelToCoordMap.set(cell.label, [rIdx, cIdx]);
@@ -540,6 +587,7 @@ export default function EditProjectPage() {
   async function getUUIDFromPMS() {
     try {
       const pmsItems = await getProjectFromPMS();
+
       if (pmsItems && pmsItems.length > 0) {
         setPmsData(pmsItems);
         setSelectedCustomer(null);
@@ -577,6 +625,7 @@ export default function EditProjectPage() {
       } else {
         messageApi.error("Could not find a matching UUID for the selected project.");
       }
+
       handleModalCancel();
     } else {
       messageApi.warning("Please select a project.");
@@ -609,10 +658,12 @@ export default function EditProjectPage() {
   return (
     <div style={{ position: "relative" }}>
       {contextHolder}
+
       <Row align="middle">
         <Col flex="auto">
           <h1 className="text-2xl font-bold m-0">{projectName}</h1>
         </Col>
+
         <Col flex="none">
           <div style={{ display: "flex", gap: 12 }}>
             {/* Auto Fill Links */}
@@ -713,6 +764,7 @@ export default function EditProjectPage() {
               />
             </Form.Item>
           </Col>
+
           <Col span={12}>
             <Form.Item label={proxies.label}>
               <Input
@@ -723,6 +775,7 @@ export default function EditProjectPage() {
               />
             </Form.Item>
           </Col>
+
           <Col span={12}>
             <Form.Item label={uuid.label}>
               <Input
