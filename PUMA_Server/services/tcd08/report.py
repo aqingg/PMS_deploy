@@ -1,6 +1,7 @@
 import getpass
 import json
 import logging
+import re
 import shutil
 import tempfile
 import time
@@ -69,6 +70,15 @@ def _merge_red_paragraph_deletions(red_deletions: list[dict[str, Any]]) -> list[
             }
         )
     return merged
+
+
+def _safe_filename_part(value: Any) -> str:
+    """把 projectName 转成可安全用于 Windows 文件名的片段。"""
+    text = str(value or "").strip()
+    text = re.sub(r'[<>:"/\\|?*]+', "_", text)
+    text = re.sub(r"\s+", "_", text)
+    text = text.strip("._ ")
+    return text or "TCD08_Report"
 
 
 # 固定收尾处理开关：
@@ -490,8 +500,9 @@ async def generate_tcd08_report(
                 time.perf_counter() - step_start,
             )
 
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            output_name = f"filled_{template_path.stem}_{timestamp}{template_path.suffix}"
+            date_stamp = datetime.now().strftime("%Y%m%d")
+            safe_project_name = _safe_filename_part(profile_dict.get("projectName") or template_path.stem)
+            output_name = f"{safe_project_name}_Calibration_Report_{date_stamp}{template_path.suffix}"
             output_path = output_dir / output_name
             working_path = output_path
 
