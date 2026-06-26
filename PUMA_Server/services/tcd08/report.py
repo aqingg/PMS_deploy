@@ -35,6 +35,7 @@ from services.word_sections import (
 )
 from utils.file_loader import load_folder_mapping
 
+
 logger = logging.getLogger("uvicorn.error")
 
 
@@ -67,7 +68,6 @@ def _merge_red_paragraph_deletions(red_deletions: list[dict[str, Any]]) -> list[
                 "matched_rules": grouped_rules.get(section, []),
             }
         )
-
     return merged
 
 
@@ -104,7 +104,6 @@ def _mapping_base_path(item: dict, tag_name: str) -> Path:
     path = Path(absolute_path)
     if not path.exists():
         raise HTTPException(status_code=404, detail=f"Configured path not found: {path}")
-
     return path
 
 
@@ -112,7 +111,6 @@ def _resolve_template_paths() -> list[Path]:
     """解析 TCD08 模板文件路径。模板仍来自服务器/公盘 AbsolutePath。"""
     item = _mapping_by_tag("ONETCD&TCD08_Template")
     base_path = _mapping_base_path(item, "ONETCD&TCD08_Template")
-
     file_keyword = (item.get("FileKeyWord") or "").strip()
 
     if file_keyword:
@@ -128,7 +126,6 @@ def _resolve_template_paths() -> list[Path]:
                 status_code=404,
                 detail=f"TCD08 template file not found: {exact_file}",
             )
-
         return [exact_file]
 
     if not base_path.is_dir():
@@ -142,10 +139,8 @@ def _resolve_template_paths() -> list[Path]:
         for path in sorted(base_path.iterdir())
         if path.is_file() and path.suffix.lower() in {".docx", ".docm"}
     ]
-
     if not template_paths:
         raise HTTPException(status_code=404, detail=f"No Word templates found in {base_path}")
-
     return template_paths
 
 
@@ -183,6 +178,18 @@ def _load_project_info_from_db(project_id: Optional[int], db: Session) -> dict:
             status_code=500,
             detail=f"projectInfo JSON decode error: {exc}",
         ) from exc
+
+
+def _load_project_name_from_db(project_id: Optional[int], db: Session) -> str:
+    """从本地 projects 表读取 New Project 时输入的 projectName。"""
+    if not project_id:
+        return ""
+
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail=f"Project not found: {project_id}")
+
+    return str(project.projectName or "").strip()
 
 
 def _load_project_workflow_from_db(project_id: Optional[int], db: Session) -> dict[str, Any]:
@@ -336,12 +343,16 @@ async def generate_tcd08_report(
     if not isinstance(resolved_project_info, dict):
         resolved_project_info = {}
 
+    project_name = _load_project_name_from_db(project_id, db)
+    if project_name:
+        profile_dict["projectName"] = project_name
+        logger.info("[TCD08] Loaded projectName from DB. project_id=%s value=%s", project_id, project_name)
+
     # 兜底：若前端未传 Owner，但传了 author，则回填到 project_info。
     owner_item = resolved_project_info.get("owner")
     owner_value = ""
     if isinstance(owner_item, dict):
         owner_value = str(owner_item.get("value") or "").strip()
-
     if not owner_value and str(author).strip():
         resolved_project_info["owner"] = {"label": "Owner", "value": str(author).strip()}
 
@@ -435,13 +446,11 @@ async def generate_tcd08_report(
     instruction_removal_results: list[dict[str, Any]] = []
     color_replacement_results: list[dict[str, Any]] = []
     toc_update_warning: str | None = None
-
     local_output_pairs: list[tuple[Path, Path]] = []
 
     # 新架构 copy_to_final_output=False 时，必须禁止最后 copy2 到用户 C 盘。
     # 直接把文件写在服务器 forced_output_dir，FileResponse 再返回给 7175。
     use_local_temp_workflow = PROCESS_ALL_STEPS_IN_LOCAL_TEMP and copy_to_final_output
-
     local_runtime_dir = (
         tempfile.TemporaryDirectory(prefix="puma_tcd08_report_")
         if use_local_temp_workflow
@@ -484,8 +493,8 @@ async def generate_tcd08_report(
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             output_name = f"filled_{template_path.stem}_{timestamp}{template_path.suffix}"
             output_path = output_dir / output_name
-
             working_path = output_path
+
             if local_runtime_root is not None:
                 working_path = local_runtime_root / output_name
                 local_output_pairs.append((working_path, output_path))
@@ -493,7 +502,6 @@ async def generate_tcd08_report(
             step_start = time.perf_counter()
             with open(working_path, "wb") as output_file:
                 output_file.write(filled_stream.read())
-
             logger.info(
                 "[TCD08] (%s/%s) Filled document saved in %.2fs: %s",
                 index,
@@ -510,7 +518,6 @@ async def generate_tcd08_report(
                     len(red_paragraph_text_rewrites),
                 )
                 step_start = time.perf_counter()
-
                 rewrite_plans = [
                     {
                         "section": text_rewrite["section"],
@@ -522,14 +529,12 @@ async def generate_tcd08_report(
                     }
                     for text_rewrite in red_paragraph_text_rewrites
                 ]
-
                 rewrite_summaries = rewrite_red_paragraph_text_batch(
                     working_path,
                     plans=rewrite_plans,
                     update_toc=False,
                     use_local_temp=False,
                 )
-
                 for text_rewrite, rewrite_summary in zip(red_paragraph_text_rewrites, rewrite_summaries):
                     red_paragraph_text_rewrite_results.append(
                         {
@@ -542,7 +547,6 @@ async def generate_tcd08_report(
                             "after": rewrite_summary.after_text,
                         }
                     )
-
                 logger.info(
                     "[TCD08] (%s/%s) Batched red paragraph text rewrite took %.2fs.",
                     index,
@@ -558,7 +562,6 @@ async def generate_tcd08_report(
                     len(merged_red_paragraph_deletions),
                 )
                 step_start = time.perf_counter()
-
                 delete_plans = [
                     {
                         "section": red_deletion["section"],
@@ -566,19 +569,16 @@ async def generate_tcd08_report(
                     }
                     for red_deletion in merged_red_paragraph_deletions
                 ]
-
                 red_summaries = remove_red_paragraph_groups_batch(
                     working_path,
                     plans=delete_plans,
                     update_toc=False,
                     use_local_temp=False,
                 )
-
                 deletion_meta = {
                     str(item.get("section", "")).strip(): item
                     for item in merged_red_paragraph_deletions
                 }
-
                 for red_summary in red_summaries:
                     meta = deletion_meta.get(red_summary.section, {})
                     red_paragraph_delete_results.append(
@@ -592,7 +592,6 @@ async def generate_tcd08_report(
                             "preview": red_summary.deleted_preview,
                         }
                     )
-
                 logger.info(
                     "[TCD08] (%s/%s) Batched red paragraph deletion took %.2fs.",
                     index,
@@ -608,14 +607,12 @@ async def generate_tcd08_report(
                     sections_to_delete,
                 )
                 step_start = time.perf_counter()
-
                 deleted_sections = remove_word_sections(
                     working_path,
                     sections_to_delete,
                     update_toc=False,
                     use_local_temp=False,
                 )
-
                 section_delete_results.extend(
                     {
                         "file": str(output_path),
@@ -626,7 +623,6 @@ async def generate_tcd08_report(
                     }
                     for result in deleted_sections
                 )
-
                 logger.info(
                     "[TCD08] (%s/%s) Removed %s section(s) in %.2fs.",
                     index,
@@ -643,13 +639,11 @@ async def generate_tcd08_report(
                     len(template_paths),
                 )
                 step_start = time.perf_counter()
-
                 instruction_summary = remove_template_instruction_text(
                     working_path,
                     use_local_temp=False,
                 )
                 instruction_replacements_applied = instruction_summary.replacements_applied
-
                 instruction_removal_results.append(
                     {
                         "file": str(output_path),
@@ -658,7 +652,6 @@ async def generate_tcd08_report(
                         "changed_paragraphs": instruction_summary.changed_paragraphs,
                     }
                 )
-
                 logger.info(
                     "[TCD08] (%s/%s) Removed template instruction text in %.2fs. replacements=%s",
                     index,
@@ -681,14 +674,12 @@ async def generate_tcd08_report(
                     len(template_paths),
                 )
                 step_start = time.perf_counter()
-
                 color_summary = replace_red_font_with_black(
                     working_path,
                     preserve_sections=RED_TO_BLACK_SECTION_WHITELIST,
                     use_local_temp=False,
                 )
                 color_changed_runs = color_summary.changed_runs
-
                 color_replacement_results.append(
                     {
                         "file": str(output_path),
@@ -697,7 +688,6 @@ async def generate_tcd08_report(
                         "changed_runs": color_summary.changed_runs,
                     }
                 )
-
                 logger.info(
                     "[TCD08] (%s/%s) Replaced red font with black in %.2fs. changed_runs=%s",
                     index,
@@ -764,7 +754,6 @@ async def generate_tcd08_report(
                 final_path.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(local_path, final_path)
                 copied_paths.append(str(final_path))
-
             generated_files = copied_paths
             logger.info(
                 "[TCD08] Copied %s local processed document(s) back to output_dir in %.2fs.",
@@ -777,7 +766,6 @@ async def generate_tcd08_report(
                 "[TCD08] local_output_pairs exists but copy_to_final_output=False. "
                 "Skip copy2 to avoid writing user C drive."
             )
-
     finally:
         if local_runtime_dir is not None:
             local_runtime_dir.cleanup()
