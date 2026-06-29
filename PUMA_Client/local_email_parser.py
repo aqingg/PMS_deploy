@@ -1,3 +1,4 @@
+# 判定顺序：优先按 sender 括号部门是否包含 VM 判断 send/approval；如果 sender 判断不完整，再 fallback 到 RE/答复/FW 名称奇偶规则；zip 只用于解析附件内容，不参与 send/approval 判定。
 from __future__ import annotations
 
 """
@@ -10,9 +11,11 @@ Purpose:
 - Extract only the metadata needed by TCD08 placeholders.
 - Return a small JSON-serializable email_summary dict.
 
-This file intentionally does NOT upload or modify any email files.
-It mirrors the current Server-side parser result shape so Server/datamerge
-can reuse the same placeholder filling logic later.
+Main classification rule:
+1. If sender department in parentheses contains VM, classify as send.
+2. If sender department exists but does not contain VM, classify as approval.
+3. If sender-based classification is incomplete, fall back to old RE / 答复 / FW marker parity rule.
+4. Zip is only parsed after send/approval is selected; zip is NOT used to decide send/approval.
 """
 
 from contextlib import suppress
@@ -31,8 +34,7 @@ import extract_msg
 logger = logging.getLogger(__name__)
 
 # extract-msg may print harmless INFO logs when optional MAPI streams are missing
-# inside a .msg file. They do not mean the email parsing failed. Keep those logs
-# quiet for the local client CLI and Client.exe runtime.
+# inside a .msg file. They do not mean the email parsing failed.
 logging.getLogger("extract_msg").setLevel(logging.WARNING)
 logging.getLogger("extract_msg.msg_classes.msg").setLevel(logging.WARNING)
 logging.getLogger("extract_msg.attachments").setLevel(logging.WARNING)
@@ -83,13 +85,11 @@ def _clean_text(value: Any) -> str:
     """Convert MAPI/extract-msg values to clean printable text.
 
     Some .msg attachment names may contain a trailing NUL, for example
-    "Results.zip\x00". That made the previous parser display the name in
-    attachments, but fail `.endswith(".zip")`, so the `zip` field became N/A.
+    "Results.zip\x00". This must be cleaned before checking `.endswith(".zip")`.
     """
     if value is None:
         return ""
     text = str(value)
-    # Remove NUL and other control characters that should not be part of a file name.
     text = text.replace("\x00", "")
     text = re.sub(r"[\x01-\x1F\x7F]", "", text)
     return text.strip().strip('"').strip()
@@ -146,8 +146,6 @@ def _save_zip_attachment_to_temp(attachment: Any, zip_name: str = "") -> Optiona
     with tempfile.TemporaryDirectory() as temp_dir:
         saved_result = attachment.save(customPath=temp_dir)
 
-        # extract-msg usually returns (SaveType, path). Keep compatibility if
-        # the library returns only a path in some versions.
         if isinstance(saved_result, tuple):
             saved_path = saved_result[-1]
         else:
@@ -166,8 +164,12 @@ def _save_zip_attachment_to_temp(attachment: Any, zip_name: str = "") -> Optiona
         if not candidates:
             return None
 
-        # Prefer files that look like zip, otherwise use the largest saved file.
-        candidates.sort(key=lambda p: (not _clean_text(p.name).lower().endswith(".zip"), -p.stat().st_size))
+        candidates.sort(
+            key=lambda p: (
+                not _clean_text(p.name).lower().endswith(".zip"),
+                -p.stat().st_size,
+            )
+        )
         source_path = candidates[0]
 
         with tempfile.NamedTemporaryFile(delete=False, suffix=source_path.suffix or suffix) as temp_file:
@@ -183,7 +185,7 @@ def _normalize_zip_entry_name(entry_name: str) -> str:
 
 def _classify_excel_files(excel_names: list[str]) -> dict[str, Any]:
     """
-    Classify Excel files using the same rules as the Server parser:
+    Classify Excel files:
     - pps / idf / idp => specific
     - df / def => defect
     - others => standard
@@ -256,7 +258,11 @@ def _extract_zip_xlsx_groups_from_msg(msg: extract_msg.Message) -> dict[str, Any
         if _clean_text(name).lower().endswith((".xlsx", ".xls", ".xlsm"))
         and not _normalize_zip_entry_name(name).lower().startswith("~$")
     ]
-    xlsx_entries = [name for name in excel_entries if _clean_text(name).lower().endswith(".xlsx")]
+    xlsx_entries = [
+        name
+        for name in excel_entries
+        if _clean_text(name).lower().endswith(".xlsx")
+    ]
     groups = _classify_excel_files(excel_entries)
 
     return {
@@ -282,6 +288,12 @@ def _format_date(raw_date: Any) -> str:
             return str(raw_date)
         except Exception:
             return "N/A"
+
+
+def _date_sort_key(raw_date: Any) -> str:
+    if raw_date is None:
+        return ""
+    return str(raw_date)
 
 
 def parse_msg_summary(msg_path: Path | str) -> Dict[str, Any]:
@@ -318,17 +330,173 @@ def parse_msg_summary(msg_path: Path | str) -> Dict[str, Any]:
             msg.close()
 
 
-def _count_reply_markers(subject: str) -> int:
-    """Count reply/approval markers except FW.
+# =========================
+# Sender based classification
+# =========================
 
-    These markers and FW markers are both used later in the same parity rule:
-    odd count => approval/reply side; even count => send side.
+def _extract_sender_department_groups(sender: str) -> list[str]:
     """
+    Extract department-like strings inside parentheses.
+
+    Example:
+    WU Weiwei (VM-OSS/EPD5-CN) <Weiwei.WU2@cn.bosch.com>
+    -> ["VM-OSS/EPD5-CN"]
+
+    Both half-width () and full-width （） are supported.
+    """
+    text = _clean_text(sender)
+    if not text:
+        return []
+
+    groups: list[str] = []
+    groups.extend(re.findall(r"\(([^()]*)\)", text))
+    groups.extend(re.findall(r"（([^（）]*)）", text))
+    return [_clean_text(group) for group in groups if _clean_text(group)]
+
+
+def _department_contains_vm(department: str) -> bool:
+    """
+    Decide whether one department group belongs to VM.
+
+    Matched examples:
+    VM
+    VM-OSS/EPD5-CN
+    VM/EPD5
+    ABC VM XYZ
+    """
+    text = _clean_text(department).upper()
+    if not text:
+        return False
+    return re.search(r"(^|[^A-Z0-9])VM([^A-Z0-9]|$)", text) is not None
+
+
+def _is_vm_sender(sender: str) -> Optional[bool]:
+    """
+    Return:
+    - True: sender parentheses contain VM, classify as Bosch/VM send mail.
+    - False: sender has parentheses but no VM, classify as customer approval mail.
+    - None: no department group can be found, cannot decide by sender.
+    """
+    groups = _extract_sender_department_groups(sender)
+    if not groups:
+        return None
+    return any(_department_contains_vm(group) for group in groups)
+
+
+def _read_msg_classification_info(msg_path: Path) -> Optional[dict[str, Any]]:
+    """
+    Read only lightweight fields used for choosing send/approval.
+
+    Important:
+    This function does NOT use zip as a classification condition.
+    """
+    msg = extract_msg.Message(str(msg_path))
+    try:
+        sender = _clean_text(getattr(msg, "sender", None))
+        subject = _clean_text(getattr(msg, "subject", None))
+        sent_date_raw = getattr(msg, "date", None)
+        is_vm_sender = _is_vm_sender(sender)
+        return {
+            "path": msg_path,
+            "file": msg_path.name,
+            "sender": sender,
+            "subject": subject,
+            "sent_date_raw": sent_date_raw,
+            "is_vm_sender": is_vm_sender,
+        }
+    except Exception:
+        logger.exception("Failed to read msg classification info: %s", msg_path)
+        return None
+    finally:
+        with suppress(Exception):
+            msg.close()
+
+
+def _choose_best_send_candidate(candidates: list[dict[str, Any]]) -> Optional[Path]:
+    """
+    Choose one VM sender mail as send.
+
+    Zip is not used here.
+    Prefer earlier date, then filename.
+    """
+    if not candidates:
+        return None
+    sorted_candidates = sorted(
+        candidates,
+        key=lambda item: (
+            _date_sort_key(item.get("sent_date_raw")),
+            str(item.get("file", "")).lower(),
+        ),
+    )
+    return sorted_candidates[0]["path"]
+
+
+def _choose_best_approval_candidate(candidates: list[dict[str, Any]]) -> Optional[Path]:
+    """
+    Choose one non-VM sender mail as approval.
+
+    Zip is not used here.
+    Prefer later date, then filename.
+    """
+    if not candidates:
+        return None
+    sorted_candidates = sorted(
+        candidates,
+        key=lambda item: (
+            _date_sort_key(item.get("sent_date_raw")),
+            str(item.get("file", "")).lower(),
+        ),
+        reverse=True,
+    )
+    return sorted_candidates[0]["path"]
+
+
+def _choose_by_sender_vm_rule(msg_files: list[Path]) -> tuple[Optional[Path], Optional[Path]]:
+    """
+    Primary send/approval classification.
+
+    Rule:
+    - sender department contains VM => send
+    - sender department exists but does not contain VM => approval
+    - zip is NOT used for classification
+    - if sender info is not enough, caller will fall back to old name parity rule
+    """
+    infos = [_read_msg_classification_info(path) for path in msg_files]
+    infos = [info for info in infos if info is not None]
+
+    if not infos:
+        return None, None
+
+    vm_candidates = [info for info in infos if info.get("is_vm_sender") is True]
+    customer_candidates = [info for info in infos if info.get("is_vm_sender") is False]
+
+    send_path = _choose_best_send_candidate(vm_candidates)
+    approval_path = _choose_best_approval_candidate(customer_candidates)
+
+    if send_path is not None and approval_path is not None and send_path != approval_path:
+        return send_path, approval_path
+
+    # Sender rule is incomplete. Do not fill by zip.
+    return send_path, approval_path
+
+
+# =========================
+# Old marker fallback
+# =========================
+
+def _count_reply_markers(subject: str) -> int:
+    """Count reply/approval markers except FW."""
     text = _clean_text(subject)
     if not text:
         return 0
     chinese_count = text.count("答复")
-    english_count = len(re.findall(r"\b(?:approval|approve|reply|response|re)\b", text, flags=re.IGNORECASE))
+    english_count = len(
+        re.findall(
+            r"\b(?:approval|approve|reply|response|re)\b",
+            text,
+            flags=re.IGNORECASE,
+        )
+    )
     return chinese_count + english_count
 
 
@@ -337,7 +505,12 @@ def _count_fw_markers(text: str) -> int:
     text = _clean_text(text)
     if not text:
         return 0
-    fw_count = len(re.findall(r"(?i)(?:^|[\s_\-\[\(])fwd?(?=\s*[:：_\-\]\)]|\s+)", text))
+    fw_count = len(
+        re.findall(
+            r"(?i)(?:^|[\s_\-\[\(])fwd?(?=\s*[:：_\-\]\)]|\s+)",
+            text,
+        )
+    )
     chinese_forward_count = text.count("转发")
     return fw_count + chinese_forward_count
 
@@ -353,8 +526,6 @@ def _subject_marker_counts(msg_path: Path) -> Optional[tuple[int, int, int]]:
     msg = extract_msg.Message(str(msg_path))
     try:
         subject = _clean_text(getattr(msg, "subject", None))
-        # Also look at the saved .msg filename. Some exported Outlook files keep
-        # FW only in the file name while the internal subject is normalized.
         combined = f"{subject} {msg_path.name}"
         return _count_total_chain_markers(combined)
     except Exception:
@@ -390,17 +561,13 @@ def _fallback_choose_by_filename(msg_files: list[Path]) -> tuple[Optional[Path],
     return send, approval
 
 
-def _choose_send_and_approval(msg_files: list[Path]) -> tuple[Optional[Path], Optional[Path]]:
+def _choose_by_marker_fallback(msg_files: list[Path]) -> tuple[Optional[Path], Optional[Path]]:
     """
-    Choose send and approval email.
-
-    Preferred rule:
+    Old fallback rule:
     - Count chain markers from both subject and file name.
     - Markers include 答复 / RE / reply / approval and FW / FWD / 转发.
     - Odd marker count => approval/reply side.
     - Even marker count => send side.
-    - A zero-marker file can still be used as send when the other file is odd.
-    - Fall back to filename keywords / sorted order when no marker is useful.
     """
     send = None
     approval = None
@@ -412,7 +579,6 @@ def _choose_send_and_approval(msg_files: list[Path]) -> tuple[Optional[Path], Op
             total_count, reply_count, fw_count = counts
             scored.append((path, total_count, reply_count, fw_count))
 
-    # 1) Use the same odd/even parity rule for reply markers and FW markers.
     marked_scored = [item for item in scored if item[1] > 0]
     if marked_scored:
         even_candidates = sorted(
@@ -428,8 +594,6 @@ def _choose_send_and_approval(msg_files: list[Path]) -> tuple[Optional[Path], Op
         if odd_candidates:
             approval = odd_candidates[0][0]
 
-    # 2) Fill any missing side with remaining files. This preserves the common
-    # case: original send has 0 markers, reply/approval has 1 marker.
     if send is None or approval is None:
         picked = {path for path in (send, approval) if path is not None}
         remaining = [path for path in msg_files if path not in picked]
@@ -445,6 +609,32 @@ def _choose_send_and_approval(msg_files: list[Path]) -> tuple[Optional[Path], Op
         approval = approval or fallback_approval
 
     return send, approval
+
+
+def _choose_send_and_approval(msg_files: list[Path]) -> tuple[Optional[Path], Optional[Path]]:
+    """
+    Choose send and approval email.
+
+    Priority:
+    1. sender department VM rule.
+    2. old RE / 答复 / FW marker fallback.
+    """
+    send_path, approval_path = _choose_by_sender_vm_rule(msg_files)
+
+    if send_path is not None and approval_path is not None and send_path != approval_path:
+        return send_path, approval_path
+
+    fallback_send, fallback_approval = _choose_by_marker_fallback(msg_files)
+
+    send_path = send_path or fallback_send
+    approval_path = approval_path or fallback_approval
+
+    if send_path == approval_path:
+        remaining = [path for path in msg_files if path != send_path]
+        if remaining:
+            approval_path = remaining[0]
+
+    return send_path, approval_path
 
 
 def parse_email_pair(email_dir: Path | str) -> Dict[str, Dict[str, Any]]:
@@ -487,7 +677,7 @@ def parse_email_pair(email_dir: Path | str) -> Dict[str, Dict[str, Any]]:
 
 
 def parse_email_summary(email_dir: Path | str) -> Dict[str, Dict[str, Any]]:
-    """Readable alias used by Client code in later steps."""
+    """Readable alias used by Client code."""
     return parse_email_pair(email_dir)
 
 
@@ -498,11 +688,12 @@ if __name__ == "__main__":
     """
     import argparse
 
-    parser = argparse.ArgumentParser(description="Parse TCD08 local email directory and print email_summary JSON.")
+    parser = argparse.ArgumentParser(
+        description="Parse TCD08 local email directory and print email_summary JSON."
+    )
     parser.add_argument("email_dir", help="Path to Customer_Approval_Email directory")
     args = parser.parse_args()
 
-    # Keep our own warnings/errors, but suppress extract_msg's harmless INFO noise.
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s:%(name)s:%(message)s")
     logging.getLogger("extract_msg").setLevel(logging.WARNING)
     logging.getLogger("extract_msg.msg_classes.msg").setLevel(logging.WARNING)
