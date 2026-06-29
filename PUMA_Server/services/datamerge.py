@@ -58,8 +58,7 @@ def format_all_roles(team_members: Any) -> str:
         return "N/A"
 
     return "; ".join(
-        f"{role}: {', '.join(names)}"
-        for role, names in sorted(role_map.items())
+        f"{role}: {', '.join(names)}" for role, names in sorted(role_map.items())
     )
 
 
@@ -81,8 +80,7 @@ def format_all_emails(team_members: Any) -> str:
         return "N/A"
 
     return "; ".join(
-        f"{role}Email: {', '.join(names)}"
-        for role, names in sorted(role_map.items())
+        f"{role}Email: {', '.join(names)}" for role, names in sorted(role_map.items())
     )
 
 
@@ -102,11 +100,12 @@ async def fetch_project_identifiers() -> List[Dict[str, str]]:
     if projects_data.get("data") and isinstance(projects_data["data"], list):
         for item in projects_data["data"]:
             if item.get("product_category", "").startswith("AB1"):
-                filtered_projects.append({
-                    "uuid": item.get("uuid"),
-                    "customer": item.get("customer_name"),
-                })
-
+                filtered_projects.append(
+                    {
+                        "uuid": item.get("uuid"),
+                        "customer": item.get("customer_name"),
+                    }
+                )
     return filtered_projects
 
 
@@ -177,7 +176,6 @@ async def fetch_single_project_details(uuid: str) -> Optional[Dict[str, Any]]:
         profile["TargetMarket"] = data2.get("TargetMarket", "N/A")
         profile["Status"] = data2.get("Status", "N/A")
         profile["role_summary"] = format_all_roles(data2.get("TeamMembers", []))
-
         sop_str = data2.get("TimelineObject", {}).get("CustomerSOP")
         if sop_str:
             try:
@@ -185,7 +183,6 @@ async def fetch_single_project_details(uuid: str) -> Optional[Dict[str, Any]]:
                 profile["sop"] = int(dt_object.strftime("%Y%m%d"))
             except (ValueError, TypeError):
                 profile["sop"] = 0
-
         profile["plattform"] = (data2.get("PlatformList") or ["N/A"])[0]
         profile["region"] = data2.get("respRegion", "N/A")
         profile["vehicle_variant"] = (data2.get("VehicleModelNameList") or ["N/A"])[0]
@@ -205,9 +202,7 @@ async def fetch_single_project_details(uuid: str) -> Optional[Dict[str, Any]]:
 
         all_sensors = [data3.get(key, "") for key in ["Ufs", "Pas", "Pps"]]
         valid_parts = [sensor for sensor in all_sensors if sensor and sensor != "0"]
-        profile["peripheral_sensor_configuration"] = (
-            "+".join(valid_parts) if valid_parts else "N/A"
-        )
+        profile["peripheral_sensor_configuration"] = "+".join(valid_parts) if valid_parts else "N/A"
 
     for key, value in profile.items():
         if value == "null" or value is None:
@@ -225,7 +220,6 @@ def _parse_role_email_summary(role_email_summary: str) -> dict[str, str]:
     for section in role_email_summary.split(";"):
         if ":" not in section:
             continue
-
         role_key, _, member_list_str = section.partition(":")
         role_key = role_key.strip()
         if not role_key:
@@ -236,7 +230,6 @@ def _parse_role_email_summary(role_email_summary: str) -> dict[str, str]:
             member_str = member_str.strip()
             if not member_str:
                 continue
-
             display_name, separator, email = member_str.rpartition("_")
             if separator:
                 output_lines.append(display_name.strip())
@@ -244,7 +237,6 @@ def _parse_role_email_summary(role_email_summary: str) -> dict[str, str]:
 
         if output_lines:
             email_data_by_role[role_key] = "\n".join(output_lines)
-
     return email_data_by_role
 
 
@@ -261,14 +253,9 @@ def format_firing_loop_count(value: Any) -> str:
     if existing_count:
         return existing_count.group(1)
 
-    loops = [
-        part.strip()
-        for part in re.split(r"[+,\n;]+", raw_value)
-        if part.strip()
-    ]
+    loops = [part.strip() for part in re.split(r"[+,\n;]+", raw_value) if part.strip()]
     if not loops:
         return "N/A"
-
     return str(len(loops))
 
 
@@ -311,7 +298,6 @@ def _prepare_profile_for_filling(profile_dict: dict[str, Any]) -> dict[str, str]
         "SEC": "SEC",
         "TestM": "Test Manager",
     }
-
     for placeholder_key, summary_key in role_mapping.items():
         formatted_profile[placeholder_key] = role_data.get(summary_key, "N/A")
 
@@ -319,7 +305,6 @@ def _prepare_profile_for_filling(profile_dict: dict[str, Any]) -> dict[str, str]
     parsed_emails_by_role = _parse_role_email_summary(
         formatted_profile.get("role_email_summary", "N/A")
     )
-
     corrected_email_data: dict[str, str] = {}
     for raw_key, value in parsed_emails_by_role.items():
         if raw_key.endswith("Email"):
@@ -330,7 +315,6 @@ def _prepare_profile_for_filling(profile_dict: dict[str, Any]) -> dict[str, str]
             ] = value
         else:
             corrected_email_data[raw_key] = value
-
     formatted_profile.update(corrected_email_data)
     return formatted_profile
 
@@ -339,11 +323,15 @@ def _resolve_actual_email_dir(email_dir: Optional[Union[str, Path]]) -> Path:
     """
     Resolve the email source directory used by TCD08 placeholders.
 
-    New architecture:
+    New architecture before step 5:
     - 7175 Client reads user C: email files.
-    - 7175 uploads them to 8086.
+    - 7175 may upload them to 8086.
     - 8086 stores them in a server temp directory.
     - datamerge parses that server temp directory.
+
+    New architecture after step 5:
+    - 7175 can parse email locally and send email_summary JSON.
+    - datamerge uses email_summary first and does not require email_dir.
 
     Legacy fallback:
     - If email_dir is absent, keep existing EMAIL_DIR behavior.
@@ -353,43 +341,119 @@ def _resolve_actual_email_dir(email_dir: Optional[Union[str, Path]]) -> Path:
     return EMAIL_DIR
 
 
+def _as_list(value: Any) -> list[str]:
+    """Convert parser/client list-like values into a clean list of strings."""
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return [str(item) for item in value if str(item).strip()]
+    if isinstance(value, tuple) or isinstance(value, set):
+        return [str(item) for item in value if str(item).strip()]
+    if isinstance(value, str):
+        if not value.strip() or value.strip().upper() in {"N/A", "NA", "NONE", "NULL"}:
+            return []
+        # Keep line-based values stable. Comma splitting is only a fallback.
+        if "\n" in value:
+            return [item.strip() for item in value.splitlines() if item.strip()]
+        return [item.strip() for item in value.split(",") if item.strip()]
+    return [str(value)] if str(value).strip() else []
+
+
+def _safe_count(value: Any, fallback_items: list[str]) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return len(fallback_items)
+
+
+def _normalize_email_side(side: Any) -> dict[str, Any]:
+    """Normalize one side of the email summary while keeping parser-compatible keys."""
+    if not isinstance(side, dict):
+        return {}
+
+    standard_files = _as_list(side.get("standard_xlsx_files"))
+    defect_files = _as_list(side.get("defect_xlsx_files"))
+    specific_files = _as_list(side.get("specific_xlsx_files"))
+
+    normalized = dict(side)
+    normalized["standard_xlsx_files"] = standard_files
+    normalized["defect_xlsx_files"] = defect_files
+    normalized["specific_xlsx_files"] = specific_files
+    normalized["standard_xlsx_count"] = _safe_count(side.get("standard_xlsx_count"), standard_files)
+    normalized["defect_xlsx_count"] = _safe_count(side.get("defect_xlsx_count"), defect_files)
+    normalized["specific_xlsx_count"] = _safe_count(side.get("specific_xlsx_count"), specific_files)
+    return normalized
+
+
+def _normalize_email_summary(email_summary: Any) -> dict[str, dict[str, Any]]:
+    """
+    Accept the new Client-side email_summary and normalize it to the same shape
+    expected from services.email.parser.parse_email_pair().
+    """
+    if isinstance(email_summary, str):
+        try:
+            email_summary = json.loads(email_summary)
+        except json.JSONDecodeError:
+            logger.warning("[TCD08] Ignoring invalid email_summary JSON string.")
+            return {"send": {}, "approval": {}}
+
+    if not isinstance(email_summary, dict):
+        return {"send": {}, "approval": {}}
+
+    return {
+        "send": _normalize_email_side(email_summary.get("send")),
+        "approval": _normalize_email_side(email_summary.get("approval")),
+    }
+
+
 def _populate_email_placeholders(
     formatted_profile: dict[str, str],
     email_dir: Optional[Union[str, Path]] = None,
+    email_summary: Optional[dict[str, Any]] = None,
 ) -> None:
-    actual_email_dir = _resolve_actual_email_dir(email_dir)
+    """
+    Fill TCD08 email placeholders.
 
+    Priority:
+    1. New solution: use Client-parsed email_summary JSON. This avoids uploading
+       large .msg/.zip files through nginx/gate and prevents 513 too large.
+    2. Fallback: parse uploaded_email_dir or legacy EMAIL_DIR with parse_email_pair().
+    """
+    actual_email_dir = _resolve_actual_email_dir(email_dir)
     try:
-        email_map = parse_email_pair(actual_email_dir)
+        if isinstance(email_summary, dict) and email_summary:
+            email_map = _normalize_email_summary(email_summary)
+            source_desc = "client email_summary"
+        else:
+            email_map = parse_email_pair(actual_email_dir)
+            source_desc = str(actual_email_dir)
+
         send = email_map.get("send", {}) or {}
         approval = email_map.get("approval", {}) or {}
 
-        formatted_profile["Email.Approval.SenderFull"] = approval.get("sender", "N/A")
-        formatted_profile["Email.Approval.SentDate"] = approval.get("sent_date", "N/A")
-        formatted_profile["Email.Approval.MsgFileName"] = approval.get("file", "N/A")
+        standard_files = _as_list(send.get("standard_xlsx_files"))
+        defect_files = _as_list(send.get("defect_xlsx_files"))
+        specific_files = _as_list(send.get("specific_xlsx_files"))
 
-        formatted_profile["Email.Send.ZipFileName"] = send.get("zip", "N/A")
-        formatted_profile["Email.Send.StandardXlsxFiles"] = (
-            "\n".join(send.get("standard_xlsx_files", []) or []) or "N/A"
-        )
-        formatted_profile["Email.Send.DefectXlsxFiles"] = (
-            "\n".join(send.get("defect_xlsx_files", []) or []) or "N/A"
-        )
-        formatted_profile["Email.Send.SpecificXlsxFiles"] = (
-            "\n".join(send.get("specific_xlsx_files", []) or []) or "N/A"
-        )
+        formatted_profile["Email.Approval.SenderFull"] = str(approval.get("sender", "N/A") or "N/A")
+        formatted_profile["Email.Approval.SentDate"] = str(approval.get("sent_date", "N/A") or "N/A")
+        formatted_profile["Email.Approval.MsgFileName"] = str(approval.get("file", "N/A") or "N/A")
+
+        formatted_profile["Email.Send.ZipFileName"] = str(send.get("zip", "N/A") or "N/A")
+        formatted_profile["Email.Send.StandardXlsxFiles"] = "\n".join(standard_files) or "N/A"
+        formatted_profile["Email.Send.DefectXlsxFiles"] = "\n".join(defect_files) or "N/A"
+        formatted_profile["Email.Send.SpecificXlsxFiles"] = "\n".join(specific_files) or "N/A"
         formatted_profile["Email.Send.StandardXlsxCount"] = str(
-            send.get("standard_xlsx_count", 0) or 0
+            _safe_count(send.get("standard_xlsx_count"), standard_files)
         )
         formatted_profile["Email.Send.DefectXlsxCount"] = str(
-            send.get("defect_xlsx_count", 0) or 0
+            _safe_count(send.get("defect_xlsx_count"), defect_files)
         )
         formatted_profile["Email.Send.SpecificXlsxCount"] = str(
-            send.get("specific_xlsx_count", 0) or 0
+            _safe_count(send.get("specific_xlsx_count"), specific_files)
         )
 
-        logger.info("[TCD08] Email placeholders populated from %s", actual_email_dir)
-
+        logger.info("[TCD08] Email placeholders populated from %s", source_desc)
     except Exception:
         # Keep generation alive; missing email info becomes N/A instead of failing whole Word build.
         logger.exception("Failed to populate email placeholders from %s", actual_email_dir)
@@ -399,6 +463,7 @@ def fill_docx_by_placeholders(
     profile_dict: dict[str, Any],
     source: Union[Path, io.BytesIO],
     email_dir: Optional[Union[str, Path]] = None,
+    email_summary: Optional[dict[str, Any]] = None,
 ) -> io.BytesIO:
     try:
         document = docx.Document(source)
@@ -406,7 +471,11 @@ def fill_docx_by_placeholders(
         raise HTTPException(status_code=400, detail=f"无法处理提供的Word文件: {exc}") from exc
 
     formatted_profile = _prepare_profile_for_filling(profile_dict)
-    _populate_email_placeholders(formatted_profile, email_dir=email_dir)
+    _populate_email_placeholders(
+        formatted_profile,
+        email_dir=email_dir,
+        email_summary=email_summary,
+    )
 
     placeholder_pattern = re.compile(r"<\s*PMS\.([^>]+?)\s*>")
 
@@ -430,15 +499,12 @@ def fill_docx_by_placeholders(
             "version",
             "date",
         ]
-
         for table in document_obj.tables:
             if not table.rows:
                 continue
-
             header_map = header_index_map(table.rows[0])
             if not all(header in header_map for header in required_headers):
                 continue
-
             # 保留模板里已经写好的第一条变更记录，只清理多余行。
             while len(table.rows) > 2:
                 table._tbl.remove(table.rows[-1]._tr)
@@ -454,7 +520,6 @@ def fill_docx_by_placeholders(
             return text
         if not text or text in {"N/A", "NA", "NULL", "NONE"}:
             return text
-
         items = [
             item.strip()
             for item in re.split(r"\s*(?:\+|,|;|；|，|\n)\s*", text)
@@ -462,9 +527,8 @@ def fill_docx_by_placeholders(
         ]
         if len(items) <= 3:
             return text
-
         wrapped_lines = [
-            " + ".join(items[index:index + 3])
+            " + ".join(items[index : index + 3])
             for index in range(0, len(items), 3)
         ]
         return "\n".join(wrapped_lines)
@@ -473,14 +537,12 @@ def fill_docx_by_placeholders(
         combined_key = match.group(1).strip()
         if combined_key.lower() == "logo":
             return match.group(0)
-
         if "-" in combined_key:
             keys = [key.strip() for key in combined_key.split("-")]
             value_parts = [formatted_profile.get(key, "N/A") for key in keys]
             value = "_".join(value_parts)
         else:
             value = formatted_profile.get(combined_key, "N/A")
-
         if in_table_cell:
             return format_table_cell_value(combined_key, value)
         return str(value)
@@ -508,14 +570,12 @@ def fill_docx_by_placeholders(
     def substitute_in_container(container, in_table_cell: bool = False) -> None:
         for paragraph in container.paragraphs:
             substitute_in_paragraph(paragraph, in_table_cell=in_table_cell)
-
         for table in container.tables:
             for row in table.rows:
                 for cell in row.cells:
                     substitute_in_container(cell, in_table_cell=True)
 
     substitute_in_container(document)
-
     for section in document.sections:
         substitute_in_container(section.header)
         substitute_in_container(section.first_page_header)
@@ -552,7 +612,6 @@ def flatten_project_info(project_info: Dict[str, Any]) -> Dict[str, str]:
         for item in row:
             if isinstance(item, dict):
                 add_value(item.get("label"), item.get("value"))
-
     return values
 
 
@@ -561,7 +620,6 @@ def apply_project_info_overrides(
     project_info: Dict[str, Any],
 ) -> Dict[str, Any]:
     form_values = flatten_project_info(project_info)
-
     form_to_profile = {
         "OEM": "oem",
         "Product Category": "ab_generation",
@@ -578,7 +636,6 @@ def apply_project_info_overrides(
         "Vehicle Type": "type",
         "Fire Loops": "FlConfiguration",
     }
-
     for form_label, profile_key in form_to_profile.items():
         if form_values.get(form_label):
             profile_dict[profile_key] = form_values[form_label]

@@ -21,6 +21,7 @@ router = APIRouter(prefix="/report", tags=["Report"])
 # ===============================================================
 # 工具函数
 # ===============================================================
+
 def _cleanup_dir(path: str) -> None:
     """FileResponse 发送完成后清理本次请求临时目录。"""
     try:
@@ -38,18 +39,35 @@ def _safe_filename(filename: str | None, fallback: str) -> str:
 def _parse_project_info(value: Any) -> dict[str, Any]:
     if value is None or value == "":
         return {}
-
     if isinstance(value, dict):
         return value
-
     if isinstance(value, str):
         try:
             data = json.loads(value)
             return data if isinstance(data, dict) else {}
         except Exception:
             return {}
-
     return {}
+
+
+def _parse_email_summary(value: Any) -> Optional[dict[str, Any]]:
+    """
+    解析 7175 Client 本地解析 email 后传来的摘要。
+
+    新方案中，Client 不再上传 .msg / zip 文件本体，而是发送 email_summary JSON。
+    为了兼容 multipart/form-data 或旧调用，这里同时支持 dict 和 JSON 字符串。
+    """
+    if value is None or value == "":
+        return None
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str):
+        try:
+            data = json.loads(value)
+            return data if isinstance(data, dict) else None
+        except Exception:
+            return None
+    return None
 
 
 def _to_int(value: Any) -> Optional[int]:
@@ -71,13 +89,11 @@ def _get_first(data: dict[str, Any], *keys: str, default: Any = None) -> Any:
 def _collect_generated_files(result: Any) -> list[Path]:
     """
     兼容 service 层不同返回字段。
-    第四步建议让 generate_tcd08_report 返回 generated_files。
     """
     if not isinstance(result, dict):
         return []
 
     candidates: list[Any] = []
-
     for key in ("generated_files", "server_files", "saved_paths", "files"):
         value = result.get(key)
         if isinstance(value, list):
@@ -115,44 +131,36 @@ def _collect_generated_files(result: Any) -> list[Path]:
         if key not in seen:
             unique.append(path)
             seen.add(key)
-
     return unique
 
 
 def _media_type_for(path: Path) -> str:
     suffix = path.suffix.lower()
-
     if suffix == ".docx":
         return "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-
     if suffix == ".docm":
         return "application/vnd.ms-word.document.macroEnabled.12"
-
     if suffix == ".zip":
         return "application/zip"
-
     return "application/octet-stream"
 
 
 def _zip_files(files: list[Path], zip_path: Path) -> Path:
     with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
         used_names: set[str] = set()
-
         for index, file_path in enumerate(files, start=1):
             arcname = file_path.name
-
             if arcname in used_names:
                 arcname = f"{file_path.stem}_{index}{file_path.suffix}"
-
             used_names.add(arcname)
             zf.write(file_path, arcname=arcname)
-
     return zip_path
 
 
 # ===============================================================
 # POST /report/fillTCD08Report
 # ===============================================================
+
 @router.post("/fillTCD08Report")
 async def fill_tcd08_report(
     request: Request,
@@ -161,21 +169,17 @@ async def fill_tcd08_report(
     """
     TCD08 服务器端生成接口。
 
-    正确职责：
-    - 接收 7175 Client 上传的本地 Email 文件。
-    - 将上传文件保存到服务器临时目录。
-    - 调用 service 层生成 TCD08。
-    - 返回生成好的 Word/Zip 文件给 7175。
-    - 不读取用户 C 盘。
-    - 不写入用户 C 盘。
-    """
+    兼容两种输入：
+    - 新方案：7175 Client 本地解析 email，发送 email_summary JSON，避免大文件经过 nginx/gate。
+    - 旧方案：7175 Client 使用 multipart/form-data 上传 email 文件本体，Server 保存到临时目录后解析。
 
+    本接口不读取用户 C 盘，不写入用户 C 盘。
+    """
     content_type = (request.headers.get("content-type") or "").lower()
 
     request_temp_dir = Path(tempfile.mkdtemp(prefix="puma_tcd08_request_"))
     uploaded_email_dir = request_temp_dir / "uploaded_email"
     server_output_dir = request_temp_dir / "generated_report"
-
     uploaded_email_dir.mkdir(parents=True, exist_ok=True)
     server_output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -183,33 +187,28 @@ async def fill_tcd08_report(
 
     try:
         # ===========================================================
-        # 1. 7175 正确请求：multipart/form-data
+        # 1. 旧方案 / fallback：multipart/form-data 上传 email 文件
         # ===========================================================
         if "multipart/form-data" in content_type:
             form = await request.form()
-
             upload_index = 0
-
             for key, value in form.multi_items():
                 if isinstance(value, UploadFile):
                     upload_index += 1
                     filename = _safe_filename(value.filename, f"email_file_{upload_index}")
                     target = uploaded_email_dir / filename
-
                     with open(target, "wb") as out:
                         while True:
                             chunk = await value.read(1024 * 1024)
                             if not chunk:
                                 break
                             out.write(chunk)
-
                     await value.close()
                 else:
                     data[key] = value
 
         # ===========================================================
-        # 2. 兼容旧 JSON 请求
-        #    注意：旧 JSON 请求没有上传文件，不能完成服务器/客户端分离架构。
+        # 2. 新方案：application/json，包含 email_summary
         # ===========================================================
         elif "application/json" in content_type:
             try:
@@ -228,11 +227,12 @@ async def fill_tcd08_report(
         uuid = str(_get_first(data, "uuid", "projectid", default="")).strip()
         project_id = _to_int(_get_first(data, "projectId", "projectid", "project_id"))
         task_id = _get_first(data, "taskId", "task_id", default=None)
-
         project_info = _parse_project_info(
             _get_first(data, "project_info", "projectInfo", default=None)
         )
-
+        email_summary = _parse_email_summary(
+            _get_first(data, "email_summary", "emailSummary", default=None)
+        )
         author = str(_get_first(data, "author", default="") or "")
         report_date = str(_get_first(data, "report_date", "reportDate", default="") or "")
         customer_release_email = str(
@@ -256,14 +256,8 @@ async def fill_tcd08_report(
         # ===========================================================
         # 3. 调用 service 层
         #
-        # 注意：
         # 第四步需要同步修改 services/tcd08/report.py，
-        # 让 generate_tcd08_report 支持：
-        # - uploaded_email_dir
-        # - forced_output_dir
-        # - copy_to_final_output
-        #
-        # 这样 8086 才不会再读写用户 C 盘。
+        # 让 generate_tcd08_report 支持 email_summary 参数。
         # ===========================================================
         result = await generate_tcd08_report(
             uuid=uuid,
@@ -274,15 +268,13 @@ async def fill_tcd08_report(
             report_date=report_date,
             customer_release_email=customer_release_email,
             db=db,
-
-            # 第四步将在 service 层新增这三个参数
             uploaded_email_dir=email_dir_for_service,
+            email_summary=email_summary,
             forced_output_dir=str(server_output_dir),
             copy_to_final_output=False,
         )
 
         generated_files = _collect_generated_files(result)
-
         if not generated_files:
             # 没有生成文件时，返回 JSON，同时清理临时目录
             response_payload = {
@@ -300,7 +292,6 @@ async def fill_tcd08_report(
         # ===========================================================
         if len(generated_files) == 1:
             file_path = generated_files[0]
-
             return FileResponse(
                 path=str(file_path),
                 filename=file_path.name,
@@ -313,7 +304,6 @@ async def fill_tcd08_report(
         # ===========================================================
         zip_path = request_temp_dir / "TCD08_Report_Result.zip"
         _zip_files(generated_files, zip_path)
-
         return FileResponse(
             path=str(zip_path),
             filename=zip_path.name,
@@ -324,7 +314,6 @@ async def fill_tcd08_report(
     except HTTPException:
         shutil.rmtree(request_temp_dir, ignore_errors=True)
         raise
-
     except Exception as exc:
         shutil.rmtree(request_temp_dir, ignore_errors=True)
         raise HTTPException(

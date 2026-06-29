@@ -1,5 +1,4 @@
 from threading import Thread
-
 import base64
 import cgi
 import getpass
@@ -133,7 +132,7 @@ def run_tray():
 app = FastAPI(
     title="PUMA Client",
     description="本地服务：用户目录、打开路径、复制路径等",
-    version="2.1.0",
+    version="2.2.0",
 )
 
 
@@ -155,7 +154,10 @@ class CopyRequest(BaseModel):
     destination_path: str = Field(
         ...,
         example=r"C:\AppTools\00.APP-PMS\WUE7SZH\SomeProject",
-        description="Project root path. The template 40.Application folder will be copied into this path.",
+        description=(
+            "Project root path. The template 40.Application folder will be copied "
+            "into this path."
+        ),
     )
 
 
@@ -175,7 +177,6 @@ class CopyApplicationTemplateRequest(BaseModel):
         example=["ACQ_CaliID", "VAL_CaliID"],
         description="CalibrationID folder names to create under 40.Application\\C.Calibration.",
     )
-
 
 
 class RenameCalibrationFolderRequest(BaseModel):
@@ -209,11 +210,9 @@ SOURCE_CALIBRATION_TEMPLATE = (
     r"N:\Prj\PS\32_Application\EPD5-File-Templates"
     r"\20.1_Template of folder structure\40.Application"
 )
-
 CALIBRATION_FOLDER_NAME = "C.Calibration"
 PARAMETER_STRUCTURE_TEMPLATE_NAME = "20.1_Template of parameter structure"
 DEFAULT_CALIBRATION_IDS = ["ACQ_CaliID", "VAL_CaliID"]
-
 
 # =================================================================================
 # TCD08 本地适配层配置
@@ -222,14 +221,20 @@ DEFAULT_CALIBRATION_IDS = ["ACQ_CaliID", "VAL_CaliID"]
 # set PUMA_SERVER_TCD08_URL=http://127.0.0.1:8086/report/fillTCD08Report
 DEFAULT_SERVER_BASE_URL = os.environ.get(
     "PUMA_SERVER_BASE_URL",
-    # "https://oss-dthub.apac.bosch.com/app-puma",
-    "http://127.0.0.1:8086",
+    "https://oss-dthub.apac.bosch.com/app-puma",
+    # "http://127.0.0.1:8086",
 ).rstrip("/")
-
 DEFAULT_SERVER_TCD08_URL = os.environ.get(
     "PUMA_SERVER_TCD08_URL",
     f"{DEFAULT_SERVER_BASE_URL}/report/fillTCD08Report",
 )
+
+# 默认启用新方案：Client 本地解析 email，只向 8086 发送 JSON 摘要。
+# 如需临时回退旧版 multipart 文件上传，可设置：set PUMA_TCD08_LEGACY_FILE_UPLOAD=1
+USE_LEGACY_TCD08_FILE_UPLOAD = os.environ.get(
+    "PUMA_TCD08_LEGACY_FILE_UPLOAD",
+    "0",
+).strip().lower() in {"1", "true", "yes", "y"}
 
 
 def _norm_path(value: str) -> Path:
@@ -270,7 +275,7 @@ def _derive_tcd08_email_dir(save_path: str) -> Path:
 
 
 def _collect_upload_files(folder: Path):
-    """Collect files directly under folder for upload to the 8086 server."""
+    """Collect files directly under folder for legacy multipart upload to the 8086 server."""
     if not folder.exists():
         raise HTTPException(status_code=404, detail=f"Email folder not found: {folder}")
     if not folder.is_dir():
@@ -293,9 +298,79 @@ def _collect_upload_files(folder: Path):
     return files, handles
 
 
+def _parse_local_email_summary(email_dir: Path) -> dict:
+    """
+    Parse local Customer_Approval_Email into a small JSON-serializable summary.
+
+    The import is intentionally lazy so PUMA Client can still start and keep
+    other local APIs usable even when extract-msg is not installed yet. TCD08
+    will report a clear error if this dependency is missing.
+    """
+    if not email_dir.exists():
+        raise HTTPException(status_code=404, detail=f"Email folder not found: {email_dir}")
+    if not email_dir.is_dir():
+        raise HTTPException(status_code=400, detail=f"Email path is not a folder: {email_dir}")
+
+    try:
+        from local_email_parser import parse_email_summary
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Failed to load local_email_parser. Please place "
+                "PUMA_Client/local_email_parser.py correctly and install extract-msg. "
+                f"Original error: {exc}"
+            ),
+        ) from exc
+
+    try:
+        return parse_email_summary(email_dir)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to parse local email folder: {exc}") from exc
+
+
+def _build_server_json_payload(payload: dict, email_summary: dict) -> dict:
+    """
+    Build the new small JSON request body for 8086.
+
+    Local-only paths are deliberately removed because 8086 must not access the
+    user's C drive. The generated report still returns to 7175 and is saved by
+    this Client into the local output_dir.
+    """
+    local_only_keys = {
+        "template_paths",
+        "save_path",
+        "output_path",
+        "email_dir",
+        "email_path",
+        "server_report_url",
+        "backend_report_url",
+        "target_report_url",
+    }
+
+    server_payload = {
+        key: value
+        for key, value in payload.items()
+        if key not in local_only_keys
+    }
+
+    # Keep compatibility with existing casing used by frontend/server code.
+    if "projectId" not in server_payload and payload.get("projectId") is not None:
+        server_payload["projectId"] = payload.get("projectId")
+    if "projectid" not in server_payload and payload.get("projectid") is not None:
+        server_payload["projectid"] = payload.get("projectid")
+    if "taskId" not in server_payload and payload.get("taskId") is not None:
+        server_payload["taskId"] = payload.get("taskId")
+
+    server_payload["email_summary"] = email_summary or {}
+    server_payload["email_summary_source"] = "client_local_parser"
+    return server_payload
+
+
 def _filename_from_response(response: requests.Response, fallback: str = "TCD08_Report.docm") -> str:
     """
     Parse Content-Disposition filename safely.
+
     Supports both:
         filename=xxx.docm
         filename*=utf-8''xxx%20xxx.docm
@@ -405,6 +480,7 @@ def bring_to_front_by_pid(pid: int):
             result.append(hwnd)
 
     win32gui.EnumWindows(enum_handler, hwnds)
+
     if hwnds:
         hwnd = hwnds[0]
         win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
@@ -427,6 +503,7 @@ def bring_explorer_to_front_by_title(title_keyword: str):
                 result.append(hwnd)
 
     win32gui.EnumWindows(enum_handler, hwnds)
+
     if hwnds:
         hwnd = hwnds[0]
         win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
@@ -470,7 +547,6 @@ def open_resource(path: str):
                 os.makedirs(path, exist_ok=True)
             except Exception as e:
                 return f"Failed to create folder: {e}"
-
         if os.path.isdir(path):
             return open_in_explorer(path)
         if os.path.isfile(path):
@@ -575,7 +651,7 @@ def _resolve_parameter_structure_template() -> Path:
     Resolve the parameter-structure template folder.
 
     Correct source layout:
-        SOURCE_CALIBRATION_TEMPLATE\\C.Calibration\\20.1_Template of parameter structure
+        SOURCE_CALIBRATION_TEMPLATE\C.Calibration\20.1_Template of parameter structure
 
     This folder is a mother template. By default it is NOT copied as a folder named
     '20.1_Template of parameter structure' into the local project. Its children are
@@ -583,14 +659,10 @@ def _resolve_parameter_structure_template() -> Path:
     """
     source_application_dir = _resolve_source_application_template()
     parameter_template_dir = (
-        source_application_dir
-        / CALIBRATION_FOLDER_NAME
-        / PARAMETER_STRUCTURE_TEMPLATE_NAME
+        source_application_dir / CALIBRATION_FOLDER_NAME / PARAMETER_STRUCTURE_TEMPLATE_NAME
     )
-
     if not parameter_template_dir.exists() or not parameter_template_dir.is_dir():
         raise FileNotFoundError(f"Parameter structure template folder not found: {parameter_template_dir}")
-
     return parameter_template_dir
 
 
@@ -604,7 +676,6 @@ def _normalize_calibration_ids(calibration_ids: Optional[List[str]]) -> List[str
     raw_ids = calibration_ids or DEFAULT_CALIBRATION_IDS
     normalized = []
     seen = set()
-
     invalid_exact = {
         PARAMETER_STRUCTURE_TEMPLATE_NAME.lower(),
         "20.1_template of parameter structure",
@@ -615,12 +686,11 @@ def _normalize_calibration_ids(calibration_ids: Optional[List[str]]) -> List[str
         value = str(item or "").strip()
         if not value:
             continue
-
         value_lower = value.lower()
+
         # The template folder is not a CalibrationID and must never become a target ID.
         if value_lower in invalid_exact or "template" in value_lower:
             continue
-
         if value in {".", ".."} or any(ch in invalid_chars for ch in value):
             raise ValueError(f"Invalid CalibrationID folder name: {value}")
 
@@ -630,7 +700,6 @@ def _normalize_calibration_ids(calibration_ids: Optional[List[str]]) -> List[str
 
     if not normalized:
         normalized = DEFAULT_CALIBRATION_IDS[:]
-
     return normalized
 
 
@@ -649,11 +718,15 @@ def _normalize_calibration_id_for_rename(value: str, field_name: str) -> str:
 
     if cleaned in {".", ".."} or cleaned_lower in invalid_exact or "template" in cleaned_lower:
         raise ValueError(f"Invalid {field_name}: {cleaned}")
-
     if any(ch in invalid_chars for ch in cleaned):
         raise ValueError(f"Invalid {field_name}: {cleaned}")
 
     return cleaned
+
+
+def _normcase_abs(path: Path) -> str:
+    """Case-insensitive normalized absolute path string for Windows-safe comparisons."""
+    return os.path.normcase(os.path.abspath(os.path.normpath(str(path))))
 
 
 def _rename_calibration_folder(
@@ -662,7 +735,7 @@ def _rename_calibration_folder(
     new_calibration_id: str,
 ) -> dict:
     """
-    Rename one CalibrationID folder under 40.Application\\C.Calibration.
+    Rename one CalibrationID folder under 40.Application\C.Calibration.
 
     This function only renames the folder itself. It does not copy, delete,
     rebuild, or change any files/subfolders inside the CalibrationID folder.
@@ -731,11 +804,6 @@ def _rename_calibration_folder(
     }
 
 
-def _normcase_abs(path: Path) -> str:
-    """Case-insensitive normalized absolute path string for Windows-safe comparisons."""
-    return os.path.normcase(os.path.abspath(os.path.normpath(str(path))))
-
-
 def _is_same_or_child_path(path: Path, parent: Path) -> bool:
     """Return True when path is parent itself or located under parent."""
     path_norm = _normcase_abs(path)
@@ -750,8 +818,7 @@ def _safe_copy_tree(source_dir: Path, destination_dir: Path, skip_source_dirs: O
     """
     Safe recursive copy for folders AND files.
 
-    - source_dir itself is not copied as a named folder; its child content is expanded
-      into destination_dir;
+    - source_dir itself is not copied as a named folder; its child content is expanded into destination_dir;
     - missing folders are created;
     - missing files are copied;
     - existing files are NOT overwritten;
@@ -761,7 +828,6 @@ def _safe_copy_tree(source_dir: Path, destination_dir: Path, skip_source_dirs: O
         raise FileNotFoundError(f"Source template folder not found: {source_dir}")
 
     skip_dirs = [Path(p) for p in (skip_source_dirs or [])]
-
     created_dirs = []
     existing_dirs = []
     copied_files = []
@@ -831,15 +897,14 @@ def _copy_full_application_template(destination_application_dir: Path) -> dict:
     """
     Copy the whole source 40.Application template into local 40.Application.
 
-    The parameter-template folder under C.Calibration is skipped here because it is a
-    mother template. Its contents are expanded into every CalibrationID folder later.
-    This keeps local 40.Application\\C.Calibration clean while still preserving A/B/D
-    and all other normal 40.Application content.
+    The parameter-template folder under C.Calibration is skipped here because it is a mother template.
+    Its contents are expanded into every CalibrationID folder later. This keeps local
+    40.Application\C.Calibration clean while still preserving A/B/D and all other normal
+    40.Application content.
     """
     source_application_dir = _resolve_source_application_template()
     parameter_template_dir = _resolve_parameter_structure_template()
     destination_application_dir.mkdir(parents=True, exist_ok=True)
-
     return _safe_copy_tree(
         source_application_dir,
         destination_application_dir,
@@ -852,8 +917,8 @@ def _copy_parameter_structure_to_calibration_ids(
     calibration_ids: Optional[List[str]],
 ) -> dict:
     """
-    Create CalibrationID folders under local 40.Application\\C.Calibration and
-    expand the parameter-structure template into every CalibrationID folder.
+    Create CalibrationID folders under local 40.Application\C.Calibration and expand the
+    parameter-structure template into every CalibrationID folder.
     """
     parameter_template_dir = _resolve_parameter_structure_template()
     normalized_ids = _normalize_calibration_ids(calibration_ids)
@@ -917,11 +982,10 @@ def _copy_application_template_with_calibration_ids(
 ) -> dict:
     """
     Correct two-stage Copy flow:
-
-    1. Safe-copy the full 40.Application template into the local 40.Application,
-       preserving A/B/C/D and all normal folders/files.
-    2. Expand C.Calibration\20.1_Template of parameter structure into every
-       CalibrationID folder passed by the frontend workflow.
+    1. Safe-copy the full 40.Application template into the local 40.Application, preserving A/B/C/D
+       and all normal folders/files.
+    2. Expand C.Calibration\20.1_Template of parameter structure into every CalibrationID folder
+       passed by the frontend workflow.
     """
     app_result = _copy_full_application_template(destination_application_dir)
     parameter_result = _copy_parameter_structure_to_calibration_ids(
@@ -932,7 +996,9 @@ def _copy_application_template_with_calibration_ids(
     total_created_count = app_result.get("created_count", 0) + parameter_result.get("created_count", 0)
     total_existing_count = app_result.get("existing_count", 0) + parameter_result.get("existing_count", 0)
     total_copied_files_count = app_result.get("copied_files_count", 0) + parameter_result.get("copied_files_count", 0)
-    total_skipped_files_count = app_result.get("skipped_existing_files_count", 0) + parameter_result.get("skipped_existing_files_count", 0)
+    total_skipped_files_count = app_result.get("skipped_existing_files_count", 0) + parameter_result.get(
+        "skipped_existing_files_count", 0
+    )
 
     return {
         "source": str(Path(SOURCE_CALIBRATION_TEMPLATE)),
@@ -1035,7 +1101,6 @@ def save_report_on_server(request: ReportRequest):
                 filename = "generated_report.zip"
 
             full_save_path = os.path.join(request.save_path, filename)
-
             try:
                 os.makedirs(request.save_path, exist_ok=True)
             except OSError as e:
@@ -1054,7 +1119,6 @@ def save_report_on_server(request: ReportRequest):
             }
 
         raise HTTPException(status_code=response.status_code, detail=f"文件处理服务调用失败: {response.text}")
-
     except requests.exceptions.RequestException as e:
         raise HTTPException(status_code=502, detail=f"无法连接到文件处理服务: {e}")
     finally:
@@ -1104,7 +1168,7 @@ def api_create_folders(req: CreateFoldersRequest):
 @app.post("/renameCalibrationFolder")
 def api_rename_calibration_folder(req: RenameCalibrationFolderRequest):
     """
-    Rename a local CalibrationID folder under 40.Application\\C.Calibration.
+    Rename a local CalibrationID folder under 40.Application\C.Calibration.
 
     This endpoint only changes the folder name. It does not modify the folder's
     child directories/files and does not run any template copy logic.
@@ -1141,20 +1205,14 @@ def api_rename_calibration_folder(req: RenameCalibrationFolderRequest):
 @app.post("/copyApplicationTemplate")
 def api_copy_application_template(req: CopyApplicationTemplateRequest):
     """
-    Initialize local 40.Application from the full template, then expand the
-    C.Calibration parameter-structure template into every workflow CalibrationID.
+    Initialize local 40.Application from the full template, then expand the C.Calibration
+    parameter-structure template into every workflow CalibrationID.
 
     Correct behavior:
-    1. Safe-copy:
-        N:/.../40.Application/*
-       into:
-        <local>/40.Application/*
-       preserving A/B/C/D and normal files/folders, without overwriting existing files.
-
-    2. Safe-expand:
-        N:/.../40.Application/C.Calibration/20.1_Template of parameter structure/*
-       into:
-        <local>/40.Application/C.Calibration/<CalibrationID>/*
+    1. Safe-copy: N:/.../40.Application/* into: /40.Application/* preserving A/B/C/D
+       and normal files/folders, without overwriting existing files.
+    2. Safe-expand: N:/.../40.Application/C.Calibration/20.1_Template of parameter structure/*
+       into: /40.Application/C.Calibration/<CalibrationID>/*
 
     The local project does not need to keep the mother template folder itself.
     """
@@ -1234,9 +1292,13 @@ def client_fill_tcd08_report(payload: dict = Body(...)):
     Correct architecture:
         Browser -> 7175 Client -> 8086 Server -> 7175 saves to user's C drive.
 
-    This endpoint receives the same JSON body previously sent to the 8086 server.
-    It reads local Customer_Approval_Email files, uploads them to 8086, receives the
-    generated report, and saves it to the local TCD08_Report directory.
+    New default behavior for 513-too-large prevention:
+        - 7175 reads local Customer_Approval_Email.
+        - 7175 parses .msg/.zip metadata locally into email_summary.
+        - 7175 sends a small JSON request to 8086, without uploading email files.
+
+    Legacy multipart upload remains available only when environment variable
+    PUMA_TCD08_LEGACY_FILE_UPLOAD=1 is set.
     """
     try:
         save_path_raw = payload.get("save_path") or payload.get("output_path")
@@ -1259,63 +1321,96 @@ def client_fill_tcd08_report(payload: dict = Body(...)):
         print(f"[TCD08 Client] server_report_url = {server_report_url}")
         print(f"[TCD08 Client] email_dir = {email_dir}")
         print(f"[TCD08 Client] output_dir = {output_dir}")
+        print(f"[TCD08 Client] legacy_file_upload = {USE_LEGACY_TCD08_FILE_UPLOAD}")
         print("=" * 80)
 
-        files, handles = _collect_upload_files(email_dir)
+        host = (urlparse(server_report_url).hostname or "").lower()
 
-        data = {}
-        for key, value in payload.items():
-            if key in {
-                "template_paths",
-                "save_path",
-                "output_path",
-                "email_dir",
-                "email_path",
-                "server_report_url",
-                "backend_report_url",
-                "target_report_url",
-            }:
-                continue
-            if isinstance(value, (dict, list)):
-                data[key] = json.dumps(value, ensure_ascii=False)
-            elif value is None:
-                data[key] = ""
-            else:
-                data[key] = str(value)
+        if USE_LEGACY_TCD08_FILE_UPLOAD:
+            files, handles = _collect_upload_files(email_dir)
+            data = {}
+            for key, value in payload.items():
+                if key in {
+                    "template_paths",
+                    "save_path",
+                    "output_path",
+                    "email_dir",
+                    "email_path",
+                    "server_report_url",
+                    "backend_report_url",
+                    "target_report_url",
+                }:
+                    continue
+                if isinstance(value, (dict, list)):
+                    data[key] = json.dumps(value, ensure_ascii=False)
+                elif value is None:
+                    data[key] = ""
+                else:
+                    data[key] = str(value)
 
-        if "projectId" not in data and payload.get("projectId") is not None:
-            data["projectId"] = str(payload.get("projectId"))
-        if "projectid" not in data and payload.get("projectid") is not None:
-            data["projectid"] = str(payload.get("projectid"))
-        if "taskId" not in data and payload.get("taskId") is not None:
-            data["taskId"] = str(payload.get("taskId"))
+            if "projectId" not in data and payload.get("projectId") is not None:
+                data["projectId"] = str(payload.get("projectId"))
+            if "projectid" not in data and payload.get("projectid") is not None:
+                data["projectid"] = str(payload.get("projectid"))
+            if "taskId" not in data and payload.get("taskId") is not None:
+                data["taskId"] = str(payload.get("taskId"))
 
-        try:
-            host = (urlparse(server_report_url).hostname or "").lower()
+            try:
+                if host in {"127.0.0.1", "localhost"}:
+                    session = requests.Session()
+                    session.trust_env = False
+                    response = session.post(
+                        server_report_url,
+                        data=data,
+                        files=files,
+                        verify=False,
+                        timeout=600,
+                    )
+                else:
+                    response = requests.post(
+                        server_report_url,
+                        data=data,
+                        files=files,
+                        verify=False,
+                        timeout=600,
+                    )
+            finally:
+                for fh in handles:
+                    try:
+                        fh.close()
+                    except Exception:
+                        pass
+        else:
+            email_summary = _parse_local_email_summary(email_dir)
+            server_payload = _build_server_json_payload(payload, email_summary)
+
+            print("[TCD08 Client] Local email parsed successfully.")
+            print(f"[TCD08 Client] send_file = {email_summary.get('send', {}).get('file')}")
+            print(f"[TCD08 Client] approval_file = {email_summary.get('approval', {}).get('file')}")
+            print(f"[TCD08 Client] zip = {email_summary.get('send', {}).get('zip')}")
+            print(
+                "[TCD08 Client] excel_counts = "
+                f"standard:{email_summary.get('send', {}).get('standard_xlsx_count', 0)}, "
+                f"defect:{email_summary.get('send', {}).get('defect_xlsx_count', 0)}, "
+                f"specific:{email_summary.get('send', {}).get('specific_xlsx_count', 0)}"
+            )
+
             if host in {"127.0.0.1", "localhost"}:
                 session = requests.Session()
                 session.trust_env = False
                 response = session.post(
                     server_report_url,
-                    data=data,
-                    files=files,
+                    json=server_payload,
                     verify=False,
                     timeout=600,
                 )
             else:
                 response = requests.post(
                     server_report_url,
-                    data=data,
-                    files=files,
+                    json=server_payload,
                     verify=False,
                     timeout=600,
                 )
-        finally:
-            for fh in handles:
-                try:
-                    fh.close()
-                except Exception:
-                    pass
 
         if response.status_code < 200 or response.status_code >= 300:
             detail = response.text[:2000] if response.text else response.reason
@@ -1325,7 +1420,6 @@ def client_fill_tcd08_report(payload: dict = Body(...)):
             )
 
         content_type = (response.headers.get("content-type") or "").lower()
-
         if "application/json" not in content_type:
             saved_path = _save_binary_response(response, output_dir)
             return {
@@ -1334,6 +1428,7 @@ def client_fill_tcd08_report(payload: dict = Body(...)):
                 "email_dir": str(email_dir),
                 "output_dir": str(output_dir),
                 "saved_path": saved_path,
+                "transport_mode": "legacy_multipart" if USE_LEGACY_TCD08_FILE_UPLOAD else "email_summary_json",
             }
 
         try:
@@ -1346,6 +1441,7 @@ def client_fill_tcd08_report(payload: dict = Body(...)):
                 "email_dir": str(email_dir),
                 "output_dir": str(output_dir),
                 "saved_path": saved_path,
+                "transport_mode": "legacy_multipart" if USE_LEGACY_TCD08_FILE_UPLOAD else "email_summary_json",
             }
 
         saved_paths = _save_json_report_payload(json_data, output_dir)
@@ -1356,6 +1452,7 @@ def client_fill_tcd08_report(payload: dict = Body(...)):
                 "email_dir": str(email_dir),
                 "output_dir": str(output_dir),
                 "saved_paths": saved_paths,
+                "transport_mode": "legacy_multipart" if USE_LEGACY_TCD08_FILE_UPLOAD else "email_summary_json",
                 "server_response": json_data,
             }
 
@@ -1364,6 +1461,7 @@ def client_fill_tcd08_report(payload: dict = Body(...)):
             "message": json_data.get("message", "8086 returned JSON without report binary"),
             "email_dir": str(email_dir),
             "output_dir": str(output_dir),
+            "transport_mode": "legacy_multipart" if USE_LEGACY_TCD08_FILE_UPLOAD else "email_summary_json",
             "server_response": json_data,
         }
 
@@ -1396,10 +1494,8 @@ async def get_project_info(uuid: str):
     try:
         response = requests.get(url, proxies=no_proxy, verify=False)
         response.raise_for_status()
-
         project_profile = dataprovider_pb2.ProjectProfile()
         project_profile.ParseFromString(response.content)
-
         data_dict = MessageToDict(project_profile, preserving_proto_field_name=True)
         return data_dict
     except requests.exceptions.RequestException as e:
@@ -1413,7 +1509,6 @@ async def call_document_processor(projectId: str):
     # target_api_url = "http://127.0.0.1:8088/temp/api/v1/puma/projects/documents"
     target_api_url = "https://oss-dthub.apac.bosch.com/temp/api/v1/puma/projects/documents"
     no_proxy = {"http": None, "https": None}
-
     SOURCE_DIRECTORY = "C:/Users/ASY6SZH/Downloads/testinput/"
     DESTINATION_DIRECTORY = "C:/Users/ASY6SZH/Downloads/testoutput/"
 
@@ -1422,7 +1517,6 @@ async def call_document_processor(projectId: str):
 
     files_to_upload = []
     open_files = []
-
     try:
         if not os.path.isdir(SOURCE_DIRECTORY):
             raise HTTPException(status_code=404, detail=f"Source directory not found: {SOURCE_DIRECTORY}")
@@ -1470,14 +1564,12 @@ async def call_document_processor(projectId: str):
             f_out.write(response.content)
 
         print(f"Response ZIP file saved to: '{destination_path}'")
-
         return {
             "status": "success",
             "message": "Successfully called the document processing API and saved the result.",
             "files_sent": [f[1][0] for f in files_to_upload],
             "zip_file_saved_as": destination_path,
         }
-
     except requests.exceptions.RequestException as e:
         raise HTTPException(status_code=503, detail=f"Failed to communicate with the document API: {e}")
     except HTTPException:

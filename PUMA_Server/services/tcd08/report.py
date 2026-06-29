@@ -36,7 +36,6 @@ from services.word_sections import (
 )
 from utils.file_loader import load_folder_mapping
 
-
 logger = logging.getLogger("uvicorn.error")
 
 
@@ -49,13 +48,11 @@ def _merge_red_paragraph_deletions(red_deletions: list[dict[str, Any]]) -> list[
         section = str(deletion.get("section", "")).strip()
         if not section:
             continue
-
         for group_index in deletion.get("delete_groups", []):
             try:
                 grouped_indexes[section].add(int(group_index))
             except (TypeError, ValueError):
                 continue
-
         description = str(deletion.get("description", "")).strip()
         if description:
             grouped_rules[section].append(description)
@@ -129,7 +126,6 @@ def _resolve_template_paths() -> list[Path]:
                 status_code=400,
                 detail="FileKeyWord must be a file name, not a path",
             )
-
         exact_file = base_path / file_keyword
         if not exact_file.is_file():
             raise HTTPException(
@@ -166,7 +162,6 @@ def _resolve_output_dir() -> Path:
             status_code=400,
             detail="No AbsolutePath configured for ONETCD&TCD08_Report",
         )
-
     output_dir = Path(absolute_path)
     output_dir.mkdir(parents=True, exist_ok=True)
     return output_dir
@@ -176,11 +171,9 @@ def _load_project_info_from_db(project_id: Optional[int], db: Session) -> dict:
     """当前端没有直接传 project_info 时，从本地 DB 读取 projectInfo。"""
     if not project_id:
         return {}
-
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
         raise HTTPException(status_code=404, detail=f"Project not found: {project_id}")
-
     try:
         return json.loads(project.projectInfo)
     except Exception as exc:
@@ -194,22 +187,18 @@ def _load_project_name_from_db(project_id: Optional[int], db: Session) -> str:
     """从本地 projects 表读取 New Project 时输入的 projectName。"""
     if not project_id:
         return ""
-
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
         raise HTTPException(status_code=404, detail=f"Project not found: {project_id}")
-
     return str(project.projectName or "").strip()
 
 
 def _load_project_workflow_from_db(project_id: Optional[int], db: Session) -> dict[str, Any]:
     if not project_id:
         return {}
-
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
         raise HTTPException(status_code=404, detail=f"Project not found: {project_id}")
-
     try:
         workflow = json.loads(project.projectWorkFlow or "{}")
     except Exception as exc:
@@ -217,7 +206,6 @@ def _load_project_workflow_from_db(project_id: Optional[int], db: Session) -> di
             status_code=500,
             detail=f"projectWorkFlow JSON decode error: {exc}",
         ) from exc
-
     return workflow if isinstance(workflow, dict) else {}
 
 
@@ -225,17 +213,14 @@ def _find_task_path(nodes: list[dict[str, Any]], target_task_id: str) -> list[di
     for node in nodes:
         if not isinstance(node, dict):
             continue
-
         current_path = [node]
         if node.get("id") == target_task_id:
             return current_path
-
         children = node.get("children") or []
         if isinstance(children, list) and children:
             child_path = _find_task_path(children, target_task_id)
             if child_path:
                 return current_path + child_path
-
     return None
 
 
@@ -243,12 +228,10 @@ def _extract_calibration_parameter(task_name: str) -> str:
     clean_name = str(task_name or "").strip()
     if not clean_name:
         return ""
-
     if "_" in clean_name:
         suffix = clean_name.rsplit("_", 1)[-1].strip()
         if suffix:
             return suffix
-
     return clean_name
 
 
@@ -258,15 +241,12 @@ def _resolve_calibration_task_name_from_workflow(
 ) -> str:
     if not task_id:
         return ""
-
     task_tree = workflow.get("taskTree", [])
     if not isinstance(task_tree, list) or not task_tree:
         return ""
-
     path = _find_task_path(task_tree, task_id)
     if not path or len(path) < 2:
         return ""
-
     parent_task = path[-2]
     return str(parent_task.get("taskName") or "").strip()
 
@@ -279,19 +259,39 @@ def _resolve_calibration_parameter_from_workflow(
     return _extract_calibration_parameter(parent_name)
 
 
-def _fill_docx_by_placeholders_with_optional_email_dir(
+def _fill_docx_by_placeholders_with_optional_email_data(
     profile_dict: dict[str, Any],
     template_path: Path,
     uploaded_email_dir: str | None,
+    email_summary: dict[str, Any] | None,
 ):
     """
     调用 datamerge.fill_docx_by_placeholders。
 
-    第五步建议同步修改 services/datamerge.py，使它正式支持 email_dir 参数。
-    为了减少覆盖后立刻因旧 datamerge 签名崩溃，这里做一次兼容降级：
-    - 新 datamerge：fill_docx_by_placeholders(profile, template, email_dir=...)
-    - 旧 datamerge：fill_docx_by_placeholders(profile, template)
+    第五步会同步修改 services/datamerge.py，使它正式支持 email_summary 参数：
+    - 新方案：fill_docx_by_placeholders(profile, template, email_summary=..., email_dir=...)
+    - 旧上传兜底：fill_docx_by_placeholders(profile, template, email_dir=...)
+    - 最旧兜底：fill_docx_by_placeholders(profile, template)
+
+    为了减少第四步覆盖后立刻因旧 datamerge 签名崩溃，这里做兼容降级。
     """
+    if isinstance(email_summary, dict) and email_summary:
+        try:
+            return fill_docx_by_placeholders(
+                profile_dict,
+                template_path,
+                email_dir=uploaded_email_dir,
+                email_summary=email_summary,
+            )
+        except TypeError as exc:
+            if "email_summary" not in str(exc):
+                raise
+            logger.warning(
+                "[TCD08] services.datamerge.fill_docx_by_placeholders does not support "
+                "email_summary yet. Fallback to email_dir/legacy call. Please complete step 5.",
+                exc_info=True,
+            )
+
     if uploaded_email_dir:
         try:
             return fill_docx_by_placeholders(
@@ -303,11 +303,10 @@ def _fill_docx_by_placeholders_with_optional_email_dir(
             if "email_dir" not in str(exc):
                 raise
             logger.warning(
-                "[TCD08] services.datamerge.fill_docx_by_placeholders does not support email_dir yet. "
-                "Fallback to legacy call without uploaded email_dir. Please complete step 5.",
+                "[TCD08] services.datamerge.fill_docx_by_placeholders does not support "
+                "email_dir yet. Fallback to legacy call without uploaded email_dir. Please complete step 5.",
                 exc_info=True,
             )
-
     return fill_docx_by_placeholders(profile_dict, template_path)
 
 
@@ -322,6 +321,7 @@ async def generate_tcd08_report(
     customer_release_email: str,
     db: Session,
     uploaded_email_dir: str | None = None,
+    email_summary: dict[str, Any] | None = None,
     forced_output_dir: str | None = None,
     copy_to_final_output: bool = True,
 ) -> dict:
@@ -329,13 +329,15 @@ async def generate_tcd08_report(
     TCD08 报告生成主流程。
 
     新架构职责边界：
-    - 7175 Client 读取用户 C 盘 Customer_Approval_Email，并上传到 8086。
-    - 8086 只读取 uploaded_email_dir，即服务器临时目录。
+    - 7175 Client 读取用户 C 盘 Customer_Approval_Email，并在本地解析 email/zip。
+    - 7175 优先把 email_summary JSON 发给 8086，不再上传大 email 文件本体。
+    - 兼容旧流程：若仍有 uploaded_email_dir，则 8086 可读取服务器临时 email 目录。
     - 8086 只把生成文件写到 forced_output_dir，即服务器临时输出目录。
     - 8086 不再复制或写入用户 C 盘。
 
     参数说明：
-    - uploaded_email_dir：7175 上传文件后，api/report.py 保存到服务器临时目录的位置。
+    - email_summary：7175 本地解析出的 email/zip 摘要，用于避免大文件上传触发 513。
+    - uploaded_email_dir：旧上传流程中，api/report.py 保存上传 email 文件的服务器临时目录。
     - forced_output_dir：api/report.py 为本次请求创建的服务器临时输出目录。
     - copy_to_final_output：False 时禁止 shutil.copy2 到最终路径；直接在 forced_output_dir 生成，供 FileResponse 返回。
     """
@@ -386,7 +388,6 @@ async def generate_tcd08_report(
             task_id,
             calibration_task_name,
         )
-
     if calibration_parameter:
         profile_dict["CalibrationParameter"] = calibration_parameter
         logger.info(
@@ -415,6 +416,18 @@ async def generate_tcd08_report(
     else:
         output_dir = _resolve_output_dir()
         logger.info("[TCD08] Using legacy output dir: %s", output_dir)
+
+    if isinstance(email_summary, dict) and email_summary:
+        send = email_summary.get("send") if isinstance(email_summary.get("send"), dict) else {}
+        approval = email_summary.get("approval") if isinstance(email_summary.get("approval"), dict) else {}
+        logger.info(
+            "[TCD08] Using client parsed email_summary. send_file=%s approval_file=%s zip=%s",
+            send.get("file") or send.get("msg_file") or "N/A",
+            approval.get("file") or approval.get("msg_file") or "N/A",
+            send.get("zip") or send.get("zip_file_name") or "N/A",
+        )
+    else:
+        email_summary = None
 
     if uploaded_email_dir:
         uploaded_email_path = Path(uploaded_email_dir)
@@ -488,10 +501,11 @@ async def generate_tcd08_report(
             )
 
             step_start = time.perf_counter()
-            filled_stream = _fill_docx_by_placeholders_with_optional_email_dir(
+            filled_stream = _fill_docx_by_placeholders_with_optional_email_data(
                 profile_dict,
                 template_path,
                 uploaded_email_dir,
+                email_summary,
             )
             logger.info(
                 "[TCD08] (%s/%s) Placeholder filling took %.2fs.",
@@ -504,8 +518,8 @@ async def generate_tcd08_report(
             safe_project_name = _safe_filename_part(profile_dict.get("projectName") or template_path.stem)
             output_name = f"{safe_project_name}_Calibration_Report_{date_stamp}{template_path.suffix}"
             output_path = output_dir / output_name
-            working_path = output_path
 
+            working_path = output_path
             if local_runtime_root is not None:
                 working_path = local_runtime_root / output_name
                 local_output_pairs.append((working_path, output_path))
@@ -729,7 +743,6 @@ async def generate_tcd08_report(
 
             saved_paths.append(str(output_path))
             generated_files.append(str(output_path if local_runtime_root is None else working_path))
-
             logger.info(
                 "[TCD08] (%s/%s) Template processing completed in %.2fs.",
                 index,
@@ -798,6 +811,7 @@ async def generate_tcd08_report(
         "calibration_task_name": calibration_task_name,
         "calibration_parameter": calibration_parameter,
         "email_dir": str(uploaded_email_dir) if uploaded_email_dir else None,
+        "email_summary_used": bool(email_summary),
         "output_dir": str(output_dir),
         "copy_to_final_output": copy_to_final_output,
         "section_deletions": section_delete_results,
