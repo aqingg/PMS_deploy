@@ -1,4 +1,5 @@
-"""Word 文档处理的兼容入口文件。
+"""
+Word 文档处理的兼容入口文件。
 
 历史上，章节删除、红字删除、段落内改写、目录更新、宏保护，
 全部都写在这个 word_sections.py 文件里，所以文件会非常长、非常难读。
@@ -10,15 +11,14 @@
 - text_rewrite.py：负责段落内部局部删词/改写。
 - instructions.py：负责删除模板里的固定维护提示语。
 - colors.py：负责把保留下来的红色字体转成黑色。
+- optional_blocks.py：负责删除无值的固定可选短块。
 - package.py：负责 .docm zip 包写回和宏保护。
 - toc.py：负责调用 Word COM 更新目录。
 - xml_utils.py：负责 Word XML 的基础工具函数。
 
 为什么还保留这个文件：
-report.py 和已有测试脚本已经在使用
-from services.word_sections import ...
+report.py 和已有测试脚本已经在使用 from services.word_sections import ...
 如果直接删除这个文件，会导致旧代码全部改 import。
-
 所以这里作为“转发层/兼容层”存在：
 外部代码仍然从 word_sections.py 导入；
 真正代码则放在更小、更容易阅读的小模块里。
@@ -47,6 +47,13 @@ from services.word.instructions import (
     remove_template_instruction_text,
     remove_template_instruction_text_in_xml,
 )
+# 可选短块相关：
+# 这些函数用于删除 TCD08 中值为空/N/A 的固定 Email simulation 短块。
+from services.word.optional_blocks import (
+    OptionalBlockRemovalSummary,
+    remove_empty_email_simulation_blocks,
+    remove_empty_email_simulation_blocks_in_xml,
+)
 # .docm 包处理和宏保护相关：
 # 这些函数负责安全地改写 zip 成员，并保证宏不丢。
 from services.word.package import (
@@ -67,8 +74,8 @@ from services.word.red_paragraphs import (
     RedParagraphGroup,
     collect_red_paragraph_groups,
     collect_red_paragraphs,
-    delete_red_paragraph_groups_in_xml,
     delete_red_paragraph_groups_batch_in_xml,
+    delete_red_paragraph_groups_in_xml,
     has_cjk_text,
     normalize_color,
     parse_red_colors,
@@ -125,6 +132,7 @@ __all__ = [
     "ColorReplacementSummary",
     "DEFAULT_TEMPLATE_INSTRUCTIONS",
     "InstructionRemovalSummary",
+    "OptionalBlockRemovalSummary",
     "RedParagraph",
     "RedParagraphDeleteSummary",
     "RedParagraphGroup",
@@ -138,8 +146,8 @@ __all__ = [
     "collect_headings",
     "collect_red_paragraph_groups",
     "collect_red_paragraphs",
-    "delete_red_paragraph_groups_in_xml",
     "delete_red_paragraph_groups_batch_in_xml",
+    "delete_red_paragraph_groups_in_xml",
     "delete_section_in_xml",
     "delete_sections_in_xml",
     "element_text",
@@ -158,6 +166,8 @@ __all__ = [
     "qn",
     "read_macro_support_members",
     "red_text_in_paragraph",
+    "remove_empty_email_simulation_blocks",
+    "remove_empty_email_simulation_blocks_in_xml",
     "replace_font_colors_in_xml",
     "replace_red_font_with_black",
     "remove_red_paragraph_groups",

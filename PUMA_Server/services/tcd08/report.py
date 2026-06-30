@@ -25,6 +25,7 @@ from services.tcd08.rules import (
     sections_to_delete_by_calibration_scope,
 )
 from services.word_sections import (
+    remove_empty_email_simulation_blocks,
     replace_red_font_with_black,
     remove_template_instruction_text,
     remove_red_paragraph_groups,
@@ -76,6 +77,113 @@ def _safe_filename_part(value: Any) -> str:
     text = re.sub(r"\s+", "_", text)
     text = text.strip("._ ")
     return text or "TCD08_Report"
+
+
+_MISSING_EMAIL_SIMULATION_VALUE_TEXTS = {
+    "",
+    "-",
+    "—",
+    "n/a",
+    "na",
+    "n.a",
+    "n.a.",
+    "none",
+    "null",
+}
+
+
+def _normalize_optional_email_value(value: Any) -> str:
+    text = str(value or "")
+    text = text.replace("\u00a0", " ")
+    text = text.replace("，", ",")
+    text = re.sub(r"\s+", " ", text).strip().lower()
+    return text.strip(" .。:：\t\r\n")
+
+
+def _optional_email_items(value: Any) -> list[str]:
+    """Return meaningful file items from an email_summary field."""
+    if value is None:
+        return []
+
+    if isinstance(value, (list, tuple, set)):
+        return [
+            str(item).strip()
+            for item in value
+            if _normalize_optional_email_value(item) not in _MISSING_EMAIL_SIMULATION_VALUE_TEXTS
+        ]
+
+    if isinstance(value, str):
+        normalized = _normalize_optional_email_value(value)
+        if normalized in _MISSING_EMAIL_SIMULATION_VALUE_TEXTS:
+            return []
+        if "\n" in value:
+            return [
+                item.strip()
+                for item in value.splitlines()
+                if _normalize_optional_email_value(item) not in _MISSING_EMAIL_SIMULATION_VALUE_TEXTS
+            ]
+        return [
+            item.strip()
+            for item in value.split(",")
+            if _normalize_optional_email_value(item) not in _MISSING_EMAIL_SIMULATION_VALUE_TEXTS
+        ]
+
+    normalized = _normalize_optional_email_value(value)
+    return [] if normalized in _MISSING_EMAIL_SIMULATION_VALUE_TEXTS else [str(value).strip()]
+
+
+def _first_present_value(source: dict[str, Any], keys: list[str]) -> tuple[bool, Any]:
+    for key in keys:
+        if key in source:
+            return True, source.get(key)
+    return False, None
+
+
+def _resolve_missing_email_simulation_keys(email_summary: Any) -> list[str]:
+    """Decide which Email simulation optional blocks are truly empty.
+
+    Important safety rule:
+    If the expected field is not present in email_summary, do NOT guess it is
+    empty. This prevents permanent deletion when the input JSON shape changes.
+    """
+    if not isinstance(email_summary, dict) or not email_summary:
+        return []
+
+    send = email_summary.get("send")
+    if not isinstance(send, dict):
+        return []
+
+    field_candidates = {
+        "standard": [
+            "standard_xlsx_files",
+            "standardXlsxFiles",
+            "StandardXlsxFiles",
+            "standard_files",
+            "StandardFiles",
+        ],
+        "defect": [
+            "defect_xlsx_files",
+            "defectXlsxFiles",
+            "DefectXlsxFiles",
+            "defect_files",
+            "DefectFiles",
+        ],
+        "specific": [
+            "specific_xlsx_files",
+            "specificXlsxFiles",
+            "SpecificXlsxFiles",
+            "specific_files",
+            "SpecificFiles",
+        ],
+    }
+
+    missing_keys: list[str] = []
+    for block_key, candidates in field_candidates.items():
+        found, value = _first_present_value(send, candidates)
+        if found and not _optional_email_items(value):
+            missing_keys.append(block_key)
+
+    return missing_keys
 
 
 # 固定收尾处理开关：
@@ -429,6 +537,12 @@ async def generate_tcd08_report(
     else:
         email_summary = None
 
+    missing_email_simulation_keys = _resolve_missing_email_simulation_keys(email_summary)
+    logger.info(
+        "[TCD08] Empty Email simulation block cleanup plan. missing_keys=%s",
+        missing_email_simulation_keys or "none",
+    )
+
     if uploaded_email_dir:
         uploaded_email_path = Path(uploaded_email_dir)
         if uploaded_email_path.exists():
@@ -468,6 +582,7 @@ async def generate_tcd08_report(
     red_paragraph_text_rewrite_results: list[dict[str, Any]] = []
     instruction_removal_results: list[dict[str, Any]] = []
     color_replacement_results: list[dict[str, Any]] = []
+    optional_block_removal_results: list[dict[str, Any]] = []
     toc_update_warning: str | None = None
     local_output_pairs: list[tuple[Path, Path]] = []
 
@@ -534,6 +649,42 @@ async def generate_tcd08_report(
                 time.perf_counter() - step_start,
                 working_path,
             )
+
+            optional_blocks_removed = 0
+            if missing_email_simulation_keys:
+                logger.info(
+                    "[TCD08] (%s/%s) Removing empty Email simulation blocks. missing_keys=%s",
+                    index,
+                    len(template_paths),
+                    missing_email_simulation_keys,
+                )
+                step_start = time.perf_counter()
+                optional_block_summary = remove_empty_email_simulation_blocks(
+                    working_path,
+                    missing_keys=missing_email_simulation_keys,
+                    use_local_temp=False,
+                )
+                optional_blocks_removed = optional_block_summary.removed_blocks
+                optional_block_removal_results.append(
+                    {
+                        "file": str(output_path),
+                        "requested_labels": optional_block_summary.requested_labels,
+                        "removed_labels": optional_block_summary.removed_labels,
+                        "skipped_labels": optional_block_summary.skipped_labels,
+                        "removed_blocks": optional_block_summary.removed_blocks,
+                        "removed_paragraphs": optional_block_summary.removed_paragraphs,
+                    }
+                )
+                logger.info(
+                    "[TCD08] (%s/%s) Removed empty Email simulation blocks in %.2fs. requested=%s removed=%s skipped=%s paragraphs=%s",
+                    index,
+                    len(template_paths),
+                    time.perf_counter() - step_start,
+                    optional_block_summary.requested_labels,
+                    optional_block_summary.removed_labels,
+                    optional_block_summary.skipped_labels,
+                    optional_block_summary.removed_paragraphs,
+                )
 
             if red_paragraph_text_rewrites:
                 logger.info(
@@ -733,6 +884,7 @@ async def generate_tcd08_report(
                 or red_paragraph_text_rewrites
                 or instruction_replacements_applied
                 or color_changed_runs
+                or optional_blocks_removed
             ):
                 logger.info(
                     "[TCD08] (%s/%s) Queued document for batched Word TOC update.",
@@ -819,5 +971,6 @@ async def generate_tcd08_report(
         "red_paragraph_text_rewrites": red_paragraph_text_rewrite_results,
         "instruction_removals": instruction_removal_results,
         "color_replacements": color_replacement_results,
+        "optional_block_removals": optional_block_removal_results,
         "toc_update_warning": toc_update_warning,
     }
