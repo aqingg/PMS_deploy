@@ -337,7 +337,7 @@ def _extract_calibration_parameter(task_name: str) -> str:
     if not clean_name:
         return ""
     if "_" in clean_name:
-        suffix = clean_name.rsplit("_", 1)[-1].strip()
+        suffix = clean_name.split("_", 1)[-1].strip()
         if suffix:
             return suffix
     return clean_name
