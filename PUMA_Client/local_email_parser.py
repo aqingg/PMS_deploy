@@ -1,4 +1,4 @@
-# 判定顺序：优先按 sender 括号部门是否包含 VM 判断 send/approval；如果 sender 判断不完整，再 fallback 到 RE/答复/FW 名称奇偶规则；zip 只用于解析附件内容，不参与 send/approval 判定。
+# 判定顺序：优先按 TeamMembers 名单判断；sender 命中名单 => send；recipient/to/cc 命中名单 => approval；如果 TeamMembers 判断不完整，再 fallback 到 RE/答复/FW 名称奇偶规则；zip 只用于解析附件内容，不参与 send/approval 判定。
 from __future__ import annotations
 
 """
@@ -12,10 +12,11 @@ Purpose:
 - Return a small JSON-serializable email_summary dict.
 
 Main classification rule:
-1. If sender department in parentheses contains VM, classify as send.
-2. If sender department exists but does not contain VM, classify as approval.
-3. If sender-based classification is incomplete, fall back to old RE / 答复 / FW marker parity rule.
-4. Zip is only parsed after send/approval is selected; zip is NOT used to decide send/approval.
+1. Load TeamMembers from PUMA Server /template/teamMembers.
+2. If email sender matches a TeamMember name, classify as send.
+3. If email recipient/to/cc/bcc matches a TeamMember name, classify as approval.
+4. If TeamMembers-based classification is incomplete, fall back to old RE / 答复 / FW marker parity rule.
+5. Zip is only parsed after send/approval is selected; zip is NOT used to decide send/approval.
 """
 
 from contextlib import suppress
@@ -24,9 +25,12 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 import json
 import logging
+import os
 import re
 import shutil
 import tempfile
+import urllib.error
+import urllib.request
 import zipfile
 
 import extract_msg
@@ -38,6 +42,18 @@ logger = logging.getLogger(__name__)
 logging.getLogger("extract_msg").setLevel(logging.WARNING)
 logging.getLogger("extract_msg.msg_classes.msg").setLevel(logging.WARNING)
 logging.getLogger("extract_msg.attachments").setLevel(logging.WARNING)
+
+DEFAULT_SERVER_BASE_URL = os.environ.get(
+    "PUMA_SERVER_BASE_URL",
+    "https://oss-dthub.apac.bosch.com/app-puma",
+).rstrip("/")
+TEAM_MEMBERS_URL = os.environ.get(
+    "PUMA_TEAM_MEMBERS_URL",
+    f"{DEFAULT_SERVER_BASE_URL}/template/teamMembers",
+)
+TEAM_MEMBERS_TIMEOUT_SECONDS = float(os.environ.get("PUMA_TEAM_MEMBERS_TIMEOUT", "5"))
+
+_TEAM_MEMBER_KEYS_CACHE: Optional[set[str]] = None
 
 
 EMPTY_EMAIL_SUMMARY: dict[str, dict[str, Any]] = {
@@ -331,78 +347,198 @@ def parse_msg_summary(msg_path: Path | str) -> Dict[str, Any]:
 
 
 # =========================
-# Sender based classification
+# TeamMembers based classification
 # =========================
 
-def _extract_sender_department_groups(sender: str) -> list[str]:
-    """
-    Extract department-like strings inside parentheses.
+def _strip_email_address(text: str) -> str:
+    """Remove email address parts like <a@b.com> and bare a@b.com."""
+    text = _clean_text(text)
+    text = re.sub(r"<[^<>]*>", " ", text)
+    text = re.sub(r"\b[\w.\-+%]+@[\w.\-]+\.\w+\b", " ", text)
+    return _clean_text(text)
 
-    Example:
-    WU Weiwei (VM-OSS/EPD5-CN) <Weiwei.WU2@cn.bosch.com>
-    -> ["VM-OSS/EPD5-CN"]
 
-    Both half-width () and full-width （） are supported.
+def _strip_parentheses_suffix(text: str) -> str:
+    """Remove department suffix like (VM-OSS/EPD5-CN) or （VM-OSS）."""
+    text = _clean_text(text)
+    text = re.sub(r"\([^()]*\)", " ", text)
+    text = re.sub(r"（[^（）]*）", " ", text)
+    return _clean_text(text)
+
+
+def _normalize_person_name(text: Any) -> str:
     """
-    text = _clean_text(sender)
-    if not text:
+    Normalize a name-like text for matching.
+
+    Examples:
+    - "WU Weiwei (VM-OSS/EPD5-CN) <Weiwei.WU2@cn.bosch.com>" -> "wu weiwei"
+    - "WU, Weiwei" -> "wu weiwei"
+    """
+    text = _strip_email_address(_clean_text(text))
+    text = _strip_parentheses_suffix(text)
+    text = text.replace(",", " ")
+    text = re.sub(r"[^A-Za-z0-9\u4e00-\u9fff]+", " ", text)
+    text = re.sub(r"\s+", " ", text).strip().lower()
+    return text
+
+
+def _name_variants(name: str) -> set[str]:
+    """
+    Build conservative variants for TeamMember names.
+
+    TeamMembers.json usually stores "WU Weiwei (VM-OSS/EPD5-CN)".
+    We keep "wu weiwei" and also "weiwei wu" for Outlook display differences.
+    """
+    normalized = _normalize_person_name(name)
+    variants = {normalized} if normalized else set()
+
+    parts = normalized.split()
+    if len(parts) == 2:
+        variants.add(f"{parts[1]} {parts[0]}")
+
+    return {item for item in variants if item}
+
+
+def _extract_member_names_from_payload(payload: Any) -> list[str]:
+    """
+    Extract names from /template/teamMembers response.
+
+    Supported response examples:
+    {"success": true, "members": ["WU Weiwei (...)", ...], "raw": [...]}
+    [{"name": "WU Weiwei (...)", "account": "..."}]
+    """
+    names: list[str] = []
+
+    if isinstance(payload, dict):
+        members = payload.get("members")
+        raw = payload.get("raw")
+
+        if isinstance(members, list):
+            for item in members:
+                if isinstance(item, str):
+                    names.append(item)
+                elif isinstance(item, dict) and item.get("name"):
+                    names.append(str(item.get("name")))
+
+        if isinstance(raw, list):
+            for item in raw:
+                if isinstance(item, str):
+                    names.append(item)
+                elif isinstance(item, dict) and item.get("name"):
+                    names.append(str(item.get("name")))
+
+    elif isinstance(payload, list):
+        for item in payload:
+            if isinstance(item, str):
+                names.append(item)
+            elif isinstance(item, dict) and item.get("name"):
+                names.append(str(item.get("name")))
+
+    return [_clean_text(name) for name in names if _clean_text(name)]
+
+
+def _fetch_team_member_names() -> list[str]:
+    """Fetch TeamMembers from PUMA Server existing endpoint: /template/teamMembers."""
+    try:
+        request = urllib.request.Request(
+            TEAM_MEMBERS_URL,
+            headers={"Accept": "application/json"},
+            method="GET",
+        )
+        with urllib.request.urlopen(request, timeout=TEAM_MEMBERS_TIMEOUT_SECONDS) as response:
+            charset = response.headers.get_content_charset() or "utf-8"
+            payload = json.loads(response.read().decode(charset, errors="ignore"))
+        names = _extract_member_names_from_payload(payload)
+        logger.info("Loaded %s TeamMembers from %s", len(names), TEAM_MEMBERS_URL)
+        return names
+    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, OSError, ValueError):
+        logger.exception("Failed to load TeamMembers from %s", TEAM_MEMBERS_URL)
         return []
 
-    groups: list[str] = []
-    groups.extend(re.findall(r"\(([^()]*)\)", text))
-    groups.extend(re.findall(r"（([^（）]*)）", text))
-    return [_clean_text(group) for group in groups if _clean_text(group)]
 
-
-def _department_contains_vm(department: str) -> bool:
+def _get_team_member_keys() -> set[str]:
     """
-    Decide whether one department group belongs to VM.
+    Return normalized TeamMember name keys.
 
-    Matched examples:
-    VM
-    VM-OSS/EPD5-CN
-    VM/EPD5
-    ABC VM XYZ
+    This function is cached during one client process, so Fill_TCD08 does not
+    repeatedly call /template/teamMembers for every .msg file.
     """
-    text = _clean_text(department).upper()
-    if not text:
+    global _TEAM_MEMBER_KEYS_CACHE
+
+    if _TEAM_MEMBER_KEYS_CACHE is not None:
+        return _TEAM_MEMBER_KEYS_CACHE
+
+    names = _fetch_team_member_names()
+    keys: set[str] = set()
+    for name in names:
+        keys.update(_name_variants(name))
+
+    _TEAM_MEMBER_KEYS_CACHE = keys
+    return keys
+
+
+def _text_matches_team_member(text: str, member_keys: set[str]) -> bool:
+    """Check whether normalized text contains any TeamMember name as a phrase."""
+    normalized_text = _normalize_person_name(text)
+    if not normalized_text or not member_keys:
         return False
-    return re.search(r"(^|[^A-Z0-9])VM([^A-Z0-9]|$)", text) is not None
+
+    padded_text = f" {normalized_text} "
+    for key in member_keys:
+        if f" {key} " in padded_text:
+            return True
+    return False
 
 
-def _is_vm_sender(sender: str) -> Optional[bool]:
-    """
-    Return:
-    - True: sender parentheses contain VM, classify as Bosch/VM send mail.
-    - False: sender has parentheses but no VM, classify as customer approval mail.
-    - None: no department group can be found, cannot decide by sender.
-    """
-    groups = _extract_sender_department_groups(sender)
-    if not groups:
-        return None
-    return any(_department_contains_vm(group) for group in groups)
+def _recipient_text_from_msg(msg: extract_msg.Message) -> str:
+    """Collect to/cc/bcc/recipients into one searchable text."""
+    parts: list[str] = []
+
+    for attr in ("to", "cc", "bcc", "replyTo"):
+        value = _clean_text(getattr(msg, attr, None))
+        if value:
+            parts.append(value)
+
+    recipients = getattr(msg, "recipients", None)
+    if recipients:
+        with suppress(Exception):
+            for recipient in recipients:
+                for attr in ("name", "email", "address", "formatted"):
+                    value = _clean_text(getattr(recipient, attr, None))
+                    if value:
+                        parts.append(value)
+
+    return " ; ".join(parts)
 
 
-def _read_msg_classification_info(msg_path: Path) -> Optional[dict[str, Any]]:
+def _read_msg_classification_info(msg_path: Path, member_keys: set[str]) -> Optional[dict[str, Any]]:
     """
     Read only lightweight fields used for choosing send/approval.
 
-    Important:
-    This function does NOT use zip as a classification condition.
+    Classification rule:
+    - sender matches TeamMembers => send candidate
+    - recipient/to/cc/bcc matches TeamMembers => approval candidate
+    - zip is NOT used for classification
     """
     msg = extract_msg.Message(str(msg_path))
     try:
         sender = _clean_text(getattr(msg, "sender", None))
         subject = _clean_text(getattr(msg, "subject", None))
         sent_date_raw = getattr(msg, "date", None)
-        is_vm_sender = _is_vm_sender(sender)
+        recipient_text = _recipient_text_from_msg(msg)
+
+        sender_is_team_member = _text_matches_team_member(sender, member_keys)
+        recipient_has_team_member = _text_matches_team_member(recipient_text, member_keys)
+
         return {
             "path": msg_path,
             "file": msg_path.name,
             "sender": sender,
+            "recipient_text": recipient_text,
             "subject": subject,
             "sent_date_raw": sent_date_raw,
-            "is_vm_sender": is_vm_sender,
+            "sender_is_team_member": sender_is_team_member,
+            "recipient_has_team_member": recipient_has_team_member,
         }
     except Exception:
         logger.exception("Failed to read msg classification info: %s", msg_path)
@@ -414,10 +550,9 @@ def _read_msg_classification_info(msg_path: Path) -> Optional[dict[str, Any]]:
 
 def _choose_best_send_candidate(candidates: list[dict[str, Any]]) -> Optional[Path]:
     """
-    Choose one VM sender mail as send.
+    Choose one TeamMember sender mail as send.
 
-    Zip is not used here.
-    Prefer earlier date, then filename.
+    Zip is not used here. Prefer earlier date, then filename.
     """
     if not candidates:
         return None
@@ -433,10 +568,9 @@ def _choose_best_send_candidate(candidates: list[dict[str, Any]]) -> Optional[Pa
 
 def _choose_best_approval_candidate(candidates: list[dict[str, Any]]) -> Optional[Path]:
     """
-    Choose one non-VM sender mail as approval.
+    Choose one customer reply mail as approval.
 
-    Zip is not used here.
-    Prefer later date, then filename.
+    Zip is not used here. Prefer later date, then filename.
     """
     if not candidates:
         return None
@@ -451,32 +585,42 @@ def _choose_best_approval_candidate(candidates: list[dict[str, Any]]) -> Optiona
     return sorted_candidates[0]["path"]
 
 
-def _choose_by_sender_vm_rule(msg_files: list[Path]) -> tuple[Optional[Path], Optional[Path]]:
+def _choose_by_team_members_rule(msg_files: list[Path]) -> tuple[Optional[Path], Optional[Path]]:
     """
     Primary send/approval classification.
 
     Rule:
-    - sender department contains VM => send
-    - sender department exists but does not contain VM => approval
+    - sender matches TeamMembers => send
+    - recipient/to/cc/bcc matches TeamMembers and sender does NOT match TeamMembers => approval
     - zip is NOT used for classification
-    - if sender info is not enough, caller will fall back to old name parity rule
+    - if TeamMembers info is not enough, caller will fall back to old name parity rule
     """
-    infos = [_read_msg_classification_info(path) for path in msg_files]
+    member_keys = _get_team_member_keys()
+    if not member_keys:
+        return None, None
+
+    infos = [_read_msg_classification_info(path, member_keys) for path in msg_files]
     infos = [info for info in infos if info is not None]
 
     if not infos:
         return None, None
 
-    vm_candidates = [info for info in infos if info.get("is_vm_sender") is True]
-    customer_candidates = [info for info in infos if info.get("is_vm_sender") is False]
+    send_candidates = [
+        info
+        for info in infos
+        if info.get("sender_is_team_member") is True
+    ]
 
-    send_path = _choose_best_send_candidate(vm_candidates)
-    approval_path = _choose_best_approval_candidate(customer_candidates)
+    approval_candidates = [
+        info
+        for info in infos
+        if info.get("sender_is_team_member") is False
+        and info.get("recipient_has_team_member") is True
+    ]
 
-    if send_path is not None and approval_path is not None and send_path != approval_path:
-        return send_path, approval_path
+    send_path = _choose_best_send_candidate(send_candidates)
+    approval_path = _choose_best_approval_candidate(approval_candidates)
 
-    # Sender rule is incomplete. Do not fill by zip.
     return send_path, approval_path
 
 
@@ -616,10 +760,10 @@ def _choose_send_and_approval(msg_files: list[Path]) -> tuple[Optional[Path], Op
     Choose send and approval email.
 
     Priority:
-    1. sender department VM rule.
+    1. TeamMembers rule.
     2. old RE / 答复 / FW marker fallback.
     """
-    send_path, approval_path = _choose_by_sender_vm_rule(msg_files)
+    send_path, approval_path = _choose_by_team_members_rule(msg_files)
 
     if send_path is not None and approval_path is not None and send_path != approval_path:
         return send_path, approval_path
@@ -694,7 +838,7 @@ if __name__ == "__main__":
     parser.add_argument("email_dir", help="Path to Customer_Approval_Email directory")
     args = parser.parse_args()
 
-    logging.basicConfig(level=logging.WARNING, format="%(levelname)s:%(name)s:%(message)s")
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(name)s:%(message)s")
     logging.getLogger("extract_msg").setLevel(logging.WARNING)
     logging.getLogger("extract_msg.msg_classes.msg").setLevel(logging.WARNING)
 
