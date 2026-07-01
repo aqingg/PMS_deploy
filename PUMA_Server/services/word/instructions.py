@@ -14,12 +14,12 @@ from services.word.package import write_zip_with_replacement
 from services.word.text_rewrite import paragraph_text_nodes, replace_text_span
 from services.word.xml_utils import NS, clean_text, element_text
 
-
 logger = logging.getLogger("uvicorn.error")
 
 
 def _same_file(left: Path, right: Path) -> bool:
     return left.resolve() == right.resolve()
+
 
 DEFAULT_TEMPLATE_INSTRUCTIONS = [
     "(delete sentences if not applicable)",
@@ -41,12 +41,12 @@ DEFAULT_TEMPLATE_INSTRUCTIONS = [
     "The blue text identifies hints for the use of a report in Acquisition-Phase and should be adapted for customer specific reports. Not changed text should be color changed (if values and text are applicable) or removed (if not necessary or not applicable)",
     "(modify chapter if not applicable) ",
     "(如不适用修改该段) ",
-    "Please check if the result file number and classification is correct. Don't forget to attach the zipped simulation result in .pdf report."
+    "Please check if the result file number and classification is correct. Don't forget to attach the zipped simulation result in .pdf report.",
 ]
 
 # 这两条长句删除后若只清空文本会留下整页空白，所以按“整段删除”处理。
 FULL_PARAGRAPH_TEMPLATE_INSTRUCTIONS = [
-    "The red text identifies template-text and hints and should be adapted for customer specific report. Not changed text should be color changed (if values and text are applicable) or removed (if not necessary or not applicable)",
+    "The red text identifies template-text and hints and should be adapted for customer specific report. Not changed text should be color changed (if values and text are applicable) or removed (if not necessary or not applicable) ",
     "The blue text identifies hints for the use of a report in Acquisition-Phase and should be adapted for customer specific reports. Not changed text should be color changed (if values and text are applicable) or removed (if not necessary or not applicable)",
 ]
 
@@ -66,6 +66,7 @@ class InstructionRemovalSummary:
 def instruction_removal_patterns(instructions: list[str]) -> list[re.Pattern[str]]:
     side_spaces = f"[{re.escape(INSTRUCTION_SIDE_SPACE_CHARS)}]*"
     trailing_punct = f"[{re.escape(INSTRUCTION_TRAILING_PUNCT_CHARS)}]"
+
     return [
         re.compile(
             f"{side_spaces}{re.escape(instruction)}{side_spaces}(?:{trailing_punct}{side_spaces})?"
@@ -83,6 +84,7 @@ def full_paragraph_instruction_set(instructions: list[str]) -> set[str]:
     full_paragraph_norm = {
         normalize_instruction_text(value) for value in FULL_PARAGRAPH_TEMPLATE_INSTRUCTIONS if value
     }
+
     return {
         normalize_instruction_text(value)
         for value in instructions
@@ -93,8 +95,82 @@ def full_paragraph_instruction_set(instructions: list[str]) -> set[str]:
 def paragraph_matches_full_instruction(paragraph: ET.Element, full_instruction_set: set[str]) -> bool:
     if not full_instruction_set:
         return False
+
     paragraph_text = normalize_instruction_text(element_text(paragraph))
     return paragraph_text in full_instruction_set
+
+
+def _is_word_paragraph(element: ET.Element | None) -> bool:
+    return element is not None and element.tag == f"{{{NS['w']}}}p"
+
+
+def _paragraph_has_section_properties(paragraph: ET.Element) -> bool:
+    """含 sectPr 的段落可能控制页眉页脚/页边距/分节，不能作为空白残留粗暴删除。"""
+    return paragraph.find(".//w:sectPr", NS) is not None
+
+
+def _paragraph_text_is_empty(paragraph: ET.Element) -> bool:
+    return not clean_text(element_text(paragraph)).strip()
+
+
+def _is_page_break_only_paragraph(paragraph: ET.Element) -> bool:
+    """判断该段落是否只承载分页符，不包含真实文字或分节属性。"""
+    if _paragraph_has_section_properties(paragraph):
+        return False
+
+    if not _paragraph_text_is_empty(paragraph):
+        return False
+
+    breaks = paragraph.findall(".//w:br", NS)
+    if not breaks:
+        return False
+
+    for br in breaks:
+        br_type = br.get(f"{{{NS['w']}}}type")
+        if br_type != "page":
+            return False
+
+    return True
+
+
+def _is_empty_residue_paragraph(paragraph: ET.Element) -> bool:
+    """判断 instruction 删除后紧邻的空白残留段落。保守跳过分节段落和分页符段落。"""
+    if _paragraph_has_section_properties(paragraph):
+        return False
+
+    if paragraph.findall(".//w:br", NS):
+        return False
+
+    return _paragraph_text_is_empty(paragraph)
+
+
+def _remove_adjacent_instruction_residue(
+    parent: ET.Element,
+    candidates: tuple[ET.Element | None, ET.Element | None],
+) -> int:
+    """
+    仅在完整 instruction 段落命中后，清理它前后紧邻的空段落/纯分页符段落。
+
+    安全边界：
+    - 不全文扫描；
+    - 不删除分节符 sectPr；
+    - 不删除普通业务段落；
+    - 只处理这两段 red/blue instruction 附近的残留结构。
+    """
+    removed = 0
+
+    for candidate in candidates:
+        if not _is_word_paragraph(candidate):
+            continue
+
+        if candidate.getparent() is not parent:
+            continue
+
+        if _is_page_break_only_paragraph(candidate) or _is_empty_residue_paragraph(candidate):
+            parent.remove(candidate)
+            removed += 1
+
+    return removed
 
 
 def remove_instruction_patterns_in_paragraph(
@@ -140,16 +216,30 @@ def remove_template_instruction_text_in_xml(
         document_xml = archive.read("word/document.xml")
 
     root = ET.fromstring(document_xml)
+
     replacements_applied = 0
     changed_paragraphs = 0
+
     for paragraph in root.findall(".//w:p", NS):
         if paragraph_matches_full_instruction(paragraph, full_instruction_set):
             parent = paragraph.getparent()
             if parent is not None:
+                previous_paragraph = paragraph.getprevious()
+                next_paragraph = paragraph.getnext()
+
                 parent.remove(paragraph)
                 replacements_applied += 1
                 changed_paragraphs += 1
-                continue
+
+                removed_residue_count = _remove_adjacent_instruction_residue(
+                    parent,
+                    (previous_paragraph, next_paragraph),
+                )
+                if removed_residue_count:
+                    replacements_applied += removed_residue_count
+                    changed_paragraphs += removed_residue_count
+
+            continue
 
         applied = remove_instruction_patterns_in_paragraph(paragraph, patterns)
         if applied:
@@ -203,12 +293,13 @@ def remove_template_instruction_text(
             output_path,
             instructions=instructions,
         )
+
         if not _same_file(output_path, document_path):
             shutil.copy2(output_path, document_path)
 
-    logger.info(
-        "[TCD08] Removed template instruction text. replacements=%s paragraphs=%s",
-        summary.replacements_applied,
-        summary.changed_paragraphs,
-    )
-    return summary
+        logger.info(
+            "[TCD08] Removed template instruction text. replacements=%s paragraphs=%s",
+            summary.replacements_applied,
+            summary.changed_paragraphs,
+        )
+        return summary
