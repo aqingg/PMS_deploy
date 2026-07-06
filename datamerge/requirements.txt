@@ -1,0 +1,8 @@
+fastapi
+httpx
+protobuf
+python-multipart
+requests
+openpyxl
+python-pptx
+uvicorn

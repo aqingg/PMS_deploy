@@ -1,0 +1,48 @@
+syntax = "proto3";
+
+package project_api;
+
+message ProjectIdentifier {
+  string uuid = 1;
+  string customer = 2;
+}
+
+message ProjectIdentifierList {
+  repeated ProjectIdentifier identifiers = 1;
+}
+
+message ProjectProfile {
+  string customer = 1;
+  string project = 2;
+  string ab_generation = 3;
+  int32 sop = 4;
+  string vehicle_variant = 5;
+  string plattform = 6;
+  string type = 7;
+  string vint_responsible = 8;
+  string project_leader = 9;
+  string region = 10;
+  string oem = 11;
+  string model = 12;
+  string peripheral_sensor_configuration = 13;
+  string internal_sensor_configuration = 14;
+
+  string role_summary = 15;
+
+  string Digit10OemPn = 16;
+  string customerOemPn = 17;
+  string FlConfiguration = 18;
+  string TargetMarket = 19;
+  string MCR_No = 20;
+  string ConnectorDirection = 21;
+  string Status = 22;
+
+  string AlmProjectName = 23;        // RefName
+  string ReferenceProjectPn = 24;    // RefPn
+  string ReferenceProjectBm = 25;    // RefBm
+  string role_email_summary = 26;
+}
+
+message ProjectProfileList {
+  repeated ProjectProfile profiles = 1;
+}
