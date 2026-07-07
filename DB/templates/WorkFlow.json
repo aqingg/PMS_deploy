@@ -141,7 +141,7 @@
         "url": "http://127.0.0.1:7175/saveReport",
         "body": {
           "projectid": "",
-          "url": "http://127.0.0.1:8088/temp/api/v1/puma/projects/documents",
+          "url": "http://127.0.0.1:8086/report/fillIARDocuments",
           "template_paths":[],
           "save_path": ""
         }
@@ -393,7 +393,7 @@
         "type": "httpWithParameter",
         "need_parameter": ["uuid","projectid"],
         "method": "POST",
-	"url": "http://127.0.0.1:7175/report/fillTCD08Report",
+        "url": "http://127.0.0.1:7175/report/fillTCD08Report",
         "body": {
           "uuid": "",
           "template_paths": [],
