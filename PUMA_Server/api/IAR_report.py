@@ -33,10 +33,7 @@ SUPPORTED_IAR_SUFFIXES = {".xlsx", ".xlsm"}
 
 PUBLIC_LINK_PLACEHOLDER_SPECS: dict[str, list[str]] = {
     "link_mcls": [
-        "MCLs",
-        "Link on MCLs",
-        "Mounting report(share-point link)",
-        "Input",
+        "Mounting&Function Checklist Mail",
     ],
     "link_sensor_assessment": [
         "Mounting Assessment Excel (PS)",
