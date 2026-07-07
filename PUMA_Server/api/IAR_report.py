@@ -3,8 +3,10 @@ from __future__ import annotations
 import io
 import json
 import logging
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
@@ -23,6 +25,71 @@ router = APIRouter(prefix="/report", tags=["Report"])
 DEFAULT_IAR_FILE_KEYWORD = "QSCL0415_Installation_Assessment_Review_v3.2.1.xlsx"
 IAR_TEMPLATE_TAG_NAME = "IAR_Template"
 SUPPORTED_IAR_SUFFIXES = {".xlsx", ".xlsm"}
+
+
+# -----------------------------------------------------------------------------
+# IAR Public Link placeholders
+# -----------------------------------------------------------------------------
+
+PUBLIC_LINK_PLACEHOLDER_SPECS: dict[str, list[str]] = {
+    "link_mcls": [
+        "MCLs",
+        "Link on MCLs",
+        "Mounting report(share-point link)",
+        "Input",
+    ],
+    "link_sensor_assessment": [
+        "Mounting Assessment Excel (PS)",
+        "Mounting Assessment Report (CS)",
+        "Mounting Assessment Report (PS)",
+        "Mounting Assessment Mail (CS)",
+        "Mounting Picture From Customer",
+    ],
+    "link_ecu_assessment": [
+        "Mounting Assessment Excel (PS)",
+        "Mounting Assessment Report (CS)",
+        "Mounting Assessment Report (PS)",
+        "Mounting Assessment Mail (CS)",
+        "Mounting Picture From Customer",
+    ],
+    "link_mounting_guideline": [
+        "Mounting Guidelines (Template)",
+    ],
+    "link_hammer_test": [
+        "Hammer Test Report",
+    ],
+    "link_sensor_map": [
+        "Sensor Map",
+        "Sensor Map Mail",
+    ],
+    "link_mounting_assessment": [
+        "Mounting Assessment Excel (PS)",
+        "Mounting Assessment Report (CS)",
+        "Mounting Assessment Report (PS)",
+        "Mounting Assessment Mail (CS)",
+        "Mounting Picture From Customer",
+    ],
+    "link_mounting_function_checklist": [
+        "Mounting&Function Checklist Mail",
+    ],
+    "link_onetcd_tcd09": [
+        "Output",
+        "Input",
+        "ONETCD&TCD09",
+        "ONETCD&TCD09_Report",
+    ],
+}
+
+PUBLIC_LINK_ALIASES: dict[str, str] = {
+    "public_link_hammer_test": "link_hammer_test",
+    "public_link_sensor_map": "link_sensor_map",
+    "public_link_mounting_assessment": "link_mounting_assessment",
+    "public_link_mounting_function_checklist": "link_mounting_function_checklist",
+    "public_link_onetcd_tcd09": "link_onetcd_tcd09",
+    "link_mounting_checklist": "link_mounting_function_checklist",
+    "link_function_checklist": "link_mounting_function_checklist",
+    "link_qstl0461": "link_mounting_function_checklist",
+}
 
 
 # -----------------------------------------------------------------------------
@@ -95,12 +162,49 @@ def _select_iar_upload_file(files: list[UploadFile], expected_filename: str) -> 
     )
 
 
-def _output_filename(template_filename: str) -> str:
-    """Return a clear Excel result name instead of the old zip result name."""
-    path = Path(template_filename)
-    suffix = path.suffix or ".xlsx"
-    stem = path.stem or "IAR_Result"
-    return f"{stem}_filled{suffix}"
+def _sanitize_filename_part(value: Any, fallback: str) -> str:
+    """
+    Make a value safe for Windows file names.
+
+    Windows forbidden characters:
+        < > : " / \\ | ? *
+    """
+    text = str(value or "").strip()
+    if not text or text.upper() in {"N/A", "NA", "NONE", "NULL"}:
+        text = fallback
+
+    forbidden = '<>:"/\\|?*'
+    for ch in forbidden:
+        text = text.replace(ch, "_")
+
+    text = text.replace("\n", "_").replace("\r", "_").replace("\t", "_")
+    text = "_".join(part for part in text.split(" ") if part)
+    text = text.strip("._ ")
+
+    return text or fallback
+
+
+def _output_filename(profile_dict: dict[str, Any]) -> str:
+    """
+    Output file name format:
+
+        OEM_projectName_Installation_Assessment_Review_Date.xlsx
+
+    Rule:
+        OEM         = <PMS.customer>    -> profile_dict["customer"]
+        projectName = <PMS.projectName> -> profile_dict["projectName"]
+
+    Fallback:
+        projectName falls back to profile_dict["project"] when projectName is missing.
+    """
+    oem = _sanitize_filename_part(profile_dict.get("customer"), "OEM")
+    project_name = _sanitize_filename_part(
+        profile_dict.get("projectName") or profile_dict.get("project"),
+        "projectName",
+    )
+    date_str = datetime.now().strftime("%Y%m%d")
+
+    return f"{oem}_{project_name}_Installation_Assessment_Review_{date_str}.xlsx"
 
 
 def _media_type_for_excel(filename: str) -> str:
@@ -157,7 +261,6 @@ def _flatten_local_project_info(project_info: dict[str, Any]) -> dict[str, Any]:
     """Flatten local projectInfo form data as a fallback profile source."""
     values: dict[str, Any] = {}
 
-    # Top-level metadata, normally including uuid: {label: "uuid", value: "..."}
     for key in ("owner", "proxies", "uuid"):
         item = project_info.get(key)
         if isinstance(item, dict):
@@ -167,7 +270,6 @@ def _flatten_local_project_info(project_info: dict[str, Any]) -> dict[str, Any]:
         else:
             _add_value(values, key, item)
 
-    # Main project form rows.
     for row in project_info.get("projectInfo", []) or []:
         if not isinstance(row, list):
             continue
@@ -187,9 +289,6 @@ def _extract_pms_uuid_from_project_info(project_info: dict[str, Any]) -> str:
 
     Current PMS project model stores it as:
         projectInfo["uuid"] = {"label": "uuid", "value": "..."}
-
-    This helper also supports several defensive variants so the interface can
-    keep working if the form label is changed later.
     """
     candidates: list[Any] = []
 
@@ -229,6 +328,7 @@ def _build_profile_from_local_project(project: Project | None) -> dict[str, Any]
     profile: dict[str, Any] = {
         "customer": "N/A",
         "project": "N/A",
+        "projectName": "N/A",
         "model": "N/A",
         "ab_generation": "N/A",
         "vehicle_variant": "N/A",
@@ -259,13 +359,11 @@ def _build_profile_from_local_project(project: Project | None) -> dict[str, Any]
     project_info = _parse_project_info_json(project.projectInfo)
     flat = _flatten_local_project_info(project_info)
 
-    # Local-form fallback labels. This is intentionally conservative and does
-    # not include a special plattform/platform fix per current request.
     form_to_profile = {
         "Customer": "customer",
         "OEM": "oem",
         "Project": "project",
-        "Project Name": "project",
+        "Project Name": "projectName",
         "Model": "model",
         "Vehicle Model": "model",
         "Vehicle Variant": "vehicle_variant",
@@ -290,6 +388,9 @@ def _build_profile_from_local_project(project: Project | None) -> dict[str, Any]
         if _is_meaningful(flat.get(form_label)):
             profile[profile_key] = flat[form_label]
 
+    if not _is_meaningful(profile.get("projectName")) and _is_meaningful(profile.get("project")):
+        profile["projectName"] = profile["project"]
+
     pms_uuid = _extract_pms_uuid_from_project_info(project_info)
     if pms_uuid:
         profile["uuid"] = pms_uuid
@@ -306,6 +407,10 @@ def _fill_missing_values(base: dict[str, Any], fallback: dict[str, Any]) -> dict
     for key, value in (fallback or {}).items():
         if not _is_meaningful(merged.get(key)) and _is_meaningful(value):
             merged[key] = value
+
+    if not _is_meaningful(merged.get("projectName")) and _is_meaningful(merged.get("project")):
+        merged["projectName"] = merged["project"]
+
     return merged
 
 
@@ -331,6 +436,153 @@ async def _try_fetch_pms_profile(identifier: str) -> dict[str, Any]:
     return {}
 
 
+# -----------------------------------------------------------------------------
+# Public Link helpers
+# -----------------------------------------------------------------------------
+
+def _extract_project_root(project_info: dict[str, Any], root_label: str) -> str:
+    """Extract Local Link/Public Link/SharePoint from flattened projectInfo."""
+    flat = _flatten_local_project_info(project_info)
+    candidates = (
+        root_label,
+        root_label.replace(" ", ""),
+        root_label.lower(),
+        root_label.upper(),
+    )
+    for key in candidates:
+        value = flat.get(key)
+        if _is_meaningful(value):
+            return str(value).strip()
+    return ""
+
+
+def _normalize_relative_path(relative_path: Any) -> str:
+    text = str(relative_path or "").strip()
+    if not text:
+        return ""
+    text = text.replace("/", "\\")
+    while text.startswith("\\"):
+        text = text[1:]
+    return text
+
+
+def _is_url(value: str) -> bool:
+    text = str(value or "").strip().lower()
+    return text.startswith("http://") or text.startswith("https://")
+
+
+def _join_root_and_relative(root: str, relative_path: str) -> str:
+    """
+    Join a Public Link root and a FolderLinkMapping RelativePath.
+
+    Supports both Windows/UNC style roots and browser URL roots.
+    """
+    root_text = str(root or "").strip()
+    rel_text = _normalize_relative_path(relative_path)
+    if not root_text:
+        return "N/A"
+    if not rel_text:
+        return root_text
+
+    if _is_url(root_text):
+        root_url = root_text.rstrip("/")
+        parts = [quote(part) for part in rel_text.replace("\\", "/").split("/") if part]
+        return root_url + "/" + "/".join(parts)
+
+    return str(Path(root_text) / Path(rel_text))
+
+
+def _mapping_by_tag_name() -> dict[str, dict[str, Any]]:
+    try:
+        mappings = load_folder_mapping()
+    except Exception as exc:
+        logger.warning("[IAR] Failed to load FolderLinkMapping for public links. error=%s", exc)
+        return {}
+
+    result: dict[str, dict[str, Any]] = {}
+    if not isinstance(mappings, list):
+        return result
+
+    for item in mappings:
+        if not isinstance(item, dict):
+            continue
+        tag = str(item.get("TagName") or "").strip()
+        if tag:
+            result[tag] = item
+    return result
+
+
+def _resolve_public_link_by_tag_candidates(
+    *,
+    public_root: str,
+    tag_candidates: list[str],
+    mapping_lookup: dict[str, dict[str, Any]],
+) -> str:
+    for tag_name in tag_candidates:
+        item = mapping_lookup.get(tag_name)
+        if not item:
+            continue
+
+        absolute_path = str(item.get("AbsolutePath") or "").strip()
+        relative_path = str(item.get("RelativePath") or "").strip()
+
+        if _is_meaningful(relative_path):
+            return _join_root_and_relative(public_root, relative_path)
+
+        if _is_meaningful(absolute_path):
+            return absolute_path
+
+    return "N/A"
+
+
+def _build_iar_public_link_profile(project_info: dict[str, Any]) -> dict[str, Any]:
+    """
+    Build Public Link placeholder values for IAR Excel.
+
+    The Excel template can use placeholders such as:
+        <PMS.link_hammer_test>
+        <PMS.link_sensor_map>
+        <PMS.link_mounting_assessment>
+        <PMS.link_mounting_function_checklist>
+        <PMS.link_onetcd_tcd09>
+
+    Values are calculated from Project.projectInfo 'Public Link' plus
+    FolderLinkMapping.json RelativePath.
+    """
+    public_root = _extract_project_root(project_info, "Public Link")
+    profile: dict[str, Any] = {
+        "public_link_root": public_root or "N/A",
+    }
+
+    if not public_root:
+        logger.warning("[IAR] Public Link is empty. IAR public-link placeholders will be N/A.")
+        for key in PUBLIC_LINK_PLACEHOLDER_SPECS:
+            profile[key] = "N/A"
+        for alias, source_key in PUBLIC_LINK_ALIASES.items():
+            profile[alias] = profile.get(source_key, "N/A")
+        return profile
+
+    mapping_lookup = _mapping_by_tag_name()
+    for key, tag_candidates in PUBLIC_LINK_PLACEHOLDER_SPECS.items():
+        profile[key] = _resolve_public_link_by_tag_candidates(
+            public_root=public_root,
+            tag_candidates=tag_candidates,
+            mapping_lookup=mapping_lookup,
+        )
+
+    for alias, source_key in PUBLIC_LINK_ALIASES.items():
+        profile[alias] = profile.get(source_key, "N/A")
+
+    logger.info(
+        "[IAR] Public link preview: hammer=%s sensor_map=%s checklist=%s onetcd_tcd09=%s",
+        profile.get("link_hammer_test"),
+        profile.get("link_sensor_map"),
+        profile.get("link_mounting_function_checklist"),
+        profile.get("link_onetcd_tcd09"),
+    )
+    return profile
+
+
 async def _build_iar_profile(
     *,
     project_identifier: str,
@@ -347,6 +599,7 @@ async def _build_iar_profile(
            then use that PMS uuid to fetch full PMS profile.
         3. If project_identifier is non-numeric, treat it as a possible PMS uuid.
         4. Use local projectInfo only as fallback/override.
+        5. Add IAR Public Link path fields from Project.projectInfo['Public Link'].
     """
     local_project: Project | None = None
     local_profile: dict[str, Any] = {}
@@ -368,8 +621,6 @@ async def _build_iar_profile(
         else:
             logger.warning("[IAR] Local project not found by projectid=%s", local_project_id)
 
-    # Do not directly treat a numeric local DB id as PMS uuid. That was the
-    # reason many placeholders became N/A.
     remote_candidates: list[str] = []
     if _is_meaningful(explicit_uuid):
         remote_candidates.append(str(explicit_uuid).strip())
@@ -378,7 +629,6 @@ async def _build_iar_profile(
     if _is_meaningful(project_identifier) and _to_int(project_identifier) is None:
         remote_candidates.append(str(project_identifier).strip())
 
-    # De-duplicate while preserving order.
     seen: set[str] = set()
     remote_candidates = [
         item for item in remote_candidates
@@ -392,8 +642,6 @@ async def _build_iar_profile(
             profile["uuid"] = candidate
             break
 
-    # Local Project.projectInfo can still override manually maintained fields,
-    # matching existing datamerge/TCD08 behavior.
     if profile and local_project_info:
         try:
             profile = apply_project_info_overrides(profile, local_project_info)
@@ -418,14 +666,22 @@ async def _build_iar_profile(
         )
         profile = _build_profile_from_local_project(None)
 
+    if not _is_meaningful(profile.get("projectName")) and _is_meaningful(profile.get("project")):
+        profile["projectName"] = profile["project"]
+
+    public_link_profile = _build_iar_public_link_profile(local_project_info)
+    profile.update(public_link_profile)
+
     logger.info(
-        "[IAR] Profile preview: customer=%s project=%s model=%s sop=%s region=%s oem=%s",
+        "[IAR] Profile preview: customer=%s project=%s projectName=%s model=%s sop=%s region=%s oem=%s public_link_root=%s",
         profile.get("customer"),
         profile.get("project"),
+        profile.get("projectName"),
         profile.get("model"),
         profile.get("sop"),
         profile.get("region"),
         profile.get("oem"),
+        profile.get("public_link_root"),
     )
     return profile
 
@@ -444,13 +700,16 @@ async def fill_iar_documents(
     db: Session = Depends(get_db),
 ):
     """
-    Fill the QSCL0415 IAR Excel template and return a single .xlsx/.xlsm file.
+    Fill the QSCL0415 IAR Excel template and return a single .xlsx file.
 
     Important behavior:
         - It reads the expected template file name from FolderLinkMapping.json FileKeyWord.
         - It only processes that exact uploaded file and ignores other uploaded Office files.
         - It resolves local projectid -> Project.projectInfo.uuid -> PMS profile first.
+        - It adds Public Link path placeholders from Project.projectInfo['Public Link'].
         - It returns the filled Excel workbook directly, not a zip package.
+        - Output file name:
+              OEM_projectName_Installation_Assessment_Review_Date.xlsx
     """
     expected_filename = _get_iar_file_keyword_from_mapping()
     selected_file = _select_iar_upload_file(files, expected_filename)
@@ -478,9 +737,6 @@ async def fill_iar_documents(
     if not content:
         raise HTTPException(status_code=400, detail=f"Uploaded IAR template is empty: {selected_name}")
 
-    # 7175 currently sends form-data projectid. In this workflow, projectid is
-    # normally the local DB project id. The real PMS uuid is stored in
-    # Project.projectInfo.uuid and must be resolved before fetching PMS details.
     project_identifier = (projectid or projectId or project_id or uuid or "").strip()
     explicit_uuid = (uuid or "").strip()
     local_project_id = _to_int(projectId) or _to_int(project_id) or _to_int(projectid)
@@ -502,9 +758,8 @@ async def fill_iar_documents(
     )
 
     filled_stream = fill_excel_by_placeholders(profile_dict, io.BytesIO(content))
-    output_name = _output_filename(expected_filename)
+    output_name = _output_filename(profile_dict)
 
-    # The current 7175 /saveReport parses filename=... from this header and saves response.content.
     headers = {
         "Content-Disposition": f'attachment; filename="{output_name}"',
         "X-IAR-Template-File": expected_filename,
