@@ -486,8 +486,18 @@ export default function TaskDetailPage() {
     // 并行等待所有参数获取完成
     const parameterResults = await Promise.all(parameterPromises);
 
-    const type = "local";
     const isTCD08Fill = operation_detail.url?.includes("/fillTCD08Report");
+
+    // Only Fill_IAR output should use Public Link.
+    // Inputs still use Local Link, so the local IAR template reading logic is unchanged.
+    const operationBodyUrl = String(operation_detail.body?.url || "");
+    const isIARFill =
+      currentTask?.taskName === "IAR" ||
+      operationBodyUrl.includes("/fillIARDocuments") ||
+      operationBodyUrl.includes("/puma/projects/documents");
+
+    const inputType = "local";
+    const outputType = isIARFill ? "public" : "local";
 
     let input_files = [];
 
@@ -497,7 +507,7 @@ export default function TaskDetailPage() {
         taskId,
         projectId: effectiveProjectId,
         user,
-        type,
+        type: inputType,
       });
 
       input_files = await getOfficeFiles(input_path);
@@ -508,7 +518,7 @@ export default function TaskDetailPage() {
       taskId,
       projectId: effectiveProjectId,
       user,
-      type,
+      type: outputType,
     });
 
     // 1. 构建最终请求体
@@ -850,3 +860,4 @@ export default function TaskDetailPage() {
     </div>
   );
 }
+//执行具体节点的功能

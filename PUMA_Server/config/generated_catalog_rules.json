@@ -905,60 +905,6 @@
         }
       ],
       "when_ref": "scope_no_pitchover"
-    },
-    {
-      "description": "3.2 校验传感器描述 段二单复数 | 同时包含 UFS 和 PAS | 段二 UFS is(are) 改为复数 are",
-      "section": "3.2",
-      "group": 2,
-      "replacements": [
-        {
-          "from": "UFS is(are) used as plausibility sensor",
-          "to": "UFS and PAS are used as plausibility sensors"
-        }
-      ],
-      "when_ref": "peripheral_has_ufs_and_pas"
-    },
-    {
-      "description": "3.2 校验传感器描述 段三单复数 | 同时包含 UFS 和 PAS | 段三 UFS is(are) 改为复数 are",
-      "section": "3.2",
-      "group": 3,
-      "replacements": [
-        {
-          "from": "UFS is(are) used as plausibility sensor",
-          "to": "UFS and PAS are used as plausibility sensors"
-        }
-      ],
-      "when_ref": "peripheral_has_ufs_and_pas"
-    },
-    {
-      "description": "3.2 校验传感器描述 段二单复数 | 只包含 UFS 且不包含 PAS | 段二 UFS is(are) 改为单数 is",
-      "section": "3.2",
-      "group": 2,
-      "replacements": [
-        {
-          "from": "UFS is(are) used as plausibility sensor",
-          "to": "UFS is used as plausibility sensor"
-        }
-      ],
-      "when_ref": [
-        "peripheral_has_ufs",
-        "peripheral_no_pas"
-      ]
-    },
-    {
-      "description": "3.2 校验传感器描述 段三单复数 | 只包含 UFS 且不包含 PAS | 段三 UFS is(are) 改为单数 is",
-      "section": "3.2",
-      "group": 3,
-      "replacements": [
-        {
-          "from": "UFS is(are) used as plausibility sensor",
-          "to": "UFS is used as plausibility sensor"
-        }
-      ],
-      "when_ref": [
-        "peripheral_has_ufs",
-        "peripheral_no_pas"
-      ]
     }
   ]
 }
