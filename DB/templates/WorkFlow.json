@@ -68,7 +68,7 @@
     ],
     "description": ""
   },
-  "Sensor_Map": {
+  "Mounting_Assessment": {
     "inputs": [
       { "label": "Mounting Picture From Customer" },
       { "label": "Mounting Assessment Excel (Template)" },
@@ -90,7 +90,7 @@
     ],
     "description": ""
   },
-  "Mounting_Assessment": {
+  "Sensor_Map": {
     "inputs": [
       { "label": "Sensor Scope" },
       { "label": "Calibration Scope" },
