@@ -14,6 +14,14 @@ from starlette.background import BackgroundTask
 
 from models.database import get_db
 from services.tcd08.report import generate_tcd08_report
+from services.sensormap_service import (
+    SensorMapConfigError,
+    SensorMapError,
+    SensorMapSectionError,
+    SensorMapTemplateError,
+    generate_sensor_map,
+    load_sensormap_config,
+)
 
 router = APIRouter(prefix="/report", tags=["Report"])
 
@@ -319,4 +327,359 @@ async def fill_tcd08_report(
         raise HTTPException(
             status_code=500,
             detail=f"TCD08 report server generation failed: {exc}",
+        ) from exc
+
+
+def _sensor_map_get_first(
+    data: dict[str, Any],
+    *keys: str,
+    default: Any = None,
+) -> Any:
+    """Return the first non-empty value for the supplied keys."""
+    for key in keys:
+        if key in data and data[key] not in (None, ""):
+            return data[key]
+    return default
+
+
+def _sensor_map_find_nested_value(
+    data: Any,
+    candidate_keys: set[str],
+) -> Any:
+    """
+    Recursively search dictionaries/lists for a matching key.
+
+    This allows the existing workflow executor to send project data in
+    different wrappers, for example:
+        {"projectInfo": {"Peripheral Sensor": "..."}}
+        {"project_info": {"peripheralSensor": "..."}}
+        {"data": {"project": {"peripheral_sensor_scope": "..."}}}
+    """
+    normalized_candidates = {
+        key.casefold().replace("_", "").replace(" ", "")
+        for key in candidate_keys
+    }
+
+    if isinstance(data, dict):
+        label = data.get("label")
+        value = data.get("value")
+        normalized_label = (
+            str(label).casefold().replace("_", "").replace(" ", "")
+        )
+        if normalized_label in normalized_candidates and value not in (
+            None,
+            "",
+        ):
+            return value
+
+        for key, value in data.items():
+            normalized_key = (
+                str(key).casefold().replace("_", "").replace(" ", "")
+            )
+            if normalized_key in normalized_candidates and value not in (
+                None,
+                "",
+            ):
+                return value
+
+        for value in data.values():
+            found = _sensor_map_find_nested_value(
+                value,
+                candidate_keys,
+            )
+            if found not in (None, ""):
+                return found
+
+    elif isinstance(data, list):
+        for item in data:
+            found = _sensor_map_find_nested_value(
+                item,
+                candidate_keys,
+            )
+            if found not in (None, ""):
+                return found
+
+    return None
+
+
+async def _read_sensor_map_request_data(
+    request: Request,
+) -> dict[str, Any]:
+    """
+    Read an optional JSON or form request body.
+
+    The workflow button may submit an empty body. In that case this function
+    returns an empty dictionary instead of failing.
+    """
+    content_type = (
+        request.headers.get("content-type") or ""
+    ).lower()
+
+    if "application/json" in content_type:
+        raw_body = await request.body()
+        if not raw_body:
+            return {}
+
+        try:
+            payload = await request.json()
+        except Exception as exc:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid JSON body: {exc}",
+            ) from exc
+
+        if payload is None:
+            return {}
+        if not isinstance(payload, dict):
+            raise HTTPException(
+                status_code=400,
+                detail="Sensor Map request body must be a JSON object.",
+            )
+        return payload
+
+    if (
+        "multipart/form-data" in content_type
+        or "application/x-www-form-urlencoded" in content_type
+    ):
+        form = await request.form()
+        return {
+            key: value
+            for key, value in form.multi_items()
+            if not hasattr(value, "filename")
+        }
+
+    # Empty body or a caller that does not set Content-Type.
+    raw_body = await request.body()
+    if not raw_body:
+        return {}
+
+    raise HTTPException(
+        status_code=415,
+        detail=f"Unsupported content-type: {content_type or 'unknown'}",
+    )
+
+
+def _resolve_sensor_map_scope(data: dict[str, Any]) -> str:
+    """
+    Resolve Peripheral Sensor Scope from workflow/project context.
+
+    The endpoint accepts multiple naming conventions so the existing generic
+    workflow caller does not need Sensor Map-specific frontend code.
+    """
+    direct_value = _sensor_map_get_first(
+        data,
+        "peripheralSensorScope",
+        "peripheral_sensor_scope",
+        "peripheralSensor",
+        "peripheral_sensor",
+        "Peripheral Sensor Scope",
+        "Peripheral Sensor",
+    )
+
+    if direct_value not in (None, ""):
+        return str(direct_value).strip()
+
+    nested_value = _sensor_map_find_nested_value(
+        data,
+        {
+            "peripheralSensorScope",
+            "peripheral_sensor_scope",
+            "peripheralSensor",
+            "peripheral_sensor",
+            "Peripheral Sensor Scope",
+            "Peripheral Sensor",
+        },
+    )
+
+    return str(nested_value or "").strip()
+
+
+def _resolve_sensor_map_output_directory(
+    data: dict[str, Any],
+    config: dict[str, Any],
+) -> Path:
+    """
+    Resolve the final Sensor Map output directory.
+
+    Supported workflow context:
+    1. An explicit output directory:
+       outputDirectory / output_directory / sensorMapOutputDirectory
+    2. A project Public Link root:
+       publicLink / public_link / publicPath / public_path
+
+    When a Public Link root is supplied, the configured
+    `output_relative_path` is appended.
+    """
+    explicit_output = _sensor_map_get_first(
+        data,
+        "outputDirectory",
+        "output_directory",
+        "sensorMapOutputDirectory",
+        "sensor_map_output_directory",
+    )
+
+    if explicit_output in (None, ""):
+        explicit_output = _sensor_map_find_nested_value(
+            data,
+            {
+                "outputDirectory",
+                "output_directory",
+                "sensorMapOutputDirectory",
+                "sensor_map_output_directory",
+            },
+        )
+
+    if explicit_output not in (None, ""):
+        return Path(str(explicit_output).strip())
+
+    public_link = _sensor_map_get_first(
+        data,
+        "publicLink",
+        "public_link",
+        "publicPath",
+        "public_path",
+        "projectPublicLink",
+        "project_public_link",
+    )
+
+    if public_link in (None, ""):
+        public_link = _sensor_map_find_nested_value(
+            data,
+            {
+                "publicLink",
+                "public_link",
+                "publicPath",
+                "public_path",
+                "projectPublicLink",
+                "project_public_link",
+            },
+        )
+
+    if public_link in (None, ""):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Sensor Map output path could not be resolved. "
+                "The workflow context must contain an output directory "
+                "or the current project's Public Link."
+            ),
+        )
+
+    relative_path = str(
+        config.get(
+            "output_relative_path",
+            "40.Application/A.Vehicle_integration/03_Sensor_map",
+        )
+    ).strip()
+
+    if not relative_path:
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                '"output_relative_path" is missing from '
+                "sensormap_sections.json."
+            ),
+        )
+
+    # Convert JSON slash notation safely on Windows or Linux.
+    path_parts = [
+        part
+        for part in relative_path.replace("\\", "/").split("/")
+        if part
+    ]
+    return Path(str(public_link).strip()).joinpath(*path_parts)
+
+
+def _resolve_sensor_map_project_name(
+    data: dict[str, Any],
+) -> str | None:
+    """Resolve an optional project name for the generated filename."""
+    value = _sensor_map_get_first(
+        data,
+        "projectName",
+        "project_name",
+        "name",
+    )
+
+    if value in (None, ""):
+        value = _sensor_map_find_nested_value(
+            data,
+            {
+                "projectName",
+                "project_name",
+            },
+        )
+
+    text = str(value or "").strip()
+    return text or None
+
+
+# ===============================================================
+# POST /report/generateSensorMap
+# ===============================================================
+@router.post("/generateSensorMap")
+async def generate_sensor_map_report(request: Request):
+    """
+    Generate a Sensor Map Excel file.
+
+    The existing workflow mechanism may call this endpoint without
+    Sensor Map-specific frontend code. The endpoint searches the standard
+    request/project context for:
+    - Peripheral Sensor Scope;
+    - project Public Link or explicit output directory;
+    - optional project name.
+
+    The Excel template path and section-title mappings come from:
+        PUMA_Server/config/sensormap_sections.json
+    """
+    try:
+        data = await _read_sensor_map_request_data(request)
+        config = load_sensormap_config()
+
+        peripheral_sensor_scope = _resolve_sensor_map_scope(data)
+        if not peripheral_sensor_scope:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Peripheral Sensor Scope could not be resolved from "
+                    "the workflow/project context."
+                ),
+            )
+
+        output_directory = _resolve_sensor_map_output_directory(
+            data,
+            config,
+        )
+        project_name = _resolve_sensor_map_project_name(data)
+
+        result = generate_sensor_map(
+            peripheral_sensor_scope=peripheral_sensor_scope,
+            output_directory=output_directory,
+            project_name=project_name,
+            overwrite=True,
+        )
+
+        return {
+            "status": "success",
+            "message": result.get(
+                "message",
+                "Sensor Map generated successfully.",
+            ),
+            "result": result,
+        }
+
+    except HTTPException:
+        raise
+    except SensorMapConfigError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    except SensorMapTemplateError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    except SensorMapSectionError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except SensorMapError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Sensor Map generation failed: {exc}",
         ) from exc

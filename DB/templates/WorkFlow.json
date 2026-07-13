@@ -99,8 +99,10 @@
     "operation": {
       "operation_name": "Generate Sensor Map",
       "operation_detail": {
+        "type": "httpWithParameter",
+        "need_parameter": [],
         "method": "POST",
-        "url": "http://server/api/algo/create",
+        "url": "http://127.0.0.1:8086/report/generateSensorMap",
         "body": {}
       }
     },

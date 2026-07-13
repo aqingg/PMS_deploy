@@ -487,6 +487,24 @@ export default function TaskDetailPage() {
     const parameterResults = await Promise.all(parameterPromises);
 
     const isTCD08Fill = operation_detail.url?.includes("/fillTCD08Report");
+    const isSensorMap = operation_detail.url?.includes("/generateSensorMap");
+
+    const getProjectInfoValue = (label) => {
+      const rows = Array.isArray(projectInfo)
+        ? projectInfo
+        : projectInfo?.projectInfo || [];
+
+      for (const row of rows) {
+        const items = Array.isArray(row) ? row : [row];
+        const match = items.find((item) => item?.label === label);
+
+        if (match?.value) {
+          return String(match.value).trim();
+        }
+      }
+
+      return "";
+    };
 
     // Only Fill_IAR output should use Public Link.
     // Inputs still use Local Link, so the local IAR template reading logic is unchanged.
@@ -501,7 +519,7 @@ export default function TaskDetailPage() {
 
     let input_files = [];
 
-    if (!isTCD08Fill) {
+    if (!isTCD08Fill && !isSensorMap) {
       const input_path = await getRealPathFromBackend({
         label: taskInputs[0].label,
         taskId,
@@ -513,13 +531,17 @@ export default function TaskDetailPage() {
       input_files = await getOfficeFiles(input_path);
     }
 
-    const output_path = await getRealPathFromBackend({
-      label: taskOutputs[0].label,
-      taskId,
-      projectId: effectiveProjectId,
-      user,
-      type: outputType,
-    });
+    let output_path = "";
+
+    if (!isSensorMap) {
+      output_path = await getRealPathFromBackend({
+        label: taskOutputs[0].label,
+        taskId,
+        projectId: effectiveProjectId,
+        user,
+        type: outputType,
+      });
+    }
 
     // 1. 构建最终请求体
     let { url, method, body } = operation_detail;
@@ -531,10 +553,32 @@ export default function TaskDetailPage() {
       finalBody[name] = parameterValue;
     });
 
-    finalBody.template_paths = input_files;
-    finalBody.save_path = output_path;
+    if (!isSensorMap) {
+      finalBody.template_paths = input_files;
+      finalBody.save_path = output_path;
+    }
 
     if (isTCD08Fill) {
+      finalBody.project_info = projectInfo;
+      finalBody.projectId = effectiveProjectId;
+      finalBody.taskId = taskId;
+    }
+
+    if (isSensorMap) {
+      const peripheralSensor = getProjectInfoValue("Peripheral Sensor");
+      const publicLink = getProjectInfoValue("Public Link");
+
+      if (!peripheralSensor) {
+        throw new Error("Peripheral Sensor is missing. Please fill it in Project Info first.");
+      }
+
+      if (!publicLink) {
+        throw new Error("Public Link is missing. Please fill it in Project Info first.");
+      }
+
+      finalBody.peripheralSensor = peripheralSensor;
+      finalBody.publicLink = publicLink;
+      finalBody.projectName = projectName;
       finalBody.project_info = projectInfo;
       finalBody.projectId = effectiveProjectId;
       finalBody.taskId = taskId;

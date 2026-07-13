@@ -1,0 +1,90 @@
+{
+  "template_path": "N:\\Prj\\PS\\Line_OSS-CN\\Application\\02_Domain_Knowledge\\03_Vehicle_Integration\\05.Template\\02.Sensor map\\Sensor Map Template\\test.xlsx",
+  "worksheet_name": "",
+  "output_relative_path": "40.Application/A.Vehicle_integration/03_Sensor_map",
+
+  "matching": {
+    "case_sensitive": false,
+    "normalize_whitespace": true,
+    "trim_cell_text": true,
+    "delete_rule": "delete_if_not_present"
+  },
+
+  "fixed_sections": {
+    "CENTRAL_ACCELERATION": {
+      "title": "central acceleration sensors",
+      "keep_always": true
+    },
+    "CENTRAL_ANGULAR_RATE": {
+      "title": "central angular rate sensors",
+      "keep_always": true
+    }
+  },
+
+  "sensor_sections": {
+    "UFS": {
+      "aliases": [
+        "UFS"
+      ],
+      "titles": [
+        "peripheral front acceleration sensors (UFS)"
+      ]
+    },
+
+    "PCS": {
+      "aliases": [
+        "PCS",
+        "PEDESTRIAN PROTECTION SENSOR",
+        "PEDESTRIAN PROTECTION SENSORS"
+      ],
+      "titles": [
+        "peripheral pedestrian protection sensors (PCS)",
+        "peripheral pedestrian protection sensors ( PCS)"
+      ]
+    },
+
+    "PAS": {
+      "aliases": [
+        "PAS"
+      ],
+      "titles": [
+        "peripheral side acceleration sensors (PAS)"
+      ]
+    },
+
+    "PPS": {
+      "aliases": [
+        "PPS"
+      ],
+      "titles": [
+        "peripheral side pressure sensors (PPS)"
+      ]
+    },
+
+    "RCS": {
+      "aliases": [
+        "RCS"
+      ],
+      "titles": [
+        "peripheral front acceleration sensors (RCS)"
+      ]
+    }
+  },
+
+  "section_end_markers": [
+    "Bosch sensors (e.g. Spider data)",
+    "others"
+  ],
+
+  "non_sensor_sections": {
+    "BOSCH_SENSORS": {
+      "title": "Bosch sensors (e.g. Spider data)",
+      "keep_always": true
+    },
+
+    "OTHERS": {
+      "title": "others",
+      "keep_always": true
+    }
+  }
+}
