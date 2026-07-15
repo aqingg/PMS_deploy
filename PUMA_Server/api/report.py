@@ -30,6 +30,22 @@ router = APIRouter(prefix="/report", tags=["Report"])
 # 工具函数
 # ===============================================================
 
+def _resolve_sensor_map_calibration_scope(data: dict[str, Any]) -> str:
+    """
+    Read Calibration Scope sent by TaskDetailPage.
+
+    Accepted names keep the API tolerant to frontend naming changes.
+    """
+    value = _get_first(
+        data,
+        "calibrationScope",
+        "calibration_scope",
+        "Calibration Scope",
+        default="",
+    )
+    return str(value or "").strip()
+
+
 def _cleanup_dir(path: str) -> None:
     """FileResponse 发送完成后清理本次请求临时目录。"""
     try:
@@ -614,6 +630,7 @@ def _resolve_sensor_map_project_name(
     return text or None
 
 
+
 # ===============================================================
 # POST /report/generateSensorMap
 # ===============================================================
@@ -637,6 +654,16 @@ async def generate_sensor_map_report(request: Request):
         config = load_sensormap_config()
 
         peripheral_sensor_scope = _resolve_sensor_map_scope(data)
+        calibration_scope = _resolve_sensor_map_calibration_scope(data)
+
+        if not calibration_scope:
+            raise HTTPException(
+             status_code=400,
+             detail=(
+                "Calibration Scope could not be resolved from "
+                "the workflow/project context."
+                ),
+            )
         if not peripheral_sensor_scope:
             raise HTTPException(
                 status_code=400,
@@ -653,11 +680,12 @@ async def generate_sensor_map_report(request: Request):
         project_name = _resolve_sensor_map_project_name(data)
 
         result = generate_sensor_map(
-            peripheral_sensor_scope=peripheral_sensor_scope,
-            output_directory=output_directory,
-            project_name=project_name,
-            overwrite=True,
-        )
+        peripheral_sensor_scope=peripheral_sensor_scope,
+        calibration_scope=calibration_scope,
+        output_directory=output_directory,
+        project_name=project_name,
+        overwrite=True,
+)
 
         return {
             "status": "success",
@@ -683,3 +711,5 @@ async def generate_sensor_map_report(request: Request):
             status_code=500,
             detail=f"Sensor Map generation failed: {exc}",
         ) from exc
+
+

@@ -2,14 +2,12 @@
   "template_path": "N:\\Prj\\PS\\Line_OSS-CN\\Application\\02_Domain_Knowledge\\03_Vehicle_Integration\\05.Template\\02.Sensor map\\Sensor Map Template\\test.xlsx",
   "worksheet_name": "",
   "output_relative_path": "40.Application/A.Vehicle_integration/03_Sensor_map",
-
   "matching": {
     "case_sensitive": false,
     "normalize_whitespace": true,
     "trim_cell_text": true,
     "delete_rule": "delete_if_not_present"
   },
-
   "fixed_sections": {
     "CENTRAL_ACCELERATION": {
       "title": "central acceleration sensors",
@@ -20,7 +18,6 @@
       "keep_always": true
     }
   },
-
   "sensor_sections": {
     "UFS": {
       "aliases": [
@@ -30,7 +27,6 @@
         "peripheral front acceleration sensors (UFS)"
       ]
     },
-
     "PCS": {
       "aliases": [
         "PCS",
@@ -42,7 +38,6 @@
         "peripheral pedestrian protection sensors ( PCS)"
       ]
     },
-
     "PAS": {
       "aliases": [
         "PAS"
@@ -51,7 +46,6 @@
         "peripheral side acceleration sensors (PAS)"
       ]
     },
-
     "PPS": {
       "aliases": [
         "PPS"
@@ -60,7 +54,6 @@
         "peripheral side pressure sensors (PPS)"
       ]
     },
-
     "RCS": {
       "aliases": [
         "RCS"
@@ -68,23 +61,58 @@
       "titles": [
         "peripheral front acceleration sensors (RCS)"
       ]
+    },
+    "PTS": {
+      "aliases": [
+        "PTS"
+      ],
+      "titles": [
+        "Bosch sensors (e.g. Spider data)"
+      ]
     }
   },
-
   "section_end_markers": [
-    "Bosch sensors (e.g. Spider data)",
     "others"
   ],
-
   "non_sensor_sections": {
-    "BOSCH_SENSORS": {
-      "title": "Bosch sensors (e.g. Spider data)",
-      "keep_always": true
-    },
-
     "OTHERS": {
       "title": "others",
       "keep_always": true
+    }
+  },
+  "calibration_columns": {
+    "ROLL_OVER": {
+      "scope_aliases": [
+        "Rose1",
+        "Rose1+"
+      ],
+      "column_titles": [
+        "roll over crash test"
+      ]
+    },
+    "PITCHOVER": {
+      "scope_aliases": [
+        "PitchOver"
+      ],
+      "column_titles": [
+        "pitchover"
+      ]
+    },
+    "OFFZONE": {
+      "scope_aliases": [
+        "Offzone"
+      ],
+      "column_titles": [
+        "offzone"
+      ]
+    },
+    "PEDESTRIAN_PROTECTION": {
+      "scope_aliases": [
+        "EPP"
+      ],
+      "column_titles": [
+        "pedestrian protection test"
+      ]
     }
   }
 }
