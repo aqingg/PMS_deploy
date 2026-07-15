@@ -1,5 +1,5 @@
 {
-  "template_path": "N:\\Prj\\PS\\Line_OSS-CN\\Application\\02_Domain_Knowledge\\03_Vehicle_Integration\\05.Template\\02.Sensor map\\Sensor Map Template\\test.xlsx",
+"template_path": "N:\\Prj\\PS\\Line_OSS-CN\\Application\\02_Domain_Knowledge\\03_Vehicle_Integration\\05.Template\\02.Sensor map\\Sensor Map Template\\test.xlsx",
   "worksheet_name": "",
   "output_relative_path": "40.Application/A.Vehicle_integration/03_Sensor_map",
   "matching": {
@@ -114,5 +114,27 @@
         "pedestrian protection test"
       ]
     }
+  },
+"calibration_row_rules": {
+  "NO_ROLLOVER_OR_PITCHOVER": {
+    "keep_if_any_calibration": [
+      "ROLL_OVER",
+      "PITCHOVER"
+    ],
+    "delete_sections": [
+      {
+        "title": "central angular rate sensors"
+      }
+    ],
+    "delete_keyword_rows": [
+      {
+        "section_title": "central acceleration sensors",
+        "keywords": [
+          "Mid-g",
+          "Low-g"
+        ]
+      }
+    ]
   }
+}
 }

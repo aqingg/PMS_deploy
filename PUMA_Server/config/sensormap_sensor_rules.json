@@ -1,0 +1,201 @@
+{
+  "$comment": "Sensor topology and Excel row-matching rules for sensor map generation. Keys starting with '$' are metadata and are ignored by the parser.",
+  "UFS": {
+    "description": "Underbody Frame Sensor (three-position: LEFT / CENTRE / RIGHT)",
+    "aliases": [
+      "UFS"
+    ],
+    "topology": "three_position",
+    "default_count": 1,
+    "supported_axes": [
+      "X",
+      "Y"
+    ],
+    "default_axes": [
+      "X"
+    ],
+    "row_rules": {
+      "positions": {
+        "LEFT": [
+          "UFS-Left",
+          "UFS_Left"
+        ],
+        "CENTRE": [
+          "UFS-Centre",
+          "UFS_Centre",
+          "UFS-Center",
+          "UFS_Center"
+        ],
+        "RIGHT": [
+          "UFS-Right",
+          "UFS_Right"
+        ]
+      },
+      "axes": {
+        "X": [
+          "Acc X",
+          "Acc X_Backup"
+        ],
+        "Y": [
+          "Acc Y",
+          "Acc Y_Backup"
+        ]
+      }
+    }
+  },
+  "RCS": {
+    "description": "Rear Crash Sensor (three-position: LEFT / CENTRE / RIGHT)",
+    "aliases": [
+      "RCS"
+    ],
+    "topology": "three_position",
+    "default_count": 1,
+    "supported_axes": [
+      "X",
+      "Y"
+    ],
+    "default_axes": [
+      "X"
+    ],
+    "row_rules": {
+      "positions": {
+        "LEFT": [
+          "RCS-Left",
+          "RCS_Left"
+        ],
+        "CENTRE": [
+          "RCS-Centre",
+          "RCS_Centre",
+          "RCS-Center",
+          "RCS_Center"
+        ],
+        "RIGHT": [
+          "RCS-Right",
+          "RCS_Right"
+        ]
+      },
+      "axes": {
+        "X": [
+          "Acc X",
+          "Acc X_Backup"
+        ],
+        "Y": [
+          "Acc Y",
+          "Acc Y_Backup"
+        ]
+      }
+    }
+  },
+  "PCS": {
+    "description": "Pedestrian Crash Sensor (symmetric levels: L3..L1 / C0 / R1..R3)",
+    "aliases": [
+      "PCS"
+    ],
+    "topology": "symmetric_levels",
+    "default_count": 1,
+    "max_level": 3,
+    "supported_axes": [
+      "X"
+    ],
+    "default_axes": [
+      "X"
+    ],
+    "row_rules": {
+      "positions": {
+        "R3": [
+          "PCS-3-Right",
+          "PCS3-Right",
+          "right PCS_3",
+          "right PCS-3"
+        ],
+        "R2": [
+          "PCS-2-Right",
+          "PCS2-Right",
+          "right PCS_2",
+          "right PCS-2"
+        ],
+        "R1": [
+          "PCS-1-Right",
+          "PCS1-Right",
+          "right PCS_1",
+          "right PCS-1"
+        ],
+        "C0": [
+          "PCS-0-Centre",
+          "PCS0-Centre",
+          "centre PCS_0",
+          "center PCS_0",
+          "PCS-0-Center"
+        ],
+        "L1": [
+          "PCS-1-Left",
+          "PCS1-Left",
+          "left PCS_1",
+          "left PCS-1"
+        ],
+        "L2": [
+          "PCS-2-Left",
+          "PCS2-Left",
+          "left PCS_2",
+          "left PCS-2"
+        ],
+        "L3": [
+          "PCS-3-Left",
+          "PCS3-Left",
+          "left PCS_3",
+          "left PCS-3"
+        ]
+      },
+      "axes": {
+        "X": [
+          "Acc X",
+          "Acc X_Backup"
+        ]
+      }
+    }
+  },
+  "PAS": {
+    "description": "Pressure Arch Sensor (fixed positions: BL / BR / CL / CR)",
+    "aliases": [
+      "PAS"
+    ],
+    "topology": "fixed_positions",
+    "supported_axes": [
+      "Y"
+    ],
+    "default_axes": [
+      "Y"
+    ],
+    "positions": [
+      "BL",
+      "BR",
+      "CL",
+      "CR"
+    ],
+    "row_rules": {
+      "positions": {
+        "BL": [
+          "PAS-B-Pillar Left",
+          "left B-Pillar PAS"
+        ],
+        "BR": [
+          "PAS-B-Pillar Right",
+          "right B-Pillar PAS"
+        ],
+        "CL": [
+          "PAS-C-Pillar Left",
+          "left C-Pillar PAS"
+        ],
+        "CR": [
+          "PAS-C-Pillar Right",
+          "right C-Pillar PAS"
+        ]
+      },
+      "axes": {
+        "Y": [
+          "Acc Y"
+        ]
+      }
+    }
+  }
+}
