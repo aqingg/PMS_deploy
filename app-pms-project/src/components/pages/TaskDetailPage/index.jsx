@@ -563,26 +563,37 @@ export default function TaskDetailPage() {
       finalBody.projectId = effectiveProjectId;
       finalBody.taskId = taskId;
     }
+if (isSensorMap) {
+  const peripheralSensor = getProjectInfoValue("Peripheral Sensor");
+  const calibrationScope = getProjectInfoValue("Calibration Scope");
+  const publicLink = getProjectInfoValue("Public Link");
 
-    if (isSensorMap) {
-      const peripheralSensor = getProjectInfoValue("Peripheral Sensor");
-      const publicLink = getProjectInfoValue("Public Link");
+  if (!peripheralSensor) {
+    throw new Error(
+      "Peripheral Sensor is missing. Please fill it in Project Info first."
+    );
+  }
 
-      if (!peripheralSensor) {
-        throw new Error("Peripheral Sensor is missing. Please fill it in Project Info first.");
-      }
+  if (!calibrationScope) {
+    throw new Error(
+      "Calibration Scope is missing. Please fill it in Project Info first."
+    );
+  }
 
-      if (!publicLink) {
-        throw new Error("Public Link is missing. Please fill it in Project Info first.");
-      }
+  if (!publicLink) {
+    throw new Error(
+      "Public Link is missing. Please fill it in Project Info first."
+    );
+  }
 
-      finalBody.peripheralSensor = peripheralSensor;
-      finalBody.publicLink = publicLink;
-      finalBody.projectName = projectName;
-      finalBody.project_info = projectInfo;
-      finalBody.projectId = effectiveProjectId;
-      finalBody.taskId = taskId;
-    }
+  finalBody.peripheralSensor = peripheralSensor;
+  finalBody.calibrationScope = calibrationScope;
+  finalBody.publicLink = publicLink;
+  finalBody.projectName = projectName;
+  finalBody.project_info = projectInfo;
+  finalBody.projectId = effectiveProjectId;
+  finalBody.taskId = taskId;
+}
 
     // 2. 发送请求
     const response = await fetch(url, {
