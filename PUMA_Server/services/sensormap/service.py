@@ -5,6 +5,7 @@ import os
 import re
 import shutil
 import threading
+import tempfile
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -338,13 +339,40 @@ def generate_sensor_map(
         config.get("calibration_columns", {}),
     )
 
-    temporary_path = output_path.with_name(
+    # Excel COM is more reliable when it opens a local file instead of a
+    # DFS/UNC network path. The workbook is therefore edited in the local
+    # Windows temporary directory and copied to Public Link only after Excel
+    # has saved and closed it.
+    local_temp_root = (
+        Path(tempfile.gettempdir())
+        / "puma_sensormap"
+    )
+    local_temp_root.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    temporary_path = local_temp_root / (
         f"__puma_sensormap_{uuid.uuid4().hex}"
         f"{template_path.suffix.lower()}"
     )
 
+    # Copy to a temporary name inside the output directory first, then perform
+    # a same-directory atomic replacement. This avoids exposing a partially
+    # copied workbook on the Public Link.
+    public_temporary_path = output_path.with_name(
+        f"__puma_copying_{uuid.uuid4().hex}"
+        f"{output_path.suffix}"
+    )
+
     try:
         shutil.copy2(template_path, temporary_path)
+
+        if not temporary_path.is_file():
+            raise SensorMapTemplateError(
+                "The local Sensor Map temporary workbook was not created: "
+                f"{temporary_path}"
+            )
 
         with _EXCEL_COM_LOCK:
             (
@@ -362,14 +390,29 @@ def generate_sensor_map(
                 calibration_to_keep,
             )
 
-        temporary_path.replace(output_path)
+        shutil.copy2(
+            temporary_path,
+            public_temporary_path,
+        )
+
+        if not public_temporary_path.is_file():
+            raise SensorMapTemplateError(
+                "The Sensor Map workbook could not be copied to Public Link: "
+                f"{public_temporary_path}"
+            )
+
+        os.replace(
+            public_temporary_path,
+            output_path,
+        )
 
     except SensorMapError:
         raise
     except PermissionError as exc:
         raise SensorMapTemplateError(
             "Permission denied. Confirm that the template/output file is not "
-            "open in Excel and that the account can write to the directory."
+            "open in Excel and that the account can write, rename and delete "
+            "files in the output directory."
         ) from exc
     except Exception as exc:
         LOGGER.exception(
@@ -379,14 +422,18 @@ def generate_sensor_map(
             f"Unexpected Sensor Map generation failure: {exc}"
         ) from exc
     finally:
-        if temporary_path.exists():
-            try:
-                temporary_path.unlink()
-            except OSError:
-                LOGGER.warning(
-                    "Unable to remove temporary Sensor Map file: %s",
-                    temporary_path,
-                )
+        for cleanup_path in (
+            temporary_path,
+            public_temporary_path,
+        ):
+            if cleanup_path.exists():
+                try:
+                    cleanup_path.unlink()
+                except OSError:
+                    LOGGER.warning(
+                        "Unable to remove temporary Sensor Map file: %s",
+                        cleanup_path,
+                    )
 
     return {
         "success": True,

@@ -82,9 +82,6 @@ def load_sensor_rules(
         )
 
     for raw_code, rule in rules.items():
-        # Skip metadata keys such as "$comment" or "$schema".
-        if isinstance(raw_code, str) and raw_code.startswith("$"):
-            continue
         code = str(raw_code).upper().strip()
         if not isinstance(rule, dict):
             raise SensorMapConfigError(
@@ -95,6 +92,7 @@ def load_sensor_rules(
         if topology not in {
             "three_position",
             "symmetric_levels",
+            "pillar_pairs",
             "fixed_positions",
         }:
             raise SensorMapConfigError(

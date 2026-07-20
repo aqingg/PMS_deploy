@@ -147,6 +147,58 @@ def _resolve_symmetric_levels(
     return frozenset(positions), normalized, warnings
 
 
+def _resolve_pillar_pairs(
+    request: SensorRequest,
+    rule: Mapping[str, Any],
+) -> tuple[frozenset[str], str, list[str]]:
+    """
+    Resolve PAS-style B/C-Pillar pairs.
+
+    count 2 -> BL + BR
+    count 4 -> BL + BR + CL + CR
+    """
+    warnings: list[str] = []
+    count = request.count or int(rule.get("default_count", 2))
+
+    positions_by_count = {
+        int(raw_count): {
+            str(position).upper()
+            for position in positions
+        }
+        for raw_count, positions in rule.get(
+            "positions_by_count",
+            {},
+        ).items()
+    }
+
+    if not positions_by_count:
+        raise SensorMapSectionError(
+            f"{request.sensor}: positions_by_count is not configured."
+        )
+
+    supported_counts = sorted(positions_by_count)
+
+    if count not in positions_by_count:
+        nearest_count = min(
+            supported_counts,
+            key=lambda candidate: (
+                abs(candidate - count),
+                candidate,
+            ),
+        )
+        warnings.append(
+            f"{request.sensor}: count {count} is unsupported and was "
+            f"normalized to {nearest_count}."
+        )
+        count = nearest_count
+
+    return (
+        frozenset(positions_by_count[count]),
+        f"{count}*{request.sensor}",
+        warnings,
+    )
+
+
 def _resolve_fixed_positions(
     request: SensorRequest,
     rule: Mapping[str, Any],
@@ -174,6 +226,10 @@ def resolve_sensor_selections(
             )
         elif topology == "symmetric_levels":
             positions, normalized, warnings = _resolve_symmetric_levels(
+                request, rule
+            )
+        elif topology == "pillar_pairs":
+            positions, normalized, warnings = _resolve_pillar_pairs(
                 request, rule
             )
         elif topology == "fixed_positions":

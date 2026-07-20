@@ -26,8 +26,17 @@ def _sensor_present(scope: str, code: str, aliases: list[str]) -> bool:
 
 
 def _parse_count(scope: str, code: str) -> int | None:
+    """
+    Parse both starred and unstarred quantity forms.
+
+    Examples:
+        1*UFSXY -> 1
+        1UFSXY  -> 1
+        2*PASxx -> 2
+        4PASxx  -> 4
+    """
     match = re.search(
-        rf"(?P<count>\d+)\*{re.escape(code)}",
+        rf"(?P<count>\d+)\*?{re.escape(code)}",
         scope,
     )
     if match:
@@ -35,13 +44,36 @@ def _parse_count(scope: str, code: str) -> int | None:
     return None
 
 
+def _parse_occurrence_count(scope: str, code: str) -> int:
+    """
+    Count repeated Sensor expressions.
+
+    Examples:
+        PASxx+PASxx             -> 2
+        PASxx+PASxx+PASxx+PASxx -> 4
+    """
+    return len(
+        re.findall(
+            rf"(?<![A-Z]){re.escape(code)}",
+            scope,
+        )
+    )
+
+
 def _parse_axes(scope: str, code: str) -> frozenset[str]:
-    # XY may appear after the code or after side notation.
-    if re.search(rf"{re.escape(code)}(?:[LR])?(?:[_-]?XY)", scope):
+    """
+    Parse only explicitly written axes.
+
+    When no axis is written, topology.py uses the Sensor's default_axes.
+    This keeps PAS on its configured Y axis while UFS/RCS still default to X.
+    """
+    if re.search(rf"{re.escape(code)}(?:[LRC])?(?:[_-]?XY)", scope):
         return frozenset({"X", "Y"})
-    if re.search(rf"{re.escape(code)}(?:[LR])?(?:[_-]?Y)(?![A-Z])", scope):
+    if re.search(rf"{re.escape(code)}(?:[LRC])?(?:[_-]?Y)(?![A-Z])", scope):
         return frozenset({"Y"})
-    return frozenset({"X"})
+    if re.search(rf"{re.escape(code)}(?:[LRC])?(?:[_-]?X)(?![A-Z])", scope):
+        return frozenset({"X"})
+    return frozenset()
 
 
 def _parse_side_hints(scope: str, code: str) -> frozenset[str]:
@@ -95,10 +127,23 @@ def parse_sensor_requests(
         if not _sensor_present(normalized, code, aliases):
             continue
 
+        count = _parse_count(normalized, code)
+
+        if (
+            count is None
+            and bool(rule.get("count_from_occurrences"))
+        ):
+            occurrence_count = _parse_occurrence_count(
+                normalized,
+                code,
+            )
+            if occurrence_count > 0:
+                count = occurrence_count
+
         requests[code] = SensorRequest(
             sensor=code,
             raw=raw,
-            count=_parse_count(normalized, code),
+            count=count,
             axes=_parse_axes(normalized, code),
             side_hints=_parse_side_hints(normalized, code),
             level_hints=_parse_level_hints(normalized, code),

@@ -1,12 +1,10 @@
 {
-  "$comment": "Sensor topology and Excel row-matching rules for sensor map generation. Keys starting with '$' are metadata and are ignored by the parser.",
   "UFS": {
-    "description": "Underbody Frame Sensor (three-position: LEFT / CENTRE / RIGHT)",
     "aliases": [
       "UFS"
     ],
     "topology": "three_position",
-    "default_count": 1,
+    "default_count": 2,
     "supported_axes": [
       "X",
       "Y"
@@ -44,12 +42,11 @@
     }
   },
   "RCS": {
-    "description": "Rear Crash Sensor (three-position: LEFT / CENTRE / RIGHT)",
     "aliases": [
       "RCS"
     ],
     "topology": "three_position",
-    "default_count": 1,
+    "default_count": 2,
     "supported_axes": [
       "X",
       "Y"
@@ -87,7 +84,6 @@
     }
   },
   "PCS": {
-    "description": "Pedestrian Crash Sensor (symmetric levels: L3..L1 / C0 / R1..R3)",
     "aliases": [
       "PCS"
     ],
@@ -155,23 +151,30 @@
     }
   },
   "PAS": {
-    "description": "Pressure Arch Sensor (fixed positions: BL / BR / CL / CR)",
     "aliases": [
       "PAS"
     ],
-    "topology": "fixed_positions",
+    "topology": "pillar_pairs",
+    "default_count": 2,
+    "count_from_occurrences": true,
     "supported_axes": [
       "Y"
     ],
     "default_axes": [
       "Y"
     ],
-    "positions": [
-      "BL",
-      "BR",
-      "CL",
-      "CR"
-    ],
+    "positions_by_count": {
+      "2": [
+        "BL",
+        "BR"
+      ],
+      "4": [
+        "BL",
+        "BR",
+        "CL",
+        "CR"
+      ]
+    },
     "row_rules": {
       "positions": {
         "BL": [
@@ -193,7 +196,8 @@
       },
       "axes": {
         "Y": [
-          "Acc Y"
+          "Acc Y",
+          "Acc Y_Backup"
         ]
       }
     }
