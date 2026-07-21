@@ -22,7 +22,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='Client',
+    name='App-PMS',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

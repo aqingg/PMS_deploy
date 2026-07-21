@@ -8,14 +8,14 @@ router = APIRouter()
 
 @router.get("/download/client")
 def download_client():
-    file_path = DOWNLOADS_DIR / "Client.exe"
+    file_path = DOWNLOADS_DIR / "App-PMS.exe"
     
     # 如果文件不存在，返回错误
     if not file_path.exists():
-        return {"error": "Client.exe 未找到，请联系管理员"}
+        return {"error": "App-PMS.exe 未找到，请联系管理员"}
 
     return FileResponse(
         path=str(file_path),
-        filename="Client.exe",
+        filename="App-PMS.exe",
         media_type="application/octet-stream"
     )

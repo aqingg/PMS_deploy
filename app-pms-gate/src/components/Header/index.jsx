@@ -33,7 +33,7 @@ export default class Header extends Component {
             <Row span={24} type="flex" justify="end">
 
               {/* ⭐ 下载按钮：不再写 URL → 调用 Context 中的 downloadClient() */}
-              <Tooltip title="下载客户端 Client.exe">
+              <Tooltip title="下载客户端 App-PMS.exe">
                 <Avatar
                   shape="square"
                   size={40}
