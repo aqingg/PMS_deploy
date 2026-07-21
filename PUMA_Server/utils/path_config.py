@@ -15,9 +15,9 @@ and does NOT rely on bind mounts or host paths.
 # utils/path_config.py -> utils -> project root
 # ==========================================================
 
-# PROJECT_ROOT = Path(__file__).resolve().parents[2]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
-PROJECT_ROOT = Path(r"N:\Prj\PS\32_Application\EPD5-AppPUMA-Templates")
+# PROJECT_ROOT = Path(r"N:\Prj\PS\32_Application\EPD5-AppPUMA-Templates")
 # PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 # ==========================================================
@@ -52,7 +52,13 @@ HISTORY_DIR = BASE_RUNTIME_DIR / "history"
 EMAIL_DIR = BASE_RUNTIME_DIR / "Email"
 
 
-CUSTOMER_LOGO_DIR = Path(r"N:\Prj\PS\Line_OSS-CN\Application\20_Info_exchange\07.Customer_Logo")
+PREFERRED_CUSTOMER_LOGO_DIR = Path(r"\\bosch.com\dfsrb\DfsCN\DIV\CC\Prj\PS\32_Application\EPD5-File-Templates\Customer_Logo")
+FALLBACK_CUSTOMER_LOGO_DIR = Path(r"N:\Prj\PS\Line_OSS-CN\Application\20_Info_exchange\07.Customer_Logo")
+CUSTOMER_LOGO_DIRS = [
+    PREFERRED_CUSTOMER_LOGO_DIR,
+    FALLBACK_CUSTOMER_LOGO_DIR,
+]
+CUSTOMER_LOGO_DIR = PREFERRED_CUSTOMER_LOGO_DIR
 
 
 # ==========================================================
@@ -61,7 +67,6 @@ CUSTOMER_LOGO_DIR = Path(r"N:\Prj\PS\Line_OSS-CN\Application\20_Info_exchange\07
 
 for _dir in [
     DATA_SOURCE_DIR,
-    CUSTOMER_LOGO_DIR,
     TEMPLATES_DIR,
     DOWNLOADS_DIR,
     LOGS_DIR,

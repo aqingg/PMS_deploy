@@ -10,7 +10,7 @@ from docx.shared import Inches
 
 from services.word.xml_utils import clean_text
 from utils.file_loader import load_data_source
-from utils.path_config import BASE_RUNTIME_DIR, CUSTOMER_LOGO_DIR, DATA_SOURCE_DIR, PROJECT_ROOT
+from utils.path_config import BASE_RUNTIME_DIR, CUSTOMER_LOGO_DIRS, DATA_SOURCE_DIR, PROJECT_ROOT
 
 
 logger = logging.getLogger("uvicorn.error")
@@ -32,15 +32,25 @@ def _to_inch_value(value: Any):
         return None
 
 
+def _can_read_file(path: Path) -> bool:
+    try:
+        if not path.is_file():
+            return False
+        with path.open("rb"):
+            return True
+    except OSError:
+        return False
+
+
 def _resolve_image_path(path_value: str) -> Path | None:
     candidate = Path(path_value)
     if candidate.is_absolute():
-        return candidate if candidate.exists() else None
+        return candidate if _can_read_file(candidate) else None
 
-    search_roots = [CUSTOMER_LOGO_DIR, BASE_RUNTIME_DIR, DATA_SOURCE_DIR, PROJECT_ROOT]
+    search_roots = [*CUSTOMER_LOGO_DIRS, BASE_RUNTIME_DIR, DATA_SOURCE_DIR, PROJECT_ROOT]
     for root in search_roots:
-        resolved = (root / candidate).resolve()
-        if resolved.exists():
+        resolved = root / candidate
+        if _can_read_file(resolved):
             return resolved
 
     return None

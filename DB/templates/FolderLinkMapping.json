@@ -104,14 +104,14 @@
   },
   {
     "TagName": "IAR_Template",
-    "FileKeyWord": "",
+    "FileKeyWord": "QSCL0415_Installation_Assessment_Review_v3.2.1_auto_label.xlsx",
     "RelativePath": "",
-    "AbsolutePath": "\\\\bosch.com\\dfsrb\\DfsCN\\DIV\\CC\\Prj\\PS\\32_Application\\EPD5-CN-Tools-Mgmt\\00.General\\Templates\\VehicleIntegration\\IAR\\"
+    "AbsolutePath": "\\\\bosch.com\\dfsrb\\DfsCN\\DIV\\CC\\Prj\\PS\\32_Application\\EPD5-File-Templates\\Vehicle_integration\\IAR\\"
   },
   {
     "TagName": "IAR_Report",
     "FileKeyWord": "",
-    "RelativePath": "\\40.Application\\A.Vehicle_integration\\06_Report\\IAR"
+    "RelativePath": "\\40.Application\\A.Vehicle_integration\\06_TCU_No_9_Sens_dir"
   },
   {
     "TagName": "Input",
@@ -283,23 +283,14 @@
     "FileKeyWord": "",
     "RelativePath": "\\40.Application\\C.Calibration\\ProjectID_Parameter_ID\\03_Results\\Official_Simulation"
   },
-  {
-    "TagName": "Customer approval E-mail(draft)",
-    "FileKeyWord": "",
-    "RelativePath": "\\40.Application\\C.Calibration\\ProjectID_Parameter_ID\\03_Results\\Customer_Approval_Email"
-  },
+
   {
     "TagName": "Customer approval E-mail(draft) ",
     "FileKeyWord": "",
-    "RelativePath": "\\40.Application\\C.Calibration\\ProjectID_Parameter_ID\\03_Results\\Customer_Approval_Email"
+    "RelativePath": "\\40.Application\\C.Calibration\\ProjectID_Parameter_ID\\06_Official_Release\\Customer_Approval_Email"
   },
   {
     "TagName": "Customer_Approval_Email",
-    "FileKeyWord": "",
-    "RelativePath": "\\40.Application\\C.Calibration\\ProjectID_Parameter_ID\\03_Results\\Customer_Approval_Email"
-  },
-  {
-    "TagName": "Customer Approval Email",
     "FileKeyWord": "",
     "RelativePath": "\\40.Application\\C.Calibration\\ProjectID_Parameter_ID\\03_Results\\Customer_Approval_Email"
   },
@@ -376,9 +367,9 @@
   },
   {
     "TagName": "ONETCD&TCD08_Template",
-    "FileKeyWord": "QSTL0446_ Calibration_Report_CN_En_Cn_V1_6.docm",
+    "FileKeyWord": "QSTL0446_ Calibration_Report_CN_En_Cn_V1_6_auto_label.docm",
     "RelativePath": "",
-    "AbsolutePath": "\\\\bosch.com\\dfsrb\\DfsCN\\DIV\\CC\\Prj\\PS\\32_Application\\EPD5-CN-Tools-Mgmt\\00.General\\Templates\\VehicleIntegration\\TCD08\\"
+    "AbsolutePath": "\\\\bosch.com\\dfsrb\\DfsCN\\DIV\\CC\\Prj\\PS\\32_Application\\EPD5-File-Templates\\Calibration\\"
   },
   {
     "TagName": "ONETCD&TCD08_Report",
