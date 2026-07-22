@@ -18,15 +18,26 @@
         { "label": "SOP Date", "value": "" },
         { "label": "Project Leader", "value": "" }
       ],
-      [
+ [
         { "label": "MCR No.", "value": "" },
-        { "label": "ECU Direction", "value": "" },
+        {
+          "label": "ECU Direction",
+          "value": "",
+          "keys": ["forward", "backward", "left", "right"],
+          "selectionMode": "single"
+        },
         { "label": "BOSCH PIN", "value": "" },
         { "label": "Customer PIN", "value": "" }
       ],
       [
         { "label": "Inertial Sensor", "value": "" },
         { "label": "Peripheral Sensor", "value": "" },
+        {
+          "label": "UFS direction",
+          "value": "",
+          "keys": ["normal", "reverse"],
+          "selectionMode": "single"
+        },
         { "label": "Vehicle Type", "value": "" }
       ],
       [
@@ -187,86 +198,37 @@
                 "children": []
               },
               {
-                "taskName": "Data_Handle & Reivew",
+                "taskName": "Data_Preparing",
                 "status": "Pending",
                 "comment": "",
                 "children": []
               },
               {
-                "taskName": "MDS_Setup & Map Assignment",
+                "taskName": "Data_Handling",
                 "status": "Pending",
                 "comment": "",
                 "children": []
               },
               {
-                "taskName": "DT-AI_Calibration",
+                "taskName": "Data_Uploading",
                 "status": "Pending",
                 "comment": "",
                 "children": []
               },
               {
-                "taskName": "Cali Internal Test",
+                "taskName": "Mapping",
                 "status": "Pending",
                 "comment": "",
                 "children": []
               },
               {
-                "taskName": "Official_Simulation & Customer Approval",
+                "taskName": "Crash_Data_Review",
                 "status": "Pending",
                 "comment": "",
                 "children": []
               },
               {
-                "taskName": "Calibration CP",
-                "status": "Pending",
-                "comment": "",
-                "children": []
-              },
-              {
-                "taskName": "Sys Test Input and Evaluate",
-                "status": "Pending",
-                "comment": "",
-                "children": []
-              },
-             {
-                "taskName": "ARTR_Cal & VAR",
-                "status": "Pending",
-                "comment": "",
-                "children": []
-              },
-              {
-                "taskName": "ONETCD&TCD08",
-                "status": "Pending",
-                "comment": "",
-                "children": []
-              }
-            ]
-          },
-		  {
-            "taskName": "VAL_CaliID",
-            "status": "Pending",
-            "comment": "",
-            "children": [
-              {
-                "taskName": "RTTF_Confirmation",
-                "status": "Pending",
-                "comment": "",
-                "children": []
-              },
-              {
-                "taskName": "ARS_Calibration",
-                "status": "Pending",
-                "comment": "",
-                "children": []
-              },
-              {
-                "taskName": "Data_Handle & Reivew",
-                "status": "Pending",
-                "comment": "",
-                "children": []
-              },
-              {
-                "taskName": "MDS_Setup & Map Assignment",
+                "taskName": "MDS_Setup",
                 "status": "Pending",
                 "comment": "",
                 "children": []
@@ -278,31 +240,85 @@
                 "children": []
               },
               {
-                "taskName": "Cali Internal Test",
+                "taskName": "Draft_Simulation",
                 "status": "Pending",
                 "comment": "",
                 "children": []
               },
               {
-                "taskName": "Official_Simulation & Customer Approval",
+                "taskName": "PreChecker",
                 "status": "Pending",
                 "comment": "",
                 "children": []
               },
               {
-                "taskName": "Calibration CP",
+                "taskName": "Standard_Simulation",
                 "status": "Pending",
                 "comment": "",
                 "children": []
               },
               {
-                "taskName": "Sys Test Input and Evaluate",
+                "taskName": "Checker",
                 "status": "Pending",
                 "comment": "",
                 "children": []
               },
-             {
-                "taskName": "ARTR_Cal & VAR",
+              {
+                "taskName": "Walkthrough",
+                "status": "Pending",
+                "comment": "",
+                "children": []
+              },
+              {
+                "taskName": "CCaRoT",
+                "status": "Pending",
+                "comment": "",
+                "children": []
+              },
+              {
+                "taskName": "Internal_Review",
+                "status": "Pending",
+                "comment": "",
+                "children": []
+              },
+              {
+                "taskName": "Customer_Communication",
+                "status": "Pending",
+                "comment": "",
+                "children": []
+              },
+              {
+                "taskName": "Create_BBMReview",
+                "status": "Pending",
+                "comment": "",
+                "children": []
+              },
+              {
+                "taskName": "Customer_Approval",
+                "status": "Pending",
+                "comment": "",
+                "children": []
+              },
+              {
+                "taskName": "Generate_CalibrationCP",
+                "status": "Pending",
+                "comment": "",
+                "children": []
+              },
+              {
+                "taskName": "Prepare_TestInput",
+                "status": "Pending",
+                "comment": "",
+                "children": []
+              },
+              {
+                "taskName": "Evaluate_TestResults",
+                "status": "Pending",
+                "comment": "",
+                "children": []
+              },
+              {
+                "taskName": "VAR",
                 "status": "Pending",
                 "comment": "",
                 "children": []

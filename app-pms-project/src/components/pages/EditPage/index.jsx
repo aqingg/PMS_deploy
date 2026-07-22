@@ -153,20 +153,28 @@ export default function EditProjectPage() {
       <Row gutter={24} key={rowIndex} style={{ marginBottom: 8 }}>
         {row.map((item, colIndex) => {
           const hasOptions = Array.isArray(item.keys) && item.keys.length > 0;
+          const isMultiSelect = item.selectionMode !== "single";
 
           return (
             <Col span={span} key={colIndex}>
               <Form.Item label={item.label}>
                 {hasOptions ? (
                   <Select
-                    mode="multiple"
+                    mode={isMultiSelect ? "multiple" : undefined}
                     allowClear
                     showSearch
-                    value={parseMultiValue(infoValues[rowIndex]?.[colIndex] ?? "")}
+                    value={
+                      isMultiSelect
+                        ? parseMultiValue(infoValues[rowIndex]?.[colIndex] ?? "")
+                        : infoValues[rowIndex]?.[colIndex] ?? undefined
+                    }
                     style={{ width: "100%", height: 32 }}
                     options={item.keys.map((key) => ({ label: key, value: key }))}
                     onChange={(val) => {
-                      updateInfoValue(colIndex, val.join(", "));
+                      updateInfoValue(
+                        colIndex,
+                        isMultiSelect ? (Array.isArray(val) ? val.join(", ") : "") : (val ?? "")
+                      );
                     }}
                   />
                 ) : (
@@ -220,7 +228,7 @@ export default function EditProjectPage() {
   function getDefaultCalibrationIds() {
     const calibrationRoot = findTaskNodeByName(
       projectWorkFlow?.taskTree || [],
-      "C.Calibration"
+      "Calibration"
     );
 
     if (!calibrationRoot || !Array.isArray(calibrationRoot.children)) {
