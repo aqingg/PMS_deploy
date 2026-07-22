@@ -76,6 +76,69 @@ def is_port_in_use(host: str, port: int) -> bool:
         return False
 
 
+APP_PMS_GATE_URL = (
+    "https://cccn.apac.bosch.com/"
+    "oss_eng_hub/APP-PMS-GATE/"
+)
+LOCAL_SERVICE_HOST = "127.0.0.1"
+LOCAL_SERVICE_PORT = 7175
+LOCAL_SERVICE_STARTUP_TIMEOUT_SECONDS = 30
+
+
+def wait_for_local_service_and_open_browser():
+    """
+    Wait until the local FastAPI service is accepting connections, then open
+    APP-PMS-GATE in the system default browser.
+
+    This function runs in a background thread so it does not block the tray
+    icon event loop.
+    """
+    deadline = time.time() + LOCAL_SERVICE_STARTUP_TIMEOUT_SECONDS
+
+    while time.time() < deadline:
+        if is_port_in_use(
+            LOCAL_SERVICE_HOST,
+            LOCAL_SERVICE_PORT,
+        ):
+            write_startup_log(
+                "Local service is ready at "
+                f"http://{LOCAL_SERVICE_HOST}:{LOCAL_SERVICE_PORT}"
+            )
+
+            try:
+                opened = webbrowser.open(
+                    APP_PMS_GATE_URL,
+                    new=2,
+                )
+                if opened:
+                    write_startup_log(
+                        f"Opened APP-PMS-GATE: {APP_PMS_GATE_URL}"
+                    )
+                else:
+                    write_startup_log(
+                        "The browser command returned False while opening "
+                        f"APP-PMS-GATE: {APP_PMS_GATE_URL}"
+                    )
+            except Exception as exc:
+                write_startup_log(
+                    f"Failed to open APP-PMS-GATE: {exc}"
+                )
+            return
+
+        time.sleep(0.2)
+
+    message = (
+        "Local service did not become ready within "
+        f"{LOCAL_SERVICE_STARTUP_TIMEOUT_SECONDS} seconds. "
+        "APP-PMS-GATE was not opened automatically."
+    )
+    write_startup_log(message)
+    show_error_box(
+        "PUMA Client 启动失败",
+        message + "\n\n请查看同目录 client_startup.log",
+    )
+
+
 # =================================================================================
 # ⭐ PyInstaller 资源路径兼容函数
 # =================================================================================
@@ -122,6 +185,12 @@ def run_tray():
     def on_ready(icon):
         icon.visible = True
         icon.notify("PUMA Client is working!", "PUMA Client")
+
+        Thread(
+            target=wait_for_local_service_and_open_browser,
+            name="open-app-pms-gate",
+            daemon=True,
+        ).start()
 
     tray_icon.run(setup=on_ready)
 
@@ -222,7 +291,7 @@ DEFAULT_CALIBRATION_IDS = ["ACQ_CaliID", "VAL_CaliID"]
 DEFAULT_SERVER_BASE_URL = os.environ.get(
     "PUMA_SERVER_BASE_URL",
     "https://oss-dthub.apac.bosch.com/app-puma",
-    # "http://127.0.0.1:8086",
+     #"http://127.0.0.1:8086",
 ).rstrip("/")
 DEFAULT_SERVER_TCD08_URL = os.environ.get(
     "PUMA_SERVER_TCD08_URL",
@@ -1591,7 +1660,7 @@ async def call_document_processor(projectId: str):
 DEBUG = False
 
 if __name__ == "__main__":
-    if is_port_in_use("127.0.0.1", 7175):
+    if is_port_in_use(LOCAL_SERVICE_HOST, LOCAL_SERVICE_PORT):
         msg = "端口 7175 已被占用，PUMA Client 无法启动本地服务。\n请关闭占用进程后重试。"
         write_startup_log(msg)
         show_error_box("PUMA Client 启动失败", msg)
@@ -1601,7 +1670,7 @@ if __name__ == "__main__":
         uvicorn.run(
             app,
             host="0.0.0.0",
-            port=7175,
+            port=LOCAL_SERVICE_PORT,
             log_level="debug",
             reload=False,
             access_log=True,
@@ -1612,7 +1681,7 @@ if __name__ == "__main__":
                 uvicorn.run(
                     app,
                     host="0.0.0.0",
-                    port=7175,
+                    port=LOCAL_SERVICE_PORT,
                     log_config=None,
                     access_log=False,
                 )
