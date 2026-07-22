@@ -11,8 +11,8 @@ export function AppProvider({ children }) {
     // 0. API 管理（全局统一）
     // =====================================================
     const API = {
-        BASE: "http://127.0.0.1:8086/app-puma",
-        //BASE: "https://oss-dthub.apac.bosch.com/app-puma",
+        //BASE: "http://127.0.0.1:8086/app-puma",
+        BASE: "https://oss-dthub.apac.bosch.com/app-puma",
         LOCAL: "http://127.0.0.1:7175",
 
         DOWNLOAD_CLIENT: "/download/client",

@@ -1,6 +1,7 @@
 // ---------------------------------------------------------
 // AppContext.js —— 前端 B（完整修复版）
 // Copy Template 最小方案：新增 copyApplicationTemplate()
+// Public Link 初始化改为 createFolders，只创建 A.Vehicle_integration 下 01-07
 // ---------------------------------------------------------
 
 import React, {
@@ -28,8 +29,8 @@ export function AppProvider({ children }) {
     LOCAL_RENAME_CALIBRATION_FOLDER: "/renameCalibrationFolder",
 
     // 调试时建议用本地： http://127.0.0.1:8086/app-puma
-    // BASE: "https://oss-dthub.apac.bosch.com/app-puma",
-    BASE: "http://127.0.0.1:8086/app-puma",
+    BASE: "https://oss-dthub.apac.bosch.com/app-puma",
+    //BASE: "http://127.0.0.1:8086/app-puma",
 
     PROJECT_GET: "/project/getProject",
     PROJECT_CREATE: "/project/createProject",
@@ -212,7 +213,7 @@ export function AppProvider({ children }) {
       if (event === "ProjectDeleted" && payload.projectId === currentPid) {
         messageApi.error("❌ 当前项目已被删除");
         localStorage.removeItem("projectId");
-        window.location.href = "/";
+        window.location.hash = "#/edit";
       }
     };
 
@@ -514,12 +515,73 @@ export function AppProvider({ children }) {
     }
   };
 
-  // 兼容旧入口：仍调用 /copy-folder，不影响旧代码。
+  // Public Link 初始化：
+  // 不再调用 /copy-folder 复制完整 40.Application。
+  // 这里只创建 Public Link\40.Application\A.Vehicle_integration 下的固定 01-07 文件夹。
+  // Local Link 的完整 ABCD copy 仍由 createCalibrationWorkspace + copyApplicationTemplate 负责，不受影响。
   const SetUpApplicationFloder = async (publicLinkValue) => {
-    const url = `${API.LOCAL}/copy-folder`;
-    const payload = { destination_path: publicLinkValue };
-    const res = await request("POST", url, { data: payload });
-    return res.status;
+    const publicRoot = String(publicLinkValue || "")
+      .trim()
+      .replace(/[\\/]+$/, "");
+
+    if (!publicRoot) {
+      console.warn("SetUpApplicationFloder: publicLinkValue is empty");
+      messageApi.error("Public Link is empty. Cannot create public folders.");
+      return 400;
+    }
+
+    const joinWinPath = (...parts) =>
+      parts
+        .map((part, index) => {
+          const text = String(part || "").trim();
+          if (index === 0) {
+            return text.replace(/[\\/]+$/, "");
+          }
+          return text.replace(/^[\\/]+|[\\/]+$/g, "");
+        })
+        .filter(Boolean)
+        .join("\\");
+
+    const vehicleIntegrationRoot = joinWinPath(
+      publicRoot,
+      "40.Application",
+      "A.Vehicle_integration"
+    );
+
+    const vehicleIntegrationSubfolders = [
+      "01_Packaging",
+      "02_Crash_matrix",
+      "03_Sensor_map",
+      "04_Mounting_checklist",
+      "05_Modal_analysis",
+      "06_TCU_No_9_Sens_dir",
+      "07_Special_studies",
+    ];
+
+    const folders = [
+      vehicleIntegrationRoot,
+      ...vehicleIntegrationSubfolders.map((folderName) =>
+        joinWinPath(vehicleIntegrationRoot, folderName)
+      ),
+    ];
+
+    try {
+      const res = await request("POST", API.LOCAL + API.LOCAL_CREATE_FOLDERS, {
+        data: { folders },
+      });
+
+      console.log("Public Link A.Vehicle_integration folders created:", folders);
+      return res.status;
+    } catch (err) {
+      console.error("SetUpApplicationFloder createFolders failed:", err);
+      const detail =
+        err.response?.data?.detail ||
+        err.response?.data?.message ||
+        err.message ||
+        "Public Link folder creation failed";
+      messageApi.error(detail);
+      return err.response?.status || 500;
+    }
   };
 
   const createCalibrationWorkspace = async (calibrationId) => {
@@ -664,7 +726,6 @@ export function AppProvider({ children }) {
       return { success: false, message: detail };
     }
   };
-
 
   // Rename CalibrationID 本地文件夹：给 TaskDetailPage 的 Edit Task Name 使用。
   // 只改 40.Application\C.Calibration\{CalibrationID} 文件夹名称，

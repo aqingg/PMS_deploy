@@ -128,7 +128,8 @@ export default function ProjectList({ searchText }) {
                             }
 
                             if (action === "openProject") {
-                              const url = `https://cccn.apac.bosch.com/APP-PMS-Project/#/edit?projectId=${item.id}`;
+                              const url = `../APP-PMS-Project/index.html#/edit?projectId=${item.id}`;
+                              //const url = `https://cccn.apac.bosch.com/APP-PMS-Project/#/edit?projectId=${item.id}`;
                               // const url = `http://localhost:3001/WZE6SZH/APP-PMS-Project/#/edit?projectId=${item.id}`;
                               window.open(url, "_blank");
                             }

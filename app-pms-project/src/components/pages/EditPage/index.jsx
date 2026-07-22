@@ -314,7 +314,7 @@ export default function EditProjectPage() {
         const copiedFilesCount = Number(copyResult.copied_files_count || 0);
 
         messageApi.success(
-          `40.Application 模板初始化完成。新增 ${createdCount} 个目录，复制 ${copiedFilesCount} 个文件，已存在 ${skippedCount} 个目录。`
+          `40.Application 模板初始化完成。`
         );
         console.log("copyApplicationTemplate success:", {
           selectedCalibrationId,

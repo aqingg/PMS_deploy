@@ -7,7 +7,7 @@ import Logo from '../../assets/bosch-app-pms.jpg';
 export default class Header extends Component {
   handleLogoClick = () => {
     // 跳转到前端 A（APP-PUMA）
-    window.location.href = "https://cccn.apac.bosch.com/APP-PMS-GATE/";
+    window.location.href = "../APP-PMS-GATE/index.html";
   };
   render() {
     const { user } = this.props;
