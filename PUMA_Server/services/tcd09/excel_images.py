@@ -17,6 +17,7 @@ from openpyxl import load_workbook
 
 from services.datamerge import docx
 
+
 THIS_DIR = Path(__file__).resolve().parent
 SERVER_ROOT = THIS_DIR.parents[1]
 DEFAULT_TCD09_IMAGE_RULES_PATH = SERVER_ROOT / "config" / "tcd09_image_rules.json"
@@ -74,6 +75,20 @@ def load_tcd09_image_rules(
                     detail=f'Section rule #{index} must define non-empty string "{required_key}".',
                 )
 
+        # end_label is optional. When present, it must identify the first row
+        # that does NOT belong to the current image section.
+        end_label = section.get("end_label")
+        if end_label is not None and (
+            not isinstance(end_label, str) or not end_label.strip()
+        ):
+            raise HTTPException(
+                status_code=500,
+                detail=(
+                    f'Section rule #{index} has invalid "end_label". '
+                    "Omit it for the final section, or provide a non-empty string."
+                ),
+            )
+
         customer_start_column = section.get("customer_start_column", 9)
         if not isinstance(customer_start_column, int) or customer_start_column < 1:
             raise HTTPException(
@@ -113,23 +128,40 @@ def _find_label_cell(worksheet, label: str, customer_start_column: int) -> tuple
                 continue
             if _canonicalize_title(cell.value) == expected:
                 return int(cell.row), int(cell.column)
+
     raise HTTPException(
         status_code=400,
         detail=f'Label not found on customer side: sheet={worksheet.title} label="{label}"',
     )
 
 
-def _find_next_title_row(worksheet, *, start_row: int, title_column: int, current_title: str) -> int:
-    current_title_key = _canonicalize_title(current_title)
-    for row in range(start_row + 1, int(worksheet.max_row) + 1):
-        next_title = worksheet.cell(row=row, column=title_column).value
-        next_title_key = _canonicalize_title(next_title)
-        if not next_title_key:
-            continue
-        if next_title_key.startswith(current_title_key):
-            continue
-            return row
-    return int(worksheet.max_row) + 1
+def _find_label_cell_after(
+    worksheet,
+    label: str,
+    customer_start_column: int,
+    *,
+    min_row: int,
+) -> tuple[int, int]:
+    """Find an exact label at or below ``min_row`` in the customer area."""
+
+    expected = _canonicalize_title(label)
+    for row in worksheet.iter_rows(
+        min_row=max(1, int(min_row)),
+        max_row=int(worksheet.max_row),
+        min_col=int(customer_start_column),
+        max_col=int(worksheet.max_column),
+    ):
+        for cell in row:
+            if _canonicalize_title(cell.value) == expected:
+                return int(cell.row), int(cell.column)
+
+    raise HTTPException(
+        status_code=400,
+        detail=(
+            f'End label not found after the start section: '
+            f'sheet={worksheet.title} label="{label}" min_row={min_row}'
+        ),
+    )
 
 
 def _resolve_section_window(
@@ -138,38 +170,62 @@ def _resolve_section_window(
     sheet_name: str,
     start_label: str,
     customer_start_column: int,
+    end_label: str | None = None,
 ) -> dict[str, int | str]:
+    """Resolve an image section using explicit start/end labels.
+
+    ``start_label`` is included in the section. ``end_label`` is excluded and
+    therefore marks the first row of the next section. When ``end_label`` is
+    omitted, the current section is treated as the final section and extends to
+    the end of the worksheet.
+    """
+
     workbook = load_workbook(io.BytesIO(xlsm_bytes), data_only=False, keep_vba=True)
     try:
-        sheet = workbook[sheet_name]
-    except KeyError as exc:
-        raise HTTPException(status_code=400, detail=f"Sheet not found in Excel template: {sheet_name}") from exc
+        try:
+            sheet = workbook[sheet_name]
+        except KeyError as exc:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Sheet not found in Excel template: {sheet_name}",
+            ) from exc
 
-    start_row, title_column = _find_label_cell(sheet, start_label, customer_start_column)
-    end_row = _find_next_title_row(
-        sheet,
-        start_row=start_row,
-        title_column=title_column,
-        current_title=start_label,
-    )
-
-    if end_row <= start_row:
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                f"Invalid section window for sheet={sheet_name}. "
-                f"start_row={start_row}, end_row={end_row}"
-            ),
+        start_row, _ = _find_label_cell(
+            sheet,
+            start_label,
+            customer_start_column,
         )
 
-    return {
-        "sheet_name": sheet_name,
-        "sheet_index": workbook.sheetnames.index(sheet_name) + 1,
-        "start_row": start_row,
-        "end_row": end_row,
-        "customer_start_column": customer_start_column,
-    }
+        normalized_end_label = str(end_label or "").strip()
+        if normalized_end_label:
+            end_row, _ = _find_label_cell_after(
+                sheet,
+                normalized_end_label,
+                customer_start_column,
+                min_row=start_row + 1,
+            )
+        else:
+            end_row = int(sheet.max_row) + 1
 
+        if end_row <= start_row:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Invalid section window for sheet={sheet_name}. "
+                    f"start_label={start_label!r}, end_label={normalized_end_label!r}, "
+                    f"start_row={start_row}, end_row={end_row}"
+                ),
+            )
+
+        return {
+            "sheet_name": sheet_name,
+            "sheet_index": workbook.sheetnames.index(sheet_name) + 1,
+            "start_row": start_row,
+            "end_row": end_row,
+            "customer_start_column": customer_start_column,
+        }
+    finally:
+        workbook.close()
 
 def _is_supported_docx_image(image_path: Path) -> bool:
     try:
@@ -224,7 +280,32 @@ def _materialize_docx_image(raw_bytes: bytes, media_name: str, temp_dir: Path) -
     )
 
 
-def _iter_images_for_window(xlsm_bytes: bytes, window: dict[str, int | str]) -> list[tuple[int, int, str, bytes]]:
+
+def _get_flow_image_width(image_path: Path, max_width_inches: float):
+    """Return an image width suitable for natural inline Word layout.
+
+    Small images keep their intrinsic width. Oversized images are reduced to
+    the existing ``image_width_inches`` limit. Height is omitted so python-docx
+    preserves the original aspect ratio.
+    """
+
+    max_width = Inches(float(max_width_inches))
+    try:
+        image = Image.from_file(str(image_path))
+        natural_width = image.width
+    except (FileNotFoundError, UnrecognizedImageError, OSError):
+        return max_width
+
+    if natural_width is None or int(natural_width) <= 0:
+        return max_width
+
+    return min(natural_width, max_width)
+
+
+def _iter_images_for_window(
+    xlsm_bytes: bytes,
+    window: dict[str, int | str],
+) -> list[tuple[int, int, str, bytes]]:
     sheet_index = int(window["sheet_index"])
     start_row = int(window["start_row"])
     end_row = int(window["end_row"])
@@ -234,12 +315,18 @@ def _iter_images_for_window(xlsm_bytes: bytes, window: dict[str, int | str]) -> 
         workbook_xml = ET.fromstring(workbook_zip.read("xl/workbook.xml"))
         sheets = workbook_xml.find("main:sheets", DRAWING_NAMESPACES)
         if sheets is None or len(list(sheets)) < sheet_index:
-            raise HTTPException(status_code=400, detail="Configured sheet index is missing in Excel template.")
+            raise HTTPException(
+                status_code=400,
+                detail="Configured sheet index is missing in Excel template.",
+            )
 
         target_sheet = list(sheets)[sheet_index - 1]
         target_rid = target_sheet.attrib.get(f'{{{DRAWING_NAMESPACES["rel"]}}}id')
         if not target_rid:
-            raise HTTPException(status_code=400, detail="Sheet relationship id missing in Excel template.")
+            raise HTTPException(
+                status_code=400,
+                detail="Sheet relationship id missing in Excel template.",
+            )
 
         workbook_rels = ET.fromstring(workbook_zip.read("xl/_rels/workbook.xml.rels"))
         sheet_target = None
@@ -248,7 +335,10 @@ def _iter_images_for_window(xlsm_bytes: bytes, window: dict[str, int | str]) -> 
                 sheet_target = rel.attrib.get("Target")
                 break
         if not sheet_target:
-            raise HTTPException(status_code=400, detail="Sheet target missing in Excel template.")
+            raise HTTPException(
+                status_code=400,
+                detail="Sheet target missing in Excel template.",
+            )
 
         sheet_xml = ET.fromstring(workbook_zip.read("xl/" + sheet_target.lstrip("/")))
         drawing = sheet_xml.find("main:drawing", DRAWING_NAMESPACES)
@@ -258,6 +348,7 @@ def _iter_images_for_window(xlsm_bytes: bytes, window: dict[str, int | str]) -> 
         drawing_rid = drawing.attrib.get(f'{{{DRAWING_NAMESPACES["rel"]}}}id')
         sheet_rels_path = "xl/worksheets/_rels/" + Path(sheet_target).name + ".rels"
         sheet_rels = ET.fromstring(workbook_zip.read(sheet_rels_path))
+
         drawing_target = None
         for rel in sheet_rels:
             if rel.attrib.get("Id") == drawing_rid:
@@ -266,10 +357,17 @@ def _iter_images_for_window(xlsm_bytes: bytes, window: dict[str, int | str]) -> 
         if not drawing_target:
             return []
 
-        drawing_xml = ET.fromstring(workbook_zip.read("xl/drawings/" + Path(drawing_target).name))
-        drawing_rels_path = "xl/drawings/_rels/" + Path(drawing_target).name + ".rels"
+        drawing_xml = ET.fromstring(
+            workbook_zip.read("xl/drawings/" + Path(drawing_target).name)
+        )
+        drawing_rels_path = (
+            "xl/drawings/_rels/" + Path(drawing_target).name + ".rels"
+        )
         drawing_rels = ET.fromstring(workbook_zip.read(drawing_rels_path))
-        rel_map = {rel.attrib.get("Id"): rel.attrib.get("Target") for rel in drawing_rels}
+        rel_map = {
+            rel.attrib.get("Id"): rel.attrib.get("Target")
+            for rel in drawing_rels
+        }
 
         images: list[tuple[int, int, str, bytes]] = []
         for anchor in list(drawing_xml):
@@ -278,9 +376,17 @@ def _iter_images_for_window(xlsm_bytes: bytes, window: dict[str, int | str]) -> 
             if from_node is None or pic is None:
                 continue
 
-            row = int(from_node.find("xdr:row", DRAWING_NAMESPACES).text) + 1
-            col = int(from_node.find("xdr:col", DRAWING_NAMESPACES).text) + 1
-            if not (start_row <= row < end_row and col >= customer_start_column):
+            row_node = from_node.find("xdr:row", DRAWING_NAMESPACES)
+            col_node = from_node.find("xdr:col", DRAWING_NAMESPACES)
+            if row_node is None or col_node is None:
+                continue
+
+            row = int(row_node.text) + 1
+            col = int(col_node.text) + 1
+            if not (
+                start_row <= row < end_row
+                and col >= customer_start_column
+            ):
                 continue
 
             blip = pic.find(".//a:blip", DRAWING_NAMESPACES)
@@ -325,33 +431,50 @@ def insert_excel_section_images(
             if placeholder_paragraph is None:
                 continue
 
+            sheet_name = str(section["sheet_name"]).strip()
+            end_label_value = section.get("end_label")
+            end_label = (
+                str(end_label_value).strip()
+                if isinstance(end_label_value, str) and end_label_value.strip()
+                else None
+            )
             window = _resolve_section_window(
                 xlsm_bytes,
-                sheet_name=str(section["sheet_name"]).strip(),
+                sheet_name=sheet_name,
                 start_label=str(section["start_label"]).strip(),
                 customer_start_column=int(section.get("customer_start_column", 9)),
+                end_label=end_label,
             )
             images = _iter_images_for_window(xlsm_bytes, window)
             if not images:
                 continue
 
             placeholder_paragraph.clear()
-            image_width = Inches(float(section.get("image_width_inches", 2.35)))
+            max_image_width_inches = float(section.get("image_width_inches", 2.35))
+
             for index, (_, _, media_name, raw_bytes) in enumerate(images):
                 image_path = _materialize_docx_image(raw_bytes, media_name, temp_dir)
-                run = placeholder_paragraph.add_run()
-                run.add_picture(str(image_path), width=image_width)
+                image_width = _get_flow_image_width(
+                    image_path,
+                    max_width_inches=max_image_width_inches,
+                )
+
+                # Keep every picture as an inline object in the same paragraph.
+                # The regular spaces between pictures allow Word to wrap them
+                # naturally according to the remaining line width.
+                picture_run = placeholder_paragraph.add_run()
+                picture_run.add_picture(str(image_path), width=image_width)
+
                 if index < len(images) - 1:
-                    run.add_break()
-                    run.add_break()
+                    placeholder_paragraph.add_run("  ")
 
             replaced_any = True
 
-        if not replaced_any:
-            document_stream.seek(0)
-            return document_stream
+    if not replaced_any:
+        document_stream.seek(0)
+        return document_stream
 
-        output_stream = io.BytesIO()
-        document.save(output_stream)
-        output_stream.seek(0)
-        return output_stream
+    output_stream = io.BytesIO()
+    document.save(output_stream)
+    output_stream.seek(0)
+    return output_stream
