@@ -20,6 +20,8 @@ from services.tcd09 import (
     select_tcd09_template_file,
     select_tcd09_ufs_excel_file,
 )
+from services.tcd09.sensor_overview import fill_tcd09_sensor_type_rows
+
 
 router = APIRouter(prefix="/report", tags=["Report"])
 
@@ -52,11 +54,16 @@ def _extract_pms_uuid_from_project_info(project_info: dict[str, Any]) -> str:
     return ""
 
 
-def _build_local_fallback_profile(project: Project | None, project_info: dict[str, Any]) -> dict[str, Any]:
+def _build_local_fallback_profile(
+    project: Project | None,
+    project_info: dict[str, Any],
+) -> dict[str, Any]:
     profile: dict[str, Any] = {
         "customer": "N/A",
         "project": "N/A",
-        "projectName": str(getattr(project, "projectName", "") or "").strip() or "N/A",
+        "projectName": (
+            str(getattr(project, "projectName", "") or "").strip() or "N/A"
+        ),
         "author": "N/A",
     }
 
@@ -67,17 +74,26 @@ def _build_local_fallback_profile(project: Project | None, project_info: dict[st
         for item in row:
             if not isinstance(item, dict):
                 continue
+
             label = str(item.get("label") or "").strip()
             value = item.get("value")
             if value in (None, "", []):
                 continue
+
             text = ", ".join(map(str, value)) if isinstance(value, list) else str(value)
             if label == "OEM":
                 profile["customer"] = text
                 profile["oem"] = text
-            elif label == "Project Leader" and profile.get("author") in {None, "", "N/A"}:
+            elif (
+                label == "Project Leader"
+                and profile.get("author") in {None, "", "N/A"}
+            ):
                 profile["author"] = text
-            elif label == "Vehicle Type" and not profile.get("project"):
+            elif label == "Vehicle Type" and profile.get("project") in {
+                None,
+                "",
+                "N/A",
+            }:
                 profile["project"] = text
 
     owner_item = project_info.get("owner") if isinstance(project_info, dict) else None
@@ -92,7 +108,10 @@ def _build_local_fallback_profile(project: Project | None, project_info: dict[st
     return profile
 
 
-async def _build_tcd09_profile(project_identifier: str, db: Session) -> dict[str, Any]:
+async def _build_tcd09_profile(
+    project_identifier: str,
+    db: Session,
+) -> dict[str, Any]:
     local_project_id = _to_int(project_identifier)
     local_project: Project | None = None
     local_project_info: dict[str, Any] = {}
@@ -100,10 +119,17 @@ async def _build_tcd09_profile(project_identifier: str, db: Session) -> dict[str
     pms_uuid = ""
 
     if local_project_id is not None:
-        local_project = db.query(Project).filter(Project.id == local_project_id).first()
+        local_project = (
+            db.query(Project)
+            .filter(Project.id == local_project_id)
+            .first()
+        )
         if local_project:
             local_project_info = _parse_project_info_json(local_project.projectInfo)
-            local_profile = _build_local_fallback_profile(local_project, local_project_info)
+            local_profile = _build_local_fallback_profile(
+                local_project,
+                local_project_info,
+            )
             pms_uuid = _extract_pms_uuid_from_project_info(local_project_info)
 
     profile: dict[str, Any] = {}
@@ -111,9 +137,12 @@ async def _build_tcd09_profile(project_identifier: str, db: Session) -> dict[str
         fetched = await fetch_single_project_details(pms_uuid)
         if isinstance(fetched, dict):
             profile = fetched
-            profile["uuid"] = pms_uuid
+        profile["uuid"] = pms_uuid
 
-    if profile and local_project_info:
+    # Always apply the locally saved front-end fields. This guarantees that
+    # Inertial Sensor and Peripheral Sensor from EditPage are available even
+    # when the remote PMS profile is empty or temporarily unavailable.
+    if local_project_info:
         profile = apply_project_info_overrides(profile, local_project_info)
 
     if local_profile:
@@ -128,10 +157,16 @@ async def _build_tcd09_profile(project_identifier: str, db: Session) -> dict[str
     if local_project and str(local_project.projectName or "").strip():
         profile["projectName"] = str(local_project.projectName).strip()
 
-    if not str(profile.get("projectName") or "").strip() and str(profile.get("project") or "").strip():
+    if (
+        not str(profile.get("projectName") or "").strip()
+        and str(profile.get("project") or "").strip()
+    ):
         profile["projectName"] = str(profile.get("project")).strip()
 
-    if not str(profile.get("customer") or "").strip() and str(profile.get("oem") or "").strip():
+    if (
+        not str(profile.get("customer") or "").strip()
+        and str(profile.get("oem") or "").strip()
+    ):
         profile["customer"] = str(profile.get("oem")).strip()
 
     return profile
@@ -143,16 +178,14 @@ async def fill_tcd09_report(
     files: list[UploadFile] = File(...),
     db: Session = Depends(get_db),
 ):
-    """
-    Minimal TCD09 endpoint.
+    """Generate the current-stage TCD09 Word report.
 
-    Current behavior:
-    - Accept the uploaded TCD09 template file selected by FolderLinkMapping FileKeyWord.
-    - Accept the uploaded TCD09 UFS Excel file selected by FolderLinkMapping FileKeyWord.
-    - Build the placeholder profile from local project + PMS data.
-    - Replace configured image placeholders with images extracted from the Excel template.
-    - Fill remaining Word placeholders using the existing TCD08-compatible docx replacement pipeline.
+    Processing order:
+    1. Insert configured Excel images.
+    2. Expand and fill Sensor Overview first-column rows.
+    3. Fill the remaining ordinary PMS text placeholders.
     """
+
     selected_file, expected_filename = select_tcd09_template_file(files)
     selected_excel_file, _ = select_tcd09_ufs_excel_file(files)
     selected_name = selected_file.filename or expected_filename
@@ -168,12 +201,30 @@ async def fill_tcd09_report(
                 pass
 
     if not content:
-        raise HTTPException(status_code=400, detail=f"Uploaded TCD09 template is empty: {selected_name}")
-    if not excel_content:
-        raise HTTPException(status_code=400, detail="Uploaded TCD09 UFS Excel is empty.")
+        raise HTTPException(
+            status_code=400,
+            detail=f"Uploaded TCD09 template is empty: {selected_name}",
+        )
 
-    profile = await _build_tcd09_profile(str(projectid or "").strip(), db)
-    filled_stream = insert_excel_section_images(io.BytesIO(content), excel_content)
+    if not excel_content:
+        raise HTTPException(
+            status_code=400,
+            detail="Uploaded TCD09 UFS Excel is empty.",
+        )
+
+    profile = await _build_tcd09_profile(
+        str(projectid or "").strip(),
+        db,
+    )
+
+    filled_stream = insert_excel_section_images(
+        io.BytesIO(content),
+        excel_content,
+    )
+    filled_stream = fill_tcd09_sensor_type_rows(
+        profile,
+        filled_stream,
+    )
     filled_stream = fill_docx_by_placeholders(
         profile,
         filled_stream,
@@ -182,12 +233,14 @@ async def fill_tcd09_report(
 
     headers = {
         "Content-Disposition": f'attachment; filename="{expected_filename}"',
-        "X-TCD09-Mode": "docx-placeholder-fill-with-ufs-images",
+        "X-TCD09-Mode": "docx-images-and-sensor-overview",
         "X-TCD09-ProjectId": str(projectid or ""),
     }
-
     return StreamingResponse(
         filled_stream,
-        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        media_type=(
+            "application/vnd.openxmlformats-officedocument."
+            "wordprocessingml.document"
+        ),
         headers=headers,
     )
