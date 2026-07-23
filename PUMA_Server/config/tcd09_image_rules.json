@@ -1,0 +1,60 @@
+{
+  "sections": [
+    {
+      "key": "ufs_local_images",
+      "placeholder": "<PMS.TCD09_UFS_LOCAL_IMAGES>",
+      "sheet_name": "前碰传感器（UFS）",
+      "customer_start_column": 9,
+      "start_label": "前碰传感器（UFS）局部图",
+      "image_width_inches": 1
+    },
+    {
+      "key": "pas_bpillar_left",
+      "placeholder": "<PMS.TCD09_PAS_BPILLAR_LEFT_IMAGES>",
+      "sheet_name": "B柱侧碰传感器（PAS_BPillar）",
+      "customer_start_column": 9,
+      "start_label": "左侧碰传感器（PAS_D）",
+      "image_width_inches": 1
+    },
+    {
+      "key": "pas_bpillar_right",
+      "placeholder": "<PMS.TCD09_PAS_BPILLAR_RIGHT_IMAGES>",
+      "sheet_name": "B柱侧碰传感器（PAS_BPillar）",
+      "customer_start_column": 9,
+      "start_label": "右侧碰传感器（PAS_P）",
+      "image_width_inches": 1
+    },
+    {
+      "key": "pas_cpillar_left",
+      "placeholder": "<PMS.TCD09_PAS_CPILLAR_LEFT_IMAGES>",
+      "sheet_name": "C柱侧碰传感器（PAS_CPillar）",
+      "customer_start_column": 9,
+      "start_label": "左侧碰传感器（PAS_D）",
+      "image_width_inches": 1
+    },
+    {
+      "key": "pas_cpillar_right",
+      "placeholder": "<PMS.TCD09_PAS_CPILLAR_RIGHT_IMAGES>",
+      "sheet_name": "C柱侧碰传感器（PAS_CPillar）",
+      "customer_start_column": 9,
+      "start_label": "右侧碰传感器（PAS_P）",
+      "image_width_inches": 1
+    },
+    {
+      "key": "pps_left",
+      "placeholder": "<PMS.TCD09_PPS_LEFT_IMAGES>",
+      "sheet_name": "门压传感器（PPS）",
+      "customer_start_column": 9,
+      "start_label": "左侧门压传感器(PPS_D)",
+      "image_width_inches": 1
+    },
+    {
+      "key": "pps_right",
+      "placeholder": "<PMS.TCD09_PPS_RIGHT_IMAGES>",
+      "sheet_name": "门压传感器（PPS）",
+      "customer_start_column": 9,
+      "start_label": "右侧门压传感器（PPS_P）",
+      "image_width_inches": 1
+    }
+  ]
+}

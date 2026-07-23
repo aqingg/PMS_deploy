@@ -155,22 +155,32 @@
     "description": "IAR."
   },
 
+ 
   "ONETCD&TCD09": {
     "inputs": [
-      { "label": "Input" }
+      { "label": "TCD09_Input" }
     ],
     "operation":{
-      "operation_name": "operation name",
+      "operation_name": "Fill_TCD09",
       "operation_detail": {
+        "type": "httpWithParameter",
+        "need_parameter": ["projectid"],
         "method": "POST",
-        "url": "http://server/api/algo/create",
-        "body": {}
+        "url": "http://127.0.0.1:7175/saveReport",
+        "body": {
+          "projectid": "",
+          "url": "http://127.0.0.1:8086/report/fillTCD09Report",
+          "template_paths": [],
+          "save_path": ""
+        }
       }
     },
     "outputs": [
-      { "label": "Output" }
-    ]
+      { "label": "TCD09_Output" }
+    ],
+    "description": "Copy the TCD09 template to the configured output folder without modification."
   },
+  
   "RTTF_Confirmation": {
     "inputs": [
       { "label": "Customer RTTF Standard (Template)" }

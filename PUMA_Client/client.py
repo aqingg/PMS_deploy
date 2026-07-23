@@ -1117,6 +1117,7 @@ OFFICE_FILE_EXTENSIONS = (
     ".xlsx",
     ".ppt",
     ".pptx",
+    ".xlsm"
 )
 
 

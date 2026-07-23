@@ -18,6 +18,8 @@ from api import IAR_report
 from api.sse_stream import router as sse_stream_router
 from api.todo_v2 import router as todo_v2_router
 from api import database as database_api
+from api import TCD09_report
+
 
 # =====================================================
 # 初始化数据库（必须放在 app 前）
@@ -64,6 +66,8 @@ app.include_router(events.router)
 app.include_router(report.router)
 app.include_router(IAR_report.router)
 app.include_router(todo_v2_router)
+app.include_router(TCD09_report.router)
+
 
 # ⭐ SSE 独立路由
 app.include_router(sse_stream_router, prefix="/sse")

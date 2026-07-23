@@ -464,6 +464,7 @@ def fill_docx_by_placeholders(
     source: Union[Path, io.BytesIO],
     email_dir: Optional[Union[str, Path]] = None,
     email_summary: Optional[dict[str, Any]] = None,
+    include_email_placeholders: bool = True,
 ) -> io.BytesIO:
     try:
         document = docx.Document(source)
@@ -471,11 +472,12 @@ def fill_docx_by_placeholders(
         raise HTTPException(status_code=400, detail=f"无法处理提供的Word文件: {exc}") from exc
 
     formatted_profile = _prepare_profile_for_filling(profile_dict)
-    _populate_email_placeholders(
-        formatted_profile,
-        email_dir=email_dir,
-        email_summary=email_summary,
-    )
+    if include_email_placeholders:
+        _populate_email_placeholders(
+            formatted_profile,
+            email_dir=email_dir,
+            email_summary=email_summary,
+        )
 
     placeholder_pattern = re.compile(r"<\s*PMS\.([^>]+?)\s*>")
 
@@ -514,6 +516,17 @@ def fill_docx_by_placeholders(
 
     table_wrap_keys = {"FlConfiguration"}
 
+    def resolve_profile_value(key: str) -> Any:
+        direct_value = formatted_profile.get(key)
+        if direct_value not in [None, "", []]:
+            return direct_value
+
+        key_lower = str(key or "").strip().lower()
+        for profile_key, profile_value in formatted_profile.items():
+            if str(profile_key).strip().lower() == key_lower:
+                return profile_value
+        return "N/A"
+
     def format_table_cell_value(key: str, value: Any) -> str:
         text = "N/A" if value is None else str(value).strip()
         if key not in table_wrap_keys:
@@ -539,10 +552,10 @@ def fill_docx_by_placeholders(
             return match.group(0)
         if "-" in combined_key:
             keys = [key.strip() for key in combined_key.split("-")]
-            value_parts = [formatted_profile.get(key, "N/A") for key in keys]
+            value_parts = [resolve_profile_value(key) for key in keys]
             value = "_".join(value_parts)
         else:
-            value = formatted_profile.get(combined_key, "N/A")
+            value = resolve_profile_value(combined_key)
         if in_table_cell:
             return format_table_cell_value(combined_key, value)
         return str(value)

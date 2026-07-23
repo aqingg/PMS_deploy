@@ -114,12 +114,21 @@
     "RelativePath": "\\40.Application\\A.Vehicle_integration\\06_TCU_No_9_Sens_dir"
   },
   {
-    "TagName": "Input",
-    "FileKeyWord": "",
-    "RelativePath": "\\40.Application\\A.Vehicle_integration"
+    "TagName": "TCD09_Input",
+    "FileKeyWord": "QSTL0461_Instruction_Airbag-ECU_and_Sensor_installation_V1.4.docx",
+    "RelativePath": "\\40.Application\\A.Vehicle_integration",
+    "AbsolutePath": "\\\\bosch.com\\dfsrb\\DfsCN\\DIV\\CC\\Prj\\PS\\32_Application\\EPD5-File-Templates\\Vehicle_integration\\TCD09"
+
   },
   {
-    "TagName": "Output",
+    "TagName": "TCD09_UFS_Excel",
+    "FileKeyWord": "VW316_9_CS ECU及传感器安装评估图片收集 V3.0 1.xlsm",
+    "RelativePath": "\\40.Application\\A.Vehicle_integration",
+    "AbsolutePath": "\\\\bosch.com\\dfsrb\\DfsCN\\DIV\\CC\\Prj\\PS\\32_Application\\EPD5-File-Templates\\Vehicle_integration\\TCD09"
+
+  },
+  {
+    "TagName": "TCD09_Output",
     "FileKeyWord": "",
     "RelativePath": "\\40.Application\\A.Vehicle_integration"
   },
