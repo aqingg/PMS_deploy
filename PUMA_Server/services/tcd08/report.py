@@ -193,7 +193,7 @@ REPLACE_RED_FONT_WITH_BLACK_ENABLED = True
 
 # 红转黑白名单：这些章节保留红色，不执行红转黑。
 # 示例：{"4.1"}
-RED_TO_BLACK_SECTION_WHITELIST: set[str] = {"4.1"}
+RED_TO_BLACK_SECTION_WHITELIST: set[str] = {"3.3","4.1"}
 
 # 是否把整条文档处理链路放到本地临时目录执行：
 # - True：先在服务器 temp 路径处理（含 TOC），最后统一复制到输出目录。
@@ -909,7 +909,10 @@ async def generate_tcd08_report(
             )
             step_start = time.perf_counter()
             try:
-                update_tocs_with_word(toc_update_paths)
+                update_tocs_with_word(
+                    toc_update_paths,
+                    mode="full",
+                    )
                 logger.info(
                     "[TCD08] Batched Word TOC update took %.2fs.",
                     time.perf_counter() - step_start,

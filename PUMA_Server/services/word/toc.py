@@ -5,17 +5,21 @@ import logging
 from pathlib import Path
 from typing import Iterable
 
-from services.word.package import MacroSupportMembers, read_macro_support_members, restore_zip_members
-
+from services.word.package import (
+    MacroSupportMembers,
+    read_macro_support_members,
+    restore_zip_members,
+)
 
 logger = logging.getLogger("uvicorn.error")
 
-
 try:
+    import pythoncom  # type: ignore[reportMissingImports]
     import win32com.client  # type: ignore[reportMissingImports]
 except ImportError:  # pragma: no cover - depends on Windows server setup.
     # 没有安装 pywin32 或当前环境不是 Windows Word 环境时，TOC 更新会自动跳过。
     # 服务器正式环境通常需要 Word COM，所以这里不让 import 失败直接影响模块加载。
+    pythoncom = None  # type: ignore[assignment]
     win32com = None  # type: ignore[assignment]
 
 
@@ -24,16 +28,23 @@ def create_word_application():
 
     DispatchEx 会启动独立 Word 进程，避免影响用户正在操作的 Word。
     批量处理多个文档时复用这个实例，可以省掉反复启动 Word 的时间。
+
+    注意：调用此函数前，当前执行线程必须已经调用 pythoncom.CoInitialize()。
     """
+    if win32com is None:
+        raise RuntimeError("Word COM is unavailable because pywin32 is not installed.")
+
     word = win32com.client.DispatchEx("Word.Application")
     word.Visible = False
     word.DisplayAlerts = 0
     word.AutomationSecurity = 3
+
     try:
         # 关闭屏幕刷新对后台任务也有帮助，某些 Word 版本可能不支持该属性。
         word.ScreenUpdating = False
     except Exception:
         pass
+
     return word
 
 
@@ -45,12 +56,12 @@ def update_document_toc_with_application(
     """用已经创建好的 Word.Application 更新单个文档。
 
     mode:
-    - toc_only：快速模式，只更新目录对象。适合当前流程：XML 已经完成删除/改写，
-      主要需要目录条目和页码刷新。
-    - full：兼容旧逻辑，显式重新分页并更新所有 Fields，然后更新目录。
+    - toc_only：快速模式，只更新目录对象。
+    - full：显式重新分页并更新所有 Fields，然后更新目录。
     """
     preserved_macro_members = read_macro_support_members(docm_path)
     document = None
+
     try:
         # 参数含义大致是：文件名、确认转换、只读、添加到最近文件等。
         # 这里用可写方式打开，因为后面需要 Save。
@@ -63,7 +74,7 @@ def update_document_toc_with_application(
         elif mode != "toc_only":
             raise ValueError(f"Unsupported Word TOC update mode: {mode}")
 
-        # TOC.Update 会重建目录条目并刷新页码，比额外遍历所有 Fields 更轻。
+        # TOC.Update 会重建目录条目并刷新页码。
         for toc in document.TablesOfContents:
             toc.Update()
 
@@ -75,6 +86,9 @@ def update_document_toc_with_application(
             except Exception as exc:
                 # Word COM 在某些环境会在 Close 阶段断连，记录并继续，避免影响主流程。
                 logger.warning("[TCD08] Failed to close Word document: %s", exc)
+            finally:
+                # 主动释放 COM 代理，确保外层 CoUninitialize 前不再持有文档对象。
+                document = None
 
     return preserved_macro_members
 
@@ -84,16 +98,28 @@ def update_toc_with_word(docm_path: Path, mode: str = "toc_only") -> None:
 
     保留这个单文档入口，是为了兼容 sections/red_paragraphs/text_rewrite 中的旧调用。
     TCD08 主流程会优先使用 update_tocs_with_word 批量入口。
+
+    COM 必须在实际执行 Word 自动化的当前线程中初始化，并在同一线程释放。
     """
-    if win32com is None:
+    if win32com is None or pythoncom is None:
         return
 
     word = None
     preserved_macro_members = None
     processing_error: BaseException | None = None
+    com_initialized = False
+
     try:
+        # FastAPI/Uvicorn 可能在工作线程中执行本函数；每个线程必须独立初始化 COM。
+        pythoncom.CoInitialize()
+        com_initialized = True
+
         word = create_word_application()
-        preserved_macro_members = update_document_toc_with_application(word, docm_path, mode=mode)
+        preserved_macro_members = update_document_toc_with_application(
+            word,
+            Path(docm_path),
+            mode=mode,
+        )
     except BaseException as exc:
         processing_error = exc
     finally:
@@ -102,34 +128,60 @@ def update_toc_with_word(docm_path: Path, mode: str = "toc_only") -> None:
                 word.Quit()
             except Exception as exc:
                 logger.warning("[TCD08] Failed to quit Word application: %s", exc)
+            finally:
+                word = None
+
+        # 尽量在 CoUninitialize 前释放所有 pywin32 COM 代理。
         gc.collect()
 
-    if preserved_macro_members is not None:
-        restore_zip_members(docm_path, preserved_macro_members)
+        if com_initialized:
+            try:
+                pythoncom.CoUninitialize()
+            except Exception as exc:
+                logger.warning("[TCD08] Failed to uninitialize COM: %s", exc)
+
+        if preserved_macro_members is not None:
+            restore_zip_members(Path(docm_path), preserved_macro_members)
 
     if processing_error is not None:
         raise processing_error.with_traceback(processing_error.__traceback__)
 
 
-def update_tocs_with_word(docm_paths: Iterable[Path], mode: str = "toc_only") -> None:
+def update_tocs_with_word(
+    docm_paths: Iterable[Path],
+    mode: str = "toc_only",
+) -> None:
     """批量刷新多个文档的目录，并复用同一个 Word 进程。
 
-    这里的加速点主要有两个：
-    1. 多个模板输出时只启动一次 Word。
-    2. 默认 toc_only，不再显式 Repaginate + 遍历所有 Fields。
+    多个模板输出时只启动一次 Word。COM 初始化、Word 创建、文档处理、
+    Word 退出和 COM 释放全部发生在调用本函数的同一个线程中。
     """
     paths = [Path(path) for path in docm_paths]
-    if win32com is None or not paths:
+
+    if win32com is None or pythoncom is None or not paths:
         return
 
     word = None
     preserved_macro_members_list: list[tuple[Path, MacroSupportMembers]] = []
     processing_error: BaseException | None = None
+    com_initialized = False
+
     try:
+        # 必须在实际调用 DispatchEx 的当前线程中初始化 COM。
+        pythoncom.CoInitialize()
+        com_initialized = True
+
         word = create_word_application()
+
         for docm_path in paths:
-            preserved_macro_members = update_document_toc_with_application(word, docm_path, mode=mode)
-            preserved_macro_members_list.append((docm_path, preserved_macro_members))
+            preserved_macro_members = update_document_toc_with_application(
+                word,
+                docm_path,
+                mode=mode,
+            )
+            preserved_macro_members_list.append(
+                (docm_path, preserved_macro_members)
+            )
     except BaseException as exc:
         processing_error = exc
     finally:
@@ -138,10 +190,21 @@ def update_tocs_with_word(docm_paths: Iterable[Path], mode: str = "toc_only") ->
                 word.Quit()
             except Exception as exc:
                 logger.warning("[TCD08] Failed to quit Word application: %s", exc)
+            finally:
+                word = None
+
+        # 先释放 Word COM 代理，再结束当前线程的 COM apartment。
         gc.collect()
 
-    for docm_path, preserved_macro_members in preserved_macro_members_list:
-        restore_zip_members(docm_path, preserved_macro_members)
+        if com_initialized:
+            try:
+                pythoncom.CoUninitialize()
+            except Exception as exc:
+                logger.warning("[TCD08] Failed to uninitialize COM: %s", exc)
+
+        # Word 已完全退出后，再恢复 docm 包中的宏支持成员。
+        for docm_path, preserved_macro_members in preserved_macro_members_list:
+            restore_zip_members(docm_path, preserved_macro_members)
 
     if processing_error is not None:
         raise processing_error.with_traceback(processing_error.__traceback__)
