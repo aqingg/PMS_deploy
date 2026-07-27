@@ -85,6 +85,100 @@ export default function ProjectList({ searchText }) {
     return [];
   };
 
+  /*
+   * oss_eng_hub prevents a child tool's index.html from being opened as a
+   * top-level page. Therefore:
+   *
+   * 1. Open the normal APP-PMS-Project route in the Hub.
+   * 2. Wait for the Hub to create iframe.tool-frame.
+   * 3. Set the iframe URL to the Project application's own edit route,
+   *    including the selected projectId.
+   *
+   * The new Hub window and the Gate iframe are on the same origin, so the
+   * Gate can access the new window's document. Do not add "noopener" here,
+   * because this function must retain the opened-window reference.
+   */
+  const openProjectInHub = (rawProjectId) => {
+    const projectId = Number(rawProjectId);
+
+    if (!Number.isInteger(projectId) || projectId <= 0) {
+      Modal.error({
+        title: "Unable to open project",
+        content: `Invalid project ID: ${String(rawProjectId)}`
+      });
+      return;
+    }
+
+    /*
+     * Temporary bootstrap fallback:
+     * before the iframe URL is replaced, APP-PMS-Project may initialize once
+     * without a URL projectId and read localStorage. The final iframe URL still
+     * remains the authoritative project source.
+     */
+    localStorage.setItem("projectId", String(projectId));
+
+    const hubUrl =
+      `${window.location.origin}/oss_eng_hub/#/APP-PMS-Project`;
+
+    const projectWindow = window.open(hubUrl, "_blank");
+
+    if (!projectWindow) {
+      Modal.error({
+        title: "Unable to open project",
+        content: "The browser blocked the new project window. Please allow pop-ups for this site."
+      });
+      return;
+    }
+
+    const projectIframeUrl =
+      `${window.location.origin}` +
+      `/oss_eng_hub/APP-PMS-Project/index.html` +
+      `#/edit?projectId=${encodeURIComponent(projectId)}`;
+
+    const startedAt = Date.now();
+    const timeoutMs = 15000;
+    const pollIntervalMs = 100;
+
+    const timer = window.setInterval(() => {
+      if (projectWindow.closed) {
+        window.clearInterval(timer);
+        return;
+      }
+
+      if (Date.now() - startedAt > timeoutMs) {
+        window.clearInterval(timer);
+
+        Modal.error({
+          title: "Unable to open project",
+          content: "Timed out while waiting for APP-PMS-Project to load in the Hub."
+        });
+        return;
+      }
+
+      try {
+        const iframe =
+          projectWindow.document.querySelector("iframe.tool-frame");
+
+        if (!iframe) {
+          return;
+        }
+
+        /*
+         * At this point APP-PMS-Project runs inside an iframe, so the Hub's
+         * top-level redirect guard is not triggered.
+         */
+        iframe.setAttribute("src", projectIframeUrl);
+        window.clearInterval(timer);
+      } catch (error) {
+        /*
+         * During navigation or authentication initialization, the new
+         * document may be temporarily unavailable. Continue polling until the
+         * timeout is reached.
+         */
+      }
+    }, pollIntervalMs);
+  };
+
   return (
     <div className="project-table-container">
       <div className="project-table-wrapper">
@@ -128,14 +222,7 @@ export default function ProjectList({ searchText }) {
                             }
 
                             if (action === "openProject") {
-                              const url =
-                              `${window.location.origin}` +
-                              `/oss_eng_hub/#/APP-PMS-Project` +
-                              `?projectId=${encodeURIComponent(item.id)}`;
-                              //const url = `../APP-PMS-Project/index.html#/edit?projectId=${item.id}`;
-                              //const url = `https://cccn.apac.bosch.com/APP-PMS-Project/#/edit?projectId=${item.id}`;
-                              // const url = `http://localhost:3001/WZE6SZH/APP-PMS-Project/#/edit?projectId=${item.id}`;
-                              window.open(url, "_blank");
+                              openProjectInHub(item.id);
                             }
                           }}
                         />
