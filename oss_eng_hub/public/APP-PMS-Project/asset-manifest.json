@@ -1,0 +1,14 @@
+{
+  "files": {
+    "main.css": "./static/css/main.ea33a512.css",
+    "main.js": "./static/js/main.377af478.js",
+    "static/media/bosch-app-pms.jpg": "./static/media/bosch-app-pms.2c45e8bcf2f5245ae9a5.jpg",
+    "index.html": "./index.html",
+    "main.ea33a512.css.map": "./static/css/main.ea33a512.css.map",
+    "main.377af478.js.map": "./static/js/main.377af478.js.map"
+  },
+  "entrypoints": [
+    "static/css/main.ea33a512.css",
+    "static/js/main.377af478.js"
+  ]
+}
