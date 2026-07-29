@@ -19,6 +19,7 @@ from services.tcd09 import (
     insert_excel_section_images,
     select_tcd09_template_file,
     select_tcd09_ufs_excel_file,
+    insert_tcd09_sensor_layout_shapes,
 )
 from services.tcd09.sensor_overview import fill_tcd09_sensor_type_rows
 
@@ -182,8 +183,9 @@ async def fill_tcd09_report(
 
     Processing order:
     1. Insert configured Excel images.
-    2. Expand and fill Sensor Overview first-column rows.
+    2. Expand and fill Sensor Overview rows.
     3. Fill the remaining ordinary PMS text placeholders.
+    4. Add independent editable Word sensor-label Shapes.
     """
 
     selected_file, expected_filename = select_tcd09_template_file(files)
@@ -230,10 +232,16 @@ async def fill_tcd09_report(
         filled_stream,
         include_email_placeholders=False,
     )
+    # Word COM must run last. A later python-docx save may remove or alter
+    # editable Office Shapes.
+    filled_stream = insert_tcd09_sensor_layout_shapes(
+        profile,
+        filled_stream,
+    )
 
     headers = {
         "Content-Disposition": f'attachment; filename="{expected_filename}"',
-        "X-TCD09-Mode": "docx-images-and-sensor-overview",
+        "X-TCD09-Mode": "docx-images-sensor-overview-editable-layout",
         "X-TCD09-ProjectId": str(projectid or ""),
     }
     return StreamingResponse(

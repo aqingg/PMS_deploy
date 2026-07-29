@@ -1,0 +1,380 @@
+{
+  "base_image_alt_text": "TCD09_SENSOR_LAYOUT_BASE",
+  "generated_shape_prefix": "TCD09_SENSOR_",
+  "require_main_story": true,
+  "require_floating_shape": true,
+  "font": {
+    "name": "Arial",
+    "size_pt": 8,
+    "bold": true,
+    "color_rgb": [
+      0,
+      0,
+      0
+    ]
+  },
+  "default_shape": {
+    "line_rgb": [
+      0,
+      0,
+      0
+    ],
+    "line_weight_pt": 1.0,
+    "fill_transparency": 0.0,
+    "text_margin_pt": 2.0
+  },
+  "slots": {
+    "ECU": {
+      "x": 0.535,
+      "y": 0.5,
+      "width": 0.2,
+      "height": 0.25,
+      "rotation": 0,
+      "fill_rgb": [
+        190,
+        190,
+        190
+      ],
+      "marker": {
+        "type": "connector",
+        "direction_sides": {
+          "forward": "left",
+          "backward": "right",
+          "left": "bottom",
+          "right": "top"
+        }
+      }
+    },
+    "UFS_R": {
+      "x": 0.085,
+      "y": 0.31,
+      "width": 0.06,
+      "height": 0.135,
+      "rotation": 90,
+      "fill_rgb": [
+        255,
+        170,
+        0
+      ],
+      "marker": {
+        "type": "locator",
+        "direction_sides": {
+          "normal": "right",
+          "reverse": "left"
+        }
+      }
+    },
+    "UFS_C": {
+      "x": 0.085,
+      "y": 0.5,
+      "width": 0.06,
+      "height": 0.135,
+      "rotation": 90,
+      "fill_rgb": [
+        255,
+        170,
+        0
+      ],
+      "marker": {
+        "type": "locator",
+        "direction_sides": {
+          "normal": "right",
+          "reverse": "left"
+        }
+      }
+    },
+    "UFS_L": {
+      "x": 0.085,
+      "y": 0.69,
+      "width": 0.06,
+      "height": 0.135,
+      "rotation": 90,
+      "fill_rgb": [
+        255,
+        170,
+        0
+      ],
+      "marker": {
+        "type": "locator",
+        "direction_sides": {
+          "normal": "right",
+          "reverse": "left"
+        }
+      }
+    },
+    "RCS_R": {
+      "x": 0.915,
+      "y": 0.31,
+      "width": 0.06,
+      "height": 0.135,
+      "rotation": 90,
+      "fill_rgb": [
+        255,
+        170,
+        0
+      ],
+      "marker": {
+        "type": "locator",
+        "fixed_side": "right"
+      }
+    },
+    "RCS_C": {
+      "x": 0.915,
+      "y": 0.5,
+      "width": 0.06,
+      "height": 0.135,
+      "rotation": 90,
+      "fill_rgb": [
+        255,
+        170,
+        0
+      ],
+      "marker": {
+        "type": "locator",
+        "fixed_side": "right"
+      }
+    },
+    "RCS_L": {
+      "x": 0.915,
+      "y": 0.69,
+      "width": 0.06,
+      "height": 0.135,
+      "rotation": 90,
+      "fill_rgb": [
+        255,
+        170,
+        0
+      ],
+      "marker": {
+        "type": "locator",
+        "fixed_side": "right"
+      }
+    },
+    "PAS_B_R": {
+      "x": 0.445,
+      "y": 0.18,
+      "width": 0.12,
+      "height": 0.1,
+      "rotation": 0,
+      "fill_rgb": [
+        255,
+        235,
+        0
+      ],
+      "marker": {
+        "type": "locator",
+        "fixed_side": "top"
+      }
+    },
+    "PAS_B_L": {
+      "x": 0.445,
+      "y": 0.82,
+      "width": 0.12,
+      "height": 0.1,
+      "rotation": 0,
+      "fill_rgb": [
+        255,
+        235,
+        0
+      ],
+      "marker": {
+        "type": "locator",
+        "fixed_side": "bottom"
+      }
+    },
+    "PAS_C_R": {
+      "x": 0.65,
+      "y": 0.18,
+      "width": 0.12,
+      "height": 0.1,
+      "rotation": 0,
+      "fill_rgb": [
+        255,
+        235,
+        0
+      ],
+      "marker": {
+        "type": "locator",
+        "fixed_side": "top"
+      }
+    },
+    "PAS_C_L": {
+      "x": 0.65,
+      "y": 0.82,
+      "width": 0.12,
+      "height": 0.1,
+      "rotation": 0,
+      "fill_rgb": [
+        255,
+        235,
+        0
+      ],
+      "marker": {
+        "type": "locator",
+        "fixed_side": "bottom"
+      }
+    },
+    "PPS_FRONT_R": {
+      "x": 0.455,
+      "y": 0.08,
+      "width": 0.115,
+      "height": 0.1,
+      "rotation": 0,
+      "fill_rgb": [
+        70,
+        190,
+        230
+      ],
+      "marker": {
+        "type": "locator",
+        "fixed_side": "top"
+      }
+    },
+    "PPS_FRONT_L": {
+      "x": 0.455,
+      "y": 0.92,
+      "width": 0.115,
+      "height": 0.1,
+      "rotation": 0,
+      "fill_rgb": [
+        70,
+        190,
+        230
+      ],
+      "marker": {
+        "type": "locator",
+        "fixed_side": "bottom"
+      }
+    },
+    "PPS_REAR_R": {
+      "x": 0.665,
+      "y": 0.08,
+      "width": 0.115,
+      "height": 0.1,
+      "rotation": 0,
+      "fill_rgb": [
+        70,
+        190,
+        230
+      ],
+      "marker": {
+        "type": "locator",
+        "fixed_side": "top"
+      }
+    },
+    "PPS_REAR_L": {
+      "x": 0.665,
+      "y": 0.92,
+      "width": 0.115,
+      "height": 0.1,
+      "rotation": 0,
+      "fill_rgb": [
+        70,
+        190,
+        230
+      ],
+      "marker": {
+        "type": "locator",
+        "fixed_side": "bottom"
+      }
+    },
+    "PCS_R": {
+      "x": 0.145,
+      "y": 0.3,
+      "width": 0.07,
+      "height": 0.1,
+      "rotation": 0,
+      "fill_rgb": [
+        120,
+        210,
+        120
+      ],
+      "marker": {
+        "type": "locator",
+        "fixed_side": "left"
+      }
+    },
+    "PCS_C": {
+      "x": 0.145,
+      "y": 0.5,
+      "width": 0.07,
+      "height": 0.1,
+      "rotation": 0,
+      "fill_rgb": [
+        120,
+        210,
+        120
+      ],
+      "marker": {
+        "type": "locator",
+        "fixed_side": "left"
+      }
+    },
+    "PCS_L": {
+      "x": 0.145,
+      "y": 0.7,
+      "width": 0.07,
+      "height": 0.1,
+      "rotation": 0,
+      "fill_rgb": [
+        120,
+        210,
+        120
+      ],
+      "marker": {
+        "type": "locator",
+        "fixed_side": "left"
+      }
+    },
+    "PTS_C": {
+      "x": 0.19,
+      "y": 0.5,
+      "width": 0.08,
+      "height": 0.1,
+      "rotation": 0,
+      "fill_rgb": [
+        180,
+        220,
+        120
+      ],
+      "marker": {
+        "type": "locator",
+        "fixed_side": "left"
+      }
+    }
+  },
+  "marker_styles": {
+    "connector": {
+      "fill_rgb": [
+        0,
+        176,
+        240
+      ],
+      "line_rgb": [
+        0,
+        0,
+        0
+      ],
+      "line_weight_pt": 0.75,
+      "length_ratio": 0.55,
+      "thickness_ratio": 0.12,
+      "gap_ratio": 0.0
+    },
+    "locator": {
+      "fill_rgb": [
+        0,
+        0,
+        0
+      ],
+      "line_rgb": [
+        0,
+        0,
+        0
+      ],
+      "line_weight_pt": 0.0,
+      "length_ratio": 0.42,
+      "thickness_ratio": 0.12,
+      "gap_ratio": 0.0
+    }
+  }
+}

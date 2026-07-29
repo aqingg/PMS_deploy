@@ -40,7 +40,7 @@ POSITION_ORDER = {
     "UFS": ("L", "C", "R"),
     "RCS": ("L", "C", "R"),
     "PCS": ("L", "C", "R"),
-    "PPS": ("L", "C", "R"),
+    "PPS": ("FL", "FR", "RL", "RR"),
     "PAS": ("BL", "BR", "CL", "CR"),
 }
 
@@ -88,7 +88,12 @@ def _normalize_positional_compounds(text: str) -> str:
 
     normalized = str(text or "")
     normalized = re.sub(
-        r"(?i)\b(UFS|RCS|PCS|PPS)\s*[_-]\s*([LCR])\b",
+        r"(?i)\b(PPS)\s*[_-]\s*(FL|FR|RL|RR|L|R|C)\b",
+        lambda match: f"{match.group(1)}{match.group(2)}",
+        normalized,
+    )
+    normalized = re.sub(
+        r"(?i)\b(UFS|RCS|PCS)\s*[_-]\s*([LCR])\b",
         lambda match: f"{match.group(1)}{match.group(2)}",
         normalized,
     )
@@ -153,7 +158,10 @@ def _remove_position_suffix(
 
     if family == "PAS":
         candidates = ("BL", "BR", "CL", "CR")
-    elif family in {"UFS", "RCS", "PCS", "PPS"}:
+    elif family == "PPS":
+        # Longest suffixes must be checked first.
+        candidates = ("FL", "FR", "RL", "RR", "L", "C", "R")
+    elif family in {"UFS", "RCS", "PCS"}:
         candidates = ("L", "C", "R")
     else:
         return None, raw
@@ -349,6 +357,58 @@ def _format_pas_positions(positions: set[str]) -> str:
     return "; ".join(ordered) if ordered else "N/A"
 
 
+
+def _normalize_pps_position(position: str) -> str:
+    """Normalize legacy PPS L/R positions to front-door positions."""
+
+    normalized = str(position or "").upper()
+    return {
+        "L": "FL",
+        "R": "FR",
+        "C": "FL",
+    }.get(normalized, normalized)
+
+
+def _pps_positions_from_count(count: int) -> set[str]:
+    """Expand PPS quantity into concrete door positions."""
+
+    if count <= 1:
+        return {"FL"}
+    if count == 2:
+        return {"FL", "FR"}
+    if count == 3:
+        return {"FL", "FR", "RL"}
+    return {"FL", "FR", "RL", "RR"}
+
+
+def _format_pps_positions(positions: set[str]) -> str:
+    normalized = {
+        _normalize_pps_position(position)
+        for position in positions
+        if str(position or "").strip()
+    }
+
+    if normalized == {"FL", "FR"}:
+        return "Left and Right Front door"
+    if normalized == {"RL", "RR"}:
+        return "Left and Right Rear door"
+    if normalized == {"FL", "FR", "RL", "RR"}:
+        return "Left and Right Front and Rear door"
+
+    names = {
+        "FL": "Left Front door",
+        "FR": "Right Front door",
+        "RL": "Left Rear door",
+        "RR": "Right Rear door",
+    }
+    ordered = [
+        names[position]
+        for position in POSITION_ORDER["PPS"]
+        if position in normalized
+    ]
+    return "; ".join(ordered) if ordered else "N/A"
+
+
 def _sensor_location(
     entry: SensorEntry,
     rules: dict[str, Any],
@@ -384,13 +444,15 @@ def _sensor_location(
         return _format_three_positions(positions, "front bumper")
 
     if family == "PPS":
-        positions = entry.positions
+        positions = {
+            _normalize_pps_position(position)
+            for position in entry.positions
+        }
         if not positions:
-            count = _default_count(entry, rules, fallback=2)
-            positions = _three_position_set_from_count(
-                1 if count <= 1 else 2
+            positions = _pps_positions_from_count(
+                _default_count(entry, rules, fallback=2)
             )
-        return _format_three_positions(positions, "Front door")
+        return _format_pps_positions(positions)
 
     if family == "PTS":
         return "Front bumper"
@@ -438,6 +500,284 @@ def build_sensor_overview_rows(
         rows.append(row)
 
     return rows
+
+
+
+def _three_position_layout_slots(
+    family: str,
+    positions: set[str],
+) -> list[str]:
+    order = ("L", "C", "R")
+    normalized = {str(position or "").upper() for position in positions}
+    return [
+        f"{family}_{position}"
+        for position in order
+        if position in normalized
+    ]
+
+
+def _pas_layout_slots(positions: set[str]) -> list[str]:
+    mapping = {
+        "BL": "PAS_B_L",
+        "BR": "PAS_B_R",
+        "CL": "PAS_C_L",
+        "CR": "PAS_C_R",
+    }
+    normalized = {str(position or "").upper() for position in positions}
+    return [
+        mapping[position]
+        for position in POSITION_ORDER["PAS"]
+        if position in normalized
+    ]
+
+
+def _pps_layout_slots(positions: set[str]) -> list[str]:
+    mapping = {
+        "FL": "PPS_FRONT_L",
+        "FR": "PPS_FRONT_R",
+        "RL": "PPS_REAR_L",
+        "RR": "PPS_REAR_R",
+    }
+    normalized = {
+        _normalize_pps_position(position)
+        for position in positions
+    }
+    return [
+        mapping[position]
+        for position in POSITION_ORDER["PPS"]
+        if position in normalized
+    ]
+
+
+def _layout_text(display_name: str, slot: str) -> str:
+    suffixes = {
+        "UFS_L": "L",
+        "UFS_C": "C",
+        "UFS_R": "R",
+        "RCS_L": "L",
+        "RCS_C": "C",
+        "RCS_R": "R",
+        "PCS_L": "L",
+        "PCS_C": "C",
+        "PCS_R": "R",
+        "PAS_B_L": "B-L",
+        "PAS_B_R": "B-R",
+        "PAS_C_L": "C-L",
+        "PAS_C_R": "C-R",
+        "PPS_FRONT_L": "F-L",
+        "PPS_FRONT_R": "F-R",
+        "PPS_REAR_L": "R-L",
+        "PPS_REAR_R": "R-R",
+    }
+    suffix = suffixes.get(slot)
+    return f"{display_name}-{suffix}" if suffix else display_name
+
+
+
+def _normalized_profile_key(value: Any) -> str:
+    return re.sub(r"[^a-z0-9]+", "", str(value or "").casefold())
+
+
+def _profile_value(
+    profile: dict[str, Any],
+    *candidate_keys: str,
+) -> str:
+    """Read front-end values even if their key style differs.
+
+    This supports keys such as:
+        ECU Direction / ecu_direction / ecuDirection
+        UFS direction / ufs_direction / ufsDirection
+    """
+
+    if not isinstance(profile, dict):
+        return ""
+
+    wanted = {
+        _normalized_profile_key(candidate)
+        for candidate in candidate_keys
+    }
+    for key, value in profile.items():
+        if _normalized_profile_key(key) not in wanted:
+            continue
+
+        if isinstance(value, dict) and "value" in value:
+            value = value.get("value")
+        if isinstance(value, (list, tuple, set)):
+            value = next(
+                (
+                    str(item).strip()
+                    for item in value
+                    if str(item).strip()
+                ),
+                "",
+            )
+        return str(value or "").strip()
+
+    return ""
+
+
+def _normalize_direction(
+    value: Any,
+    *,
+    allowed: set[str],
+    default: str,
+) -> str:
+    normalized = str(value or "").strip().casefold()
+    aliases = {
+        "front": "forward",
+        "rear": "backward",
+        "back": "backward",
+        "normal direction": "normal",
+        "reverse direction": "reverse",
+    }
+    normalized = aliases.get(normalized, normalized)
+    return normalized if normalized in allowed else default
+
+
+def build_sensor_layout_model(
+    profile: dict[str, Any],
+    *,
+    sensormap_rules_path: str | Path = DEFAULT_SENSORMAP_RULES_PATH,
+) -> dict[str, Any]:
+    """Create editable sensor labels and their single position marker.
+
+    Marker rules:
+    - ECU / internal sensor: blue connector marker only, controlled by
+      ECU Direction (forward/backward/left/right).
+    - UFS: black locator marker only, controlled by UFS direction
+      (normal/reverse).
+    - Other peripheral sensors: black locator marker only, fixed toward
+      the vehicle exterior by the layout JSON slot configuration.
+    """
+
+    rules = _load_sensormap_rules(sensormap_rules_path)
+    labels_by_slot: dict[str, list[str]] = {}
+    slot_order: list[str] = []
+
+    ecu_direction = _normalize_direction(
+        _profile_value(
+            profile,
+            "ECU Direction",
+            "ecu_direction",
+            "ecuDirection",
+        ),
+        allowed={"forward", "backward", "left", "right"},
+        default="forward",
+    )
+    ufs_direction = _normalize_direction(
+        _profile_value(
+            profile,
+            "UFS direction",
+            "UFS Direction",
+            "ufs_direction",
+            "ufsDirection",
+        ),
+        allowed={"normal", "reverse"},
+        default="normal",
+    )
+
+    def add_label(
+        slot: str,
+        text: str,
+        *,
+        marker_type: str,
+        marker_state: str,
+    ) -> None:
+        if slot not in labels_by_slot:
+            labels_by_slot[slot] = []
+            slot_order.append(slot)
+        if text not in labels_by_slot[slot]:
+            labels_by_slot[slot].append(text)
+
+        marker_by_slot[slot] = {
+            "type": marker_type,
+            "state": marker_state,
+        }
+
+    marker_by_slot: dict[str, dict[str, str]] = {}
+
+    inertial_entries = _merge_sensor_entries(
+        profile.get("internal_sensor_configuration"),
+        force_inertial=True,
+    )
+    inertial_text = [
+        entry.display_name
+        for entry in inertial_entries
+        if entry.display_name
+    ]
+    if inertial_text:
+        add_label(
+            "ECU",
+            "\r".join(inertial_text),
+            marker_type="connector",
+            marker_state=ecu_direction,
+        )
+
+    peripheral_entries = _merge_sensor_entries(
+        profile.get("peripheral_sensor_configuration"),
+        force_inertial=False,
+    )
+
+    for entry in peripheral_entries:
+        family = entry.family
+        slots: list[str] = []
+
+        if family in {"UFS", "RCS", "PCS"}:
+            fallback = 1 if family == "PCS" else 2
+            positions = entry.positions or _three_position_set_from_count(
+                _default_count(entry, rules, fallback=fallback)
+            )
+            slots = _three_position_layout_slots(family, positions)
+
+        elif family == "PAS":
+            positions = entry.positions or _pas_positions_from_count(
+                _default_count(entry, rules, fallback=2),
+                rules,
+            )
+            slots = _pas_layout_slots(positions)
+
+        elif family == "PPS":
+            positions = {
+                _normalize_pps_position(position)
+                for position in entry.positions
+            }
+            if not positions:
+                positions = _pps_positions_from_count(
+                    _default_count(entry, rules, fallback=2)
+                )
+            slots = _pps_layout_slots(positions)
+
+        elif family == "PTS":
+            slots = ["PTS_C"]
+
+        for slot in slots:
+            if family == "UFS":
+                marker_type = "locator"
+                marker_state = ufs_direction
+            else:
+                marker_type = "locator"
+                marker_state = "outward"
+
+            add_label(
+                slot,
+                _layout_text(entry.display_name, slot),
+                marker_type=marker_type,
+                marker_state=marker_state,
+            )
+
+    labels = [
+        {
+            "slot": slot,
+            "text": "\r".join(labels_by_slot[slot]),
+            "marker": marker_by_slot[slot],
+        }
+        for slot in slot_order
+    ]
+    return {
+        "labels": labels,
+        "ecu_direction": ecu_direction,
+        "ufs_direction": ufs_direction,
+    }
 
 
 def parse_sensor_types(value: Any) -> list[str]:
