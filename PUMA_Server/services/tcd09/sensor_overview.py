@@ -658,6 +658,7 @@ def build_sensor_layout_model(
         _profile_value(
             profile,
             "ECU Direction",
+            "ConnectorDirection",
             "ecu_direction",
             "ecuDirection",
         ),

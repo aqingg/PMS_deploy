@@ -641,6 +641,7 @@ def apply_project_info_overrides(
         "SOP Date": "sop",
         "Project Leader": "project_leader",
         "MCR No.": "MCR_No",
+        "UFS direction": "ufs_direction",
         "ECU Direction": "ConnectorDirection",
         "BOSCH PIN": "Digit10OemPn",
         "Customer PIN": "customerOemPn",
