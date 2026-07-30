@@ -1,0 +1,182 @@
+{
+  "sensing_direction": {
+    "exact_models": {
+      "SMA760": [
+        "High-g-x/y (45°/90°)"
+      ],
+      "SMA720": [
+        "Mid-g-z"
+      ],
+      "SMA860": [
+        "High-g-x",
+        "High-g-y"
+      ],
+      "SMG810": [
+        "ωx/ωy"
+      ],
+      "SMI800": [
+        "Mid-g-x",
+        "Low-g-x",
+        "Mid-g-y",
+        "Low-g-y",
+        "ωz"
+      ],
+      "SMI860": [
+        "Mid-g-x",
+        "Low-g-x",
+        "Mid-g-y",
+        "Low-g-y",
+        "Mid-g-z",
+        "Low-g-z",
+        "ωx",
+        "ωy",
+        "ωz"
+      ],
+      "SMI970": [
+        "Mid-g-x",
+        "Low-g-x",
+        "Mid-g-y",
+        "Low-g-y",
+        "Mid-g-z",
+        "Low-g-z",
+        "ωx",
+        "ωy",
+        "ωz"
+      ],
+      "SMU3": [
+        "Mid-g-x",
+        "Low-g-x",
+        "Mid-g-y",
+        "Low-g-y",
+        "Mid-g-z",
+        "Low-g-z",
+        "ωx",
+        "ωy",
+        "ωz"
+      ],
+      "UFS6s": [
+        "x"
+      ],
+      "PAS6s": [
+        "y"
+      ],
+      "PPS3": [
+        "p"
+      ],
+      "PPS3e": [
+        "p"
+      ],
+      "PTS1": [
+        "p"
+      ],
+      "PTS1e": [
+        "p"
+      ],
+      "PCS": [
+        "x"
+      ]
+    },
+    "sensor_families": {
+      "UFS": [
+        "x"
+      ],
+      "PAS": [
+        "y"
+      ],
+      "PPS": [
+        "p"
+      ],
+      "PTS": [
+        "p"
+      ],
+      "PCS": [
+        "x"
+      ]
+    },
+    "default": [
+      "N/A"
+    ]
+  },
+  "measurement": {
+    "exact_models": {
+      "SMA760": [
+        "±128g"
+      ],
+      "SMA720": [
+        "±32g"
+      ],
+      "SMA860": [
+        "±128g"
+      ],
+      "SMG810": [
+        "±300°/s"
+      ],
+      "SMI800": [
+        "±35g",
+        "±6g",
+        "±300°/s"
+      ],
+      "SMI860": [
+        "±35g",
+        "±6g",
+        "±25g",
+        "±300°/s"
+      ],
+      "SMI970": [
+        "±35g",
+        "±6g",
+        "±25g",
+        "±300°/s"
+      ],
+      "SMU3": [
+        "±35g",
+        "±6g",
+        "±25g",
+        "±300°/s"
+      ],
+      "UFS6s": [
+        "±480g"
+      ],
+      "PAS6s": [
+        "±120g"
+      ],
+      "PPS3": [
+        "P0:536-1100mbar",
+        "Pressure output range:",
+        "Pn:-5%~15%"
+      ],
+      "PPS3e": [
+        "P0:455-1100mbar",
+        "Pressure output range:",
+        "Pn:-5%~15%"
+      ],
+      "PTS1": [
+        "P0:536-1100mbar",
+        "Pressure output range:",
+        "Pn:-5%~15%"
+      ],
+      "PTS1e": [
+        "P0:455-1100mbar",
+        "Pressure output range:",
+        "Pn:-5%~15%/-15%~23.4%"
+      ],
+      "PCS": [
+        "±480g"
+      ]
+    },
+    "sensor_families": {
+      "UFS": [
+        "±480g"
+      ],
+      "PAS": [
+        "±120g"
+      ],
+      "PCS": [
+        "±480g"
+      ]
+    },
+    "default": [
+      "N/A"
+    ]
+  }
+}

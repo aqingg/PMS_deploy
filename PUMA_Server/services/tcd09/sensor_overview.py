@@ -15,14 +15,19 @@ from services.datamerge import docx
 
 SENSOR_TYPE_ROWS_PLACEHOLDER = "<TCD09_SENSOR_TYPE_ROWS>"
 SENSOR_LOCATION_ROWS_PLACEHOLDER = "<TCD09_SENSOR_LOCATION_ROWS>"
+SENSOR_DIRECTION_ROWS_PLACEHOLDER = "<TCD09_SENSOR_DIRECTION_ROWS>"
+SENSOR_MEASUREMENT_ROWS_PLACEHOLDER = "<TCD09_SENSOR_MEASUREMENT_ROWS>"
 
 THIS_DIR = Path(__file__).resolve().parent
 SERVER_ROOT = THIS_DIR.parents[1]
 DEFAULT_SENSORMAP_RULES_PATH = (
     SERVER_ROOT / "config" / "sensormap_sensor_rules.json"
 )
+DEFAULT_SENSOR_OVERVIEW_RULES_PATH = (
+    SERVER_ROOT / "config" / "tcd09_sensor_overview_rules.json"
+)
 
-INERTIAL_FAMILIES = ("SMA", "SMB", "SMI", "SMG")
+INERTIAL_FAMILIES = ("SMA", "SMB", "SMI", "SMG", "SMU")
 PERIPHERAL_FAMILIES = ("UFS", "RCS", "PAS", "PCS", "PPS", "PTS")
 KNOWN_FAMILIES = (*INERTIAL_FAMILIES, *PERIPHERAL_FAMILIES)
 
@@ -460,12 +465,157 @@ def _sensor_location(
     return "N/A"
 
 
+
+def _load_sensor_overview_rules(
+    rules_path: str | Path = DEFAULT_SENSOR_OVERVIEW_RULES_PATH,
+) -> dict[str, Any]:
+    """Load fixed Sensor Overview mappings.
+
+    A missing or malformed rules file is reported explicitly because silently
+    writing N/A would hide a deployment/configuration error.
+    """
+
+    path = Path(rules_path)
+    if not path.is_file():
+        raise HTTPException(
+            status_code=500,
+            detail=f"TCD09 Sensor Overview rules do not exist: {path}",
+        )
+
+    try:
+        with path.open("r", encoding="utf-8-sig") as file:
+            data = json.load(file)
+    except (OSError, json.JSONDecodeError) as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Invalid TCD09 Sensor Overview rules: {path}: {exc}",
+        ) from exc
+
+    if not isinstance(data, dict):
+        raise HTTPException(
+            status_code=500,
+            detail="TCD09 Sensor Overview rules root must be a JSON object.",
+        )
+
+    direction_rules = data.get("sensing_direction")
+    if not isinstance(direction_rules, dict):
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                'TCD09 Sensor Overview rules must define '
+                '"sensing_direction".'
+            ),
+        )
+
+    return data
+
+
+def _as_rule_lines(value: Any) -> list[str]:
+    """Normalize one configured value into non-empty output lines."""
+
+    if isinstance(value, str):
+        lines = value.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+    elif isinstance(value, (list, tuple)):
+        lines = [str(item) for item in value]
+    else:
+        lines = []
+
+    return [
+        str(line).strip()
+        for line in lines
+        if str(line).strip()
+    ]
+
+
+def _sensor_sensing_direction(
+    entry: SensorEntry,
+    overview_rules: dict[str, Any],
+) -> str:
+    """Resolve the fixed third-column value for one Sensor Type.
+
+    Matching priority:
+        1. exact model name, case-insensitive;
+        2. parsed sensor family;
+        3. configured default.
+
+    Multiple configured values are joined with line breaks, so they remain in
+    one Word table cell and do not create additional table rows.
+    """
+
+    direction_rules = overview_rules.get("sensing_direction", {})
+    exact_models = direction_rules.get("exact_models", {})
+    family_rules = direction_rules.get("sensor_families", {})
+
+    exact_lookup = {
+        str(model).strip().casefold(): value
+        for model, value in exact_models.items()
+        if str(model).strip()
+    } if isinstance(exact_models, dict) else {}
+
+    family_lookup = {
+        str(family).strip().upper(): value
+        for family, value in family_rules.items()
+        if str(family).strip()
+    } if isinstance(family_rules, dict) else {}
+
+    configured = exact_lookup.get(entry.display_name.casefold())
+    if configured is None:
+        configured = family_lookup.get(entry.family.upper())
+    if configured is None:
+        configured = direction_rules.get("default", ["N/A"])
+
+    lines = _as_rule_lines(configured)
+    return "\n".join(lines or ["N/A"])
+
+
+
+def _sensor_measurement(
+    entry: SensorEntry,
+    overview_rules: dict[str, Any],
+) -> str:
+    """Resolve the fixed fourth-column Measurement value.
+
+    Matching priority:
+        1. exact model name, case-insensitive;
+        2. parsed sensor family;
+        3. configured default.
+
+    Multiple values are written into one Word cell with line breaks.
+    """
+
+    measurement_rules = overview_rules.get("measurement", {})
+    exact_models = measurement_rules.get("exact_models", {})
+    family_rules = measurement_rules.get("sensor_families", {})
+
+    exact_lookup = {
+        str(model).strip().casefold(): value
+        for model, value in exact_models.items()
+        if str(model).strip()
+    } if isinstance(exact_models, dict) else {}
+
+    family_lookup = {
+        str(family).strip().upper(): value
+        for family, value in family_rules.items()
+        if str(family).strip()
+    } if isinstance(family_rules, dict) else {}
+
+    configured = exact_lookup.get(entry.display_name.casefold())
+    if configured is None:
+        configured = family_lookup.get(entry.family.upper())
+    if configured is None:
+        configured = measurement_rules.get("default", ["N/A"])
+
+    lines = _as_rule_lines(configured)
+    return "\n".join(lines or ["N/A"])
+
+
 def build_sensor_overview_rows(
     profile: dict[str, Any],
     *,
     sensormap_rules_path: str | Path = DEFAULT_SENSORMAP_RULES_PATH,
-) -> list[tuple[str, str]]:
-    """Build Sensor Overview rows for the first two Word table columns.
+    overview_rules_path: str | Path = DEFAULT_SENSOR_OVERVIEW_RULES_PATH,
+) -> list[tuple[str, str, str, str]]:
+    """Build Sensor Overview rows for the first four Word table columns.
 
     Explicit position descriptions take precedence over numeric quantities:
         3*UFS / 3UFS            -> Left, Center and Right
@@ -475,6 +625,7 @@ def build_sensor_overview_rows(
     """
 
     rules = _load_sensormap_rules(sensormap_rules_path)
+    overview_rules = _load_sensor_overview_rules(overview_rules_path)
 
     inertial_entries = _merge_sensor_entries(
         profile.get("internal_sensor_configuration"),
@@ -485,15 +636,22 @@ def build_sensor_overview_rows(
         force_inertial=False,
     )
 
-    rows: list[tuple[str, str]] = []
-    seen: set[tuple[str, str]] = set()
+    rows: list[tuple[str, str, str, str]] = []
+    seen: set[tuple[str, str, str, str]] = set()
 
     for entry in [*inertial_entries, *peripheral_entries]:
         row = (
             entry.display_name,
             _sensor_location(entry, rules),
+            _sensor_sensing_direction(entry, overview_rules),
+            _sensor_measurement(entry, overview_rules),
         )
-        key = (row[0].casefold(), row[1].casefold())
+        key = (
+            row[0].casefold(),
+            row[1].casefold(),
+            row[2].casefold(),
+            row[3].casefold(),
+        )
         if key in seen:
             continue
         seen.add(key)
@@ -795,8 +953,8 @@ def build_sensor_type_rows(profile: dict[str, Any]) -> list[str]:
     """Backward-compatible first-column-only helper."""
 
     return [
-        sensor_type
-        for sensor_type, _ in build_sensor_overview_rows(profile)
+        row[0]
+        for row in build_sensor_overview_rows(profile)
     ]
 
 
@@ -863,9 +1021,48 @@ def _replace_placeholder_in_cell_xml(
         )
 
     updated_text = full_text.replace(placeholder, replacement, 1)
-    text_nodes[0].text = updated_text
+    normalized_text = (
+        updated_text
+        .replace("\r\n", "\n")
+        .replace("\r", "\n")
+    )
+    lines = normalized_text.split("\n")
+
+    first_text_node = text_nodes[0]
+    first_text_node.text = lines[0]
+
+    # Clear the remaining original text nodes because the complete cell text
+    # has been consolidated into the first run.
     for node in text_nodes[1:]:
         node.text = ""
+
+    if len(lines) > 1:
+        parent_run = first_text_node.getparent()
+        if parent_run is None:
+            raise HTTPException(
+                status_code=500,
+                detail=(
+                    "TCD09 Sensor Overview template text node has no run: "
+                    f"{placeholder}"
+                ),
+            )
+
+        namespace = str(first_text_node.tag).split("}")[0].lstrip("{")
+        insert_index = parent_run.index(first_text_node) + 1
+
+        for line in lines[1:]:
+            break_node = first_text_node.makeelement(
+                f"{{{namespace}}}br",
+            )
+            line_node = first_text_node.makeelement(
+                f"{{{namespace}}}t",
+            )
+            line_node.text = line
+
+            parent_run.insert(insert_index, break_node)
+            insert_index += 1
+            parent_run.insert(insert_index, line_node)
+            insert_index += 1
 
 
 def _find_sensor_template_rows(document) -> list[tuple[Any, Any]]:
@@ -873,15 +1070,19 @@ def _find_sensor_template_rows(document) -> list[tuple[Any, Any]]:
 
     for table in _iter_tables(document):
         for row in list(table.rows):
-            if len(row.cells) < 2:
+            if len(row.cells) < 4:
                 continue
 
             first_text = str(row.cells[0].text or "")
             second_text = str(row.cells[1].text or "")
+            third_text = str(row.cells[2].text or "")
+            fourth_text = str(row.cells[3].text or "")
 
             if (
                 SENSOR_TYPE_ROWS_PLACEHOLDER in first_text
                 and SENSOR_LOCATION_ROWS_PLACEHOLDER in second_text
+                and SENSOR_DIRECTION_ROWS_PLACEHOLDER in third_text
+                and SENSOR_MEASUREMENT_ROWS_PLACEHOLDER in fourth_text
             ):
                 matches.append((table, row))
 
@@ -891,12 +1092,17 @@ def _find_sensor_template_rows(document) -> list[tuple[Any, Any]]:
 def _expand_template_row(
     table,
     template_row,
-    rows: list[tuple[str, str]],
+    rows: list[tuple[str, str, str, str]],
 ) -> int:
     template_xml = template_row._tr
-    values = rows or [("N/A", "N/A")]
+    values = rows or [("N/A", "N/A", "N/A", "N/A")]
 
-    for sensor_type, sensor_location in values:
+    for (
+        sensor_type,
+        sensor_location,
+        sensor_direction,
+        sensor_measurement,
+    ) in values:
         copied_row_xml = deepcopy(template_xml)
 
         _replace_placeholder_in_cell_xml(
@@ -911,6 +1117,18 @@ def _expand_template_row(
             placeholder=SENSOR_LOCATION_ROWS_PLACEHOLDER,
             replacement=sensor_location,
         )
+        _replace_placeholder_in_cell_xml(
+            copied_row_xml,
+            cell_index=2,
+            placeholder=SENSOR_DIRECTION_ROWS_PLACEHOLDER,
+            replacement=sensor_direction,
+        )
+        _replace_placeholder_in_cell_xml(
+            copied_row_xml,
+            cell_index=3,
+            placeholder=SENSOR_MEASUREMENT_ROWS_PLACEHOLDER,
+            replacement=sensor_measurement,
+        )
 
         template_xml.addprevious(copied_row_xml)
 
@@ -922,11 +1140,13 @@ def fill_tcd09_sensor_type_rows(
     profile: dict[str, Any],
     source: str | Path | io.BytesIO,
 ) -> io.BytesIO:
-    """Fill Sensor Overview Sensor Type and Sensor Location columns.
+    """Fill all four Sensor Overview columns.
 
     The Word template row must contain:
         column 1: <TCD09_SENSOR_TYPE_ROWS>
         column 2: <TCD09_SENSOR_LOCATION_ROWS>
+        column 3: <TCD09_SENSOR_DIRECTION_ROWS>
+        column 4: <TCD09_SENSOR_MEASUREMENT_ROWS>
 
     The whole template row is copied once per normalized sensor family/model,
     preserving borders, row height, cell width and formatting.
@@ -949,8 +1169,11 @@ def fill_tcd09_sensor_type_rows(
             status_code=400,
             detail=(
                 "TCD09 Sensor Overview template row was not found. "
-                "Place <TCD09_SENSOR_TYPE_ROWS> in column 1 and "
-                "<TCD09_SENSOR_LOCATION_ROWS> in column 2 of the same row."
+                "Place <TCD09_SENSOR_TYPE_ROWS> in column 1, "
+                "<TCD09_SENSOR_LOCATION_ROWS> in column 2, "
+                "<TCD09_SENSOR_DIRECTION_ROWS> in column 3 and "
+                "<TCD09_SENSOR_MEASUREMENT_ROWS> in column 4 "
+                "of the same row."
             ),
         )
 

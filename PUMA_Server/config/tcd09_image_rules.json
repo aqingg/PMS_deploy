@@ -5,9 +5,9 @@
       "placeholder": "<PMS.TCD09_UFS_LOCAL_IMAGES>",
       "sheet_name": "前碰传感器（UFS）",
       "customer_start_column": 9,
-      "start_label": "前碰传感器（UFS）局部图",
+      "start_label": "前碰传感器（UFS）于整车相对位置",
       "end_label": "前碰传感器（UFS）与后方零部件距离",
-      "image_width_inches": 2
+      "image_width_inches": 3
     },
     {
       "key": "pas_bpillar_left",
@@ -16,7 +16,7 @@
       "customer_start_column": 9,
       "start_label": "左侧碰传感器（PAS_D）",
       "end_label": "右侧碰传感器（PAS_P）",
-      "image_width_inches": 2
+      "image_width_inches": 3
     },
     {
       "key": "pas_bpillar_right",
@@ -25,7 +25,7 @@
       "customer_start_column": 9,
       "start_label": "右侧碰传感器（PAS_P）",
       "end_label": "侧碰传感器（PAS）安装公差",
-      "image_width_inches": 2
+      "image_width_inches": 3
     },
     {
       "key": "pas_cpillar_left",
@@ -34,7 +34,7 @@
       "customer_start_column": 9,
       "start_label": "左侧碰传感器（PAS_D）",
       "end_label": "右侧碰传感器（PAS_P）",
-      "image_width_inches": 2
+      "image_width_inches": 3
     },
     {
       "key": "pas_cpillar_right",
@@ -42,7 +42,7 @@
       "sheet_name": "C柱侧碰传感器（PAS_CPillar）",
       "customer_start_column": 9,
       "start_label": "右侧碰传感器（PAS_P）",
-      "image_width_inches": 2
+      "image_width_inches": 3
     },
     {
       "key": "pps_left",
@@ -51,7 +51,7 @@
       "customer_start_column": 9,
       "start_label": "左侧门压传感器(PPS_D)",
       "end_label": "右侧门压传感器（PPS_P）",
-      "image_width_inches": 2
+      "image_width_inches": 3
     },
     {
       "key": "pps_right",
@@ -60,7 +60,7 @@
       "customer_start_column": 9,
       "start_label": "右侧门压传感器（PPS_P）",
       "end_label": "门压传感器（PPS）于水线距离",
-      "image_width_inches": 2
+      "image_width_inches": 3
     }
   ]
 }
