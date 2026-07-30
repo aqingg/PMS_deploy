@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+# 本文件仅负责通过 Word COM 操作汽车底图和可编辑矩形 Shape。
+# 它消费布局模型数据，完成底图识别、Shape 创建、定位、保存和资源释放。
+
 import io
 import gc
 import json
@@ -11,7 +14,7 @@ from typing import Any
 
 from fastapi import HTTPException
 
-from services.tcd09.sensor_overview import build_sensor_layout_model
+from services.tcd09.sensor_layout_model import build_sensor_layout_model
 
 
 THIS_DIR = Path(__file__).resolve().parent
