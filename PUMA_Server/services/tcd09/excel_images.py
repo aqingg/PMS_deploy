@@ -49,7 +49,6 @@ def _load_json(path: str | Path, label: str) -> dict[str, Any]:
         ) from exc
     except OSError as exc:
         raise HTTPException(status_code=500, detail=f"Unable to read {label}: {json_path}") from exc
-
     if not isinstance(data, dict):
         raise HTTPException(status_code=500, detail=f"{label} root must be a JSON object.")
     return data
@@ -122,12 +121,12 @@ def _canonicalize_title(value: Any) -> str:
 
 def _find_label_cell(worksheet, label: str, customer_start_column: int) -> tuple[int, int]:
     expected = _canonicalize_title(label)
-    for row in worksheet.iter_rows():
-        for cell in row:
-            if int(cell.column) < customer_start_column:
+    for row_index, row in enumerate(worksheet.iter_rows(), start=1):
+        for column_index, cell in enumerate(row, start=1):
+            if column_index < customer_start_column:
                 continue
             if _canonicalize_title(cell.value) == expected:
-                return int(cell.row), int(cell.column)
+                return row_index, column_index
 
     raise HTTPException(
         status_code=400,
@@ -145,15 +144,15 @@ def _find_label_cell_after(
     """Find an exact label at or below ``min_row`` in the customer area."""
 
     expected = _canonicalize_title(label)
-    for row in worksheet.iter_rows(
+    for row_index, row in enumerate(worksheet.iter_rows(
         min_row=max(1, int(min_row)),
         max_row=int(worksheet.max_row),
         min_col=int(customer_start_column),
         max_col=int(worksheet.max_column),
-    ):
-        for cell in row:
+    ), start=max(1, int(min_row))):
+        for column_index, cell in enumerate(row, start=customer_start_column):
             if _canonicalize_title(cell.value) == expected:
-                return int(cell.row), int(cell.column)
+                return row_index, column_index
 
     raise HTTPException(
         status_code=400,
@@ -164,8 +163,8 @@ def _find_label_cell_after(
     )
 
 
-def _resolve_section_window(
-    xlsm_bytes: bytes,
+def _resolve_section_window_from_workbook(
+    workbook,
     *,
     sheet_name: str,
     start_label: str,
@@ -180,52 +179,72 @@ def _resolve_section_window(
     the end of the worksheet.
     """
 
-    workbook = load_workbook(io.BytesIO(xlsm_bytes), data_only=False, keep_vba=True)
     try:
-        try:
-            sheet = workbook[sheet_name]
-        except KeyError as exc:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Sheet not found in Excel template: {sheet_name}",
-            ) from exc
+        sheet = workbook[sheet_name]
+    except KeyError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Sheet not found in Excel template: {sheet_name}",
+        ) from exc
 
-        start_row, _ = _find_label_cell(
+    start_row, _ = _find_label_cell(sheet, start_label, customer_start_column)
+    normalized_end_label = str(end_label or "").strip()
+    if normalized_end_label:
+        end_row, _ = _find_label_cell_after(
             sheet,
-            start_label,
+            normalized_end_label,
             customer_start_column,
+            min_row=start_row + 1,
+        )
+    else:
+        end_row = int(sheet.max_row) + 1
+
+    if end_row <= start_row:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Invalid section window for sheet={sheet_name}. "
+                f"start_label={start_label!r}, end_label={normalized_end_label!r}, "
+                f"start_row={start_row}, end_row={end_row}"
+            ),
         )
 
-        normalized_end_label = str(end_label or "").strip()
-        if normalized_end_label:
-            end_row, _ = _find_label_cell_after(
-                sheet,
-                normalized_end_label,
-                customer_start_column,
-                min_row=start_row + 1,
-            )
-        else:
-            end_row = int(sheet.max_row) + 1
+    return {
+        "sheet_name": sheet_name,
+        "sheet_index": workbook.sheetnames.index(sheet_name) + 1,
+        "start_row": start_row,
+        "end_row": end_row,
+        "customer_start_column": customer_start_column,
+    }
 
-        if end_row <= start_row:
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    f"Invalid section window for sheet={sheet_name}. "
-                    f"start_label={start_label!r}, end_label={normalized_end_label!r}, "
-                    f"start_row={start_row}, end_row={end_row}"
-                ),
-            )
 
-        return {
-            "sheet_name": sheet_name,
-            "sheet_index": workbook.sheetnames.index(sheet_name) + 1,
-            "start_row": start_row,
-            "end_row": end_row,
-            "customer_start_column": customer_start_column,
-        }
+def _resolve_section_window(
+    xlsm_bytes: bytes,
+    *,
+    sheet_name: str,
+    start_label: str,
+    customer_start_column: int,
+    end_label: str | None = None,
+) -> dict[str, int | str]:
+    """Backward-compatible one-shot section resolver used by diagnostics."""
+
+    workbook = load_workbook(
+        io.BytesIO(xlsm_bytes),
+        data_only=False,
+        read_only=True,
+        keep_vba=False,
+    )
+    try:
+        return _resolve_section_window_from_workbook(
+            workbook,
+            sheet_name=sheet_name,
+            start_label=start_label,
+            customer_start_column=customer_start_column,
+            end_label=end_label,
+        )
     finally:
         workbook.close()
+
 
 def _is_supported_docx_image(image_path: Path) -> bool:
     try:
@@ -416,59 +435,80 @@ def insert_excel_section_images(
     document_stream.seek(0)
     document = docx.Document(document_stream)
 
-    with tempfile.TemporaryDirectory(prefix="puma_tcd09_images_") as temp_root:
-        temp_dir = Path(temp_root)
-        replaced_any = False
+    # Read only cell values here. This prevents OpenPyXL from loading all
+    # drawings and reporting every EMF as an unsupported WMF image.
+    workbook = load_workbook(
+        io.BytesIO(xlsm_bytes),
+        data_only=False,
+        read_only=True,
+        keep_vba=False,
+    )
+    try:
+        with tempfile.TemporaryDirectory(prefix="puma_tcd09_images_") as temp_root:
+            temp_dir = Path(temp_root)
+            replaced_any = False
+            materialized_images: dict[str, Path] = {}
 
-        for section in sections:
-            placeholder = str(section["placeholder"]).strip()
-            placeholder_paragraph = None
-            for paragraph in document.paragraphs:
-                if str(getattr(paragraph, "text", "")).strip() == placeholder:
-                    placeholder_paragraph = paragraph
-                    break
+            for section in sections:
+                placeholder = str(section["placeholder"]).strip()
+                placeholder_paragraph = None
+                for paragraph in document.paragraphs:
+                    if str(getattr(paragraph, "text", "")).strip() == placeholder:
+                        placeholder_paragraph = paragraph
+                        break
 
-            if placeholder_paragraph is None:
-                continue
+                if placeholder_paragraph is None:
+                    continue
 
-            sheet_name = str(section["sheet_name"]).strip()
-            end_label_value = section.get("end_label")
-            end_label = (
-                str(end_label_value).strip()
-                if isinstance(end_label_value, str) and end_label_value.strip()
-                else None
-            )
-            window = _resolve_section_window(
-                xlsm_bytes,
-                sheet_name=sheet_name,
-                start_label=str(section["start_label"]).strip(),
-                customer_start_column=int(section.get("customer_start_column", 9)),
-                end_label=end_label,
-            )
-            images = _iter_images_for_window(xlsm_bytes, window)
-            if not images:
-                continue
+                sheet_name = str(section["sheet_name"]).strip()
+                end_label_value = section.get("end_label")
+                end_label = (
+                    str(end_label_value).strip()
+                    if isinstance(end_label_value, str) and end_label_value.strip()
+                    else None
+                )
+                window = _resolve_section_window_from_workbook(
+                    workbook,
+                    sheet_name=sheet_name,
+                    start_label=str(section["start_label"]).strip(),
+                    customer_start_column=int(section.get("customer_start_column", 9)),
+                    end_label=end_label,
+                )
+                images = _iter_images_for_window(xlsm_bytes, window)
+                if not images:
+                    continue
 
-            placeholder_paragraph.clear()
-            max_image_width_inches = float(section.get("image_width_inches", 2.35))
-
-            for index, (_, _, media_name, raw_bytes) in enumerate(images):
-                image_path = _materialize_docx_image(raw_bytes, media_name, temp_dir)
-                image_width = _get_flow_image_width(
-                    image_path,
-                    max_width_inches=max_image_width_inches,
+                placeholder_paragraph.clear()
+                max_image_width_inches = float(
+                    section.get("image_width_inches", 2.35)
                 )
 
-                # Keep every picture as an inline object in the same paragraph.
-                # The regular spaces between pictures allow Word to wrap them
-                # naturally according to the remaining line width.
-                picture_run = placeholder_paragraph.add_run()
-                picture_run.add_picture(str(image_path), width=image_width)
+                for index, (_, _, media_name, raw_bytes) in enumerate(images):
+                    image_path = materialized_images.get(media_name)
+                    if image_path is None:
+                        image_path = _materialize_docx_image(
+                            raw_bytes,
+                            media_name,
+                            temp_dir,
+                        )
+                        materialized_images[media_name] = image_path
 
-                if index < len(images) - 1:
-                    placeholder_paragraph.add_run("  ")
+                    image_width = _get_flow_image_width(
+                        image_path,
+                        max_width_inches=max_image_width_inches,
+                    )
 
-            replaced_any = True
+                    # Keep every picture as an inline object in the same paragraph.
+                    # Spaces let Word wrap naturally according to remaining width.
+                    picture_run = placeholder_paragraph.add_run()
+                    picture_run.add_picture(str(image_path), width=image_width)
+
+                    if index < len(images) - 1:
+                        placeholder_paragraph.add_run("  ")
+
+                replaced_any = True
+    finally:
+        workbook.close()
 
     if not replaced_any:
         document_stream.seek(0)
