@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import io
 import json
+from datetime import datetime
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from models.database import get_db
@@ -17,6 +19,7 @@ from services.datamerge import (
 )
 from services.tcd09 import (
     insert_excel_section_images,
+    select_tcd09_files_by_path,
     select_tcd09_template_file,
     select_tcd09_ufs_excel_file,
     insert_tcd09_sensor_layout_shapes,
@@ -25,6 +28,11 @@ from services.tcd09.sensor_overview import fill_tcd09_sensor_type_rows
 
 
 router = APIRouter(prefix="/report", tags=["Report"])
+
+
+class TCD09PathReportRequest(BaseModel):
+    projectid: str = ""
+    template_paths: list[str] = Field(default_factory=list)
 
 
 def _to_int(value: Any) -> Optional[int]:
@@ -170,7 +178,46 @@ async def _build_tcd09_profile(
     ):
         profile["customer"] = str(profile.get("oem")).strip()
 
+    # TCD09 templates use this generated date instead of relying on a
+    # front-end field that may be absent from the saved project profile.
+    profile["report_date"] = datetime.now().strftime("%Y.%m.%d")
+
     return profile
+
+
+async def _generate_tcd09_report(
+    projectid: str,
+    content: bytes,
+    excel_content: bytes,
+    db: Session,
+):
+    profile = await _build_tcd09_profile(str(projectid or "").strip(), db)
+    filled_stream = insert_excel_section_images(io.BytesIO(content), excel_content)
+    filled_stream = fill_tcd09_sensor_type_rows(profile, filled_stream)
+    filled_stream = fill_docx_by_placeholders(
+        profile,
+        filled_stream,
+        include_email_placeholders=False,
+    )
+    # Word COM must run last. A later python-docx save may remove or alter
+    # editable Office Shapes.
+    return insert_tcd09_sensor_layout_shapes(profile, filled_stream)
+
+
+def _tcd09_response(filled_stream: io.BytesIO, expected_filename: str, projectid: str):
+    headers = {
+        "Content-Disposition": f'attachment; filename="{expected_filename}"',
+        "X-TCD09-Mode": "docx-images-sensor-overview-editable-layout",
+        "X-TCD09-ProjectId": str(projectid or ""),
+    }
+    return StreamingResponse(
+        filled_stream,
+        media_type=(
+            "application/vnd.openxmlformats-officedocument."
+            "wordprocessingml.document"
+        ),
+        headers=headers,
+    )
 
 
 @router.post("/fillTCD09Report")
@@ -214,41 +261,38 @@ async def fill_tcd09_report(
             detail="Uploaded TCD09 UFS Excel is empty.",
         )
 
-    profile = await _build_tcd09_profile(
-        str(projectid or "").strip(),
+    filled_stream = await _generate_tcd09_report(projectid, content, excel_content, db)
+    return _tcd09_response(filled_stream, expected_filename, projectid)
+
+
+@router.post("/fillTCD09ReportByPath")
+async def fill_tcd09_report_by_path(
+    request: TCD09PathReportRequest,
+    db: Session = Depends(get_db),
+):
+    """Generate TCD09 from Word/Excel files on the configured public share."""
+
+    template_path, excel_path, expected_filename = select_tcd09_files_by_path(
+        request.template_paths
+    )
+    try:
+        content = template_path.read_bytes()
+        excel_content = excel_path.read_bytes()
+    except OSError as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Unable to read TCD09 files from public share: {exc}",
+        ) from exc
+
+    if not content:
+        raise HTTPException(status_code=400, detail=f"TCD09 template is empty: {template_path}")
+    if not excel_content:
+        raise HTTPException(status_code=400, detail=f"TCD09 UFS Excel is empty: {excel_path}")
+
+    filled_stream = await _generate_tcd09_report(
+        request.projectid,
+        content,
+        excel_content,
         db,
     )
-
-    filled_stream = insert_excel_section_images(
-        io.BytesIO(content),
-        excel_content,
-    )
-    filled_stream = fill_tcd09_sensor_type_rows(
-        profile,
-        filled_stream,
-    )
-    filled_stream = fill_docx_by_placeholders(
-        profile,
-        filled_stream,
-        include_email_placeholders=False,
-    )
-    # Word COM must run last. A later python-docx save may remove or alter
-    # editable Office Shapes.
-    filled_stream = insert_tcd09_sensor_layout_shapes(
-        profile,
-        filled_stream,
-    )
-
-    headers = {
-        "Content-Disposition": f'attachment; filename="{expected_filename}"',
-        "X-TCD09-Mode": "docx-images-sensor-overview-editable-layout",
-        "X-TCD09-ProjectId": str(projectid or ""),
-    }
-    return StreamingResponse(
-        filled_stream,
-        media_type=(
-            "application/vnd.openxmlformats-officedocument."
-            "wordprocessingml.document"
-        ),
-        headers=headers,
-    )
+    return _tcd09_response(filled_stream, expected_filename, request.projectid)

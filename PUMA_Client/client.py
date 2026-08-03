@@ -290,12 +290,16 @@ DEFAULT_CALIBRATION_IDS = ["ACQ_CaliID", "VAL_CaliID"]
 # set PUMA_SERVER_TCD08_URL=http://127.0.0.1:8086/report/fillTCD08Report
 DEFAULT_SERVER_BASE_URL = os.environ.get(
     "PUMA_SERVER_BASE_URL",
-    "https://oss-dthub.apac.bosch.com/app-puma",
-     #"http://127.0.0.1:8086",
+    # "https://oss-dthub.apac.bosch.com/app-puma",
+     "http://127.0.0.1:8086",
 ).rstrip("/")
 DEFAULT_SERVER_TCD08_URL = os.environ.get(
     "PUMA_SERVER_TCD08_URL",
     f"{DEFAULT_SERVER_BASE_URL}/report/fillTCD08Report",
+)
+DEFAULT_SERVER_TCD09_URL = os.environ.get(
+    "PUMA_SERVER_TCD09_URL",
+    f"{DEFAULT_SERVER_BASE_URL}/report/fillTCD09ReportByPath",
 )
 
 # 默认启用新方案：Client 本地解析 email，只向 8086 发送 JSON 摘要。
@@ -500,6 +504,16 @@ def _save_json_report_payload(data: dict, output_dir: Path):
         saved_paths.append(str(save_path))
 
     return saved_paths
+
+
+def _post_json_to_report_server(url: str, payload: dict) -> requests.Response:
+    """Post a small JSON request without inheriting proxy settings for localhost."""
+    host = (urlparse(url).hostname or "").lower()
+    if host in {"127.0.0.1", "localhost"}:
+        session = requests.Session()
+        session.trust_env = False
+        return session.post(url, json=payload, verify=False, timeout=600)
+    return requests.post(url, json=payload, verify=False, timeout=600)
 
 
 # =================================================================================
@@ -1115,9 +1129,9 @@ OFFICE_FILE_EXTENSIONS = (
     ".docm",
     ".xls",
     ".xlsx",
+    ".xlsm",
     ".ppt",
     ".pptx",
-    ".xlsm"
 )
 
 
@@ -1542,6 +1556,61 @@ def client_fill_tcd08_report(payload: dict = Body(...)):
 
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Local TCD08 client failed: {exc}")
+
+
+@app.post("/report/fillTCD09Report")
+def client_fill_tcd09_report(payload: dict = Body(...)):
+    """Forward TCD09 public-share paths as JSON and save the generated Word locally."""
+    try:
+        projectid = str(payload.get("projectid") or "").strip()
+        template_paths = payload.get("template_paths")
+        save_path_raw = payload.get("save_path")
+        if not projectid:
+            raise HTTPException(status_code=400, detail="projectid is required")
+        if not isinstance(template_paths, list) or not template_paths:
+            raise HTTPException(status_code=400, detail="template_paths is required")
+        if not save_path_raw:
+            raise HTTPException(status_code=400, detail="save_path is required")
+
+        server_report_url = str(
+            payload.get("server_report_url") or DEFAULT_SERVER_TCD09_URL
+        ).strip()
+        if not server_report_url:
+            raise HTTPException(status_code=400, detail="server_report_url is required")
+
+        response = _post_json_to_report_server(
+            server_report_url,
+            {"projectid": projectid, "template_paths": template_paths},
+        )
+        if response.status_code < 200 or response.status_code >= 300:
+            detail = response.text[:2000] if response.text else response.reason
+            raise HTTPException(
+                status_code=response.status_code,
+                detail=f"8086 TCD09 report generation failed: {detail}",
+            )
+
+        output_dir = _norm_path(str(save_path_raw))
+        saved_path = _save_binary_response(
+            response,
+            output_dir,
+            fallback_name="TCD09_Report.docx",
+        )
+        return {
+            "success": True,
+            "message": "TCD09 report generated and saved by local client",
+            "saved_path": saved_path,
+            "output_dir": str(output_dir),
+            "transport_mode": "public_share_paths_json",
+        }
+    except HTTPException:
+        raise
+    except requests.exceptions.RequestException as exc:
+        raise HTTPException(status_code=502, detail=f"Unable to reach 8086 TCD09 service: {exc}") from exc
+    except Exception as exc:
+        import traceback
+
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Local TCD09 client failed: {exc}") from exc
 
 
 class OpenLinkRequest(BaseModel):

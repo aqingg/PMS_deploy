@@ -156,7 +156,7 @@
   },
 
  
-  "ONETCD&TCD09": {
+"ONETCD&TCD09": {
     "inputs": [
       { "label": "TCD09_Input" }
     ],
@@ -166,10 +166,10 @@
         "type": "httpWithParameter",
         "need_parameter": ["projectid"],
         "method": "POST",
-        "url": "http://127.0.0.1:7175/saveReport",
+        "url": "http://127.0.0.1:7175/report/fillTCD09Report",
         "body": {
           "projectid": "",
-          "url": "http://127.0.0.1:8086/report/fillTCD09Report",
+          "server_report_url": "http://127.0.0.1:8086/report/fillTCD09ReportByPath",
           "template_paths": [],
           "save_path": ""
         }
@@ -178,9 +178,8 @@
     "outputs": [
       { "label": "TCD09_Output" }
     ],
-    "description": "Copy the TCD09 template to the configured output folder without modification."
+    "description": "Generate the TCD09 report from configured public-share Word and Excel paths."
   },
-  
   "RTTF_Confirmation": {
     "inputs": [
       { "label": "Customer RTTF Standard (Template)" }
