@@ -16,8 +16,6 @@ from services.tcd09.sensor_parser import (
     pps_positions_from_count,
     three_position_set_from_count,
 )
-
-
 THIS_DIR = Path(__file__).resolve().parent
 SERVER_ROOT = THIS_DIR.parents[1]
 DEFAULT_SENSORMAP_RULES_PATH = SERVER_ROOT / "config" / "sensormap_sensor_rules.json"
@@ -85,11 +83,28 @@ def _pps_layout_slots(positions: set[str]) -> list[str]:
     return [mapping[position] for position in POSITION_ORDER["PPS"] if position in normalized]
 
 
+def _pts_layout_slots(count: int) -> list[str]:
+    """Convert PTS quantity into left/center/right drawing slots.
+
+    1 PTS -> center
+    2 PTS -> right and left
+    3+ PTS -> right, center and left
+    """
+
+    normalized_count = max(1, int(count or 1))
+    if normalized_count == 1:
+        return ["PTS_C"]
+    if normalized_count == 2:
+        return ["PTS_R", "PTS_L"]
+    return ["PTS_R", "PTS_C", "PTS_L"]
+
+
 def _layout_text(display_name: str, slot: str) -> str:
     suffixes = {
         "UFS_L": "L", "UFS_C": "C", "UFS_R": "R",
         "RCS_L": "L", "RCS_C": "C", "RCS_R": "R",
         "PCS_L": "L", "PCS_C": "C", "PCS_R": "R",
+        "PTS_L": "L", "PTS_C": "C", "PTS_R": "R",
         "PAS_B_L": "B-L", "PAS_B_R": "B-R",
         "PAS_C_L": "C-L", "PAS_C_R": "C-R",
         "PPS_FRONT_L": "F-L", "PPS_FRONT_R": "F-R",
@@ -155,7 +170,9 @@ def build_sensor_layout_model(
                 positions = pps_positions_from_count(default_count(entry, rules, fallback=2))
             slots = _pps_layout_slots(positions)
         elif family == "PTS":
-            slots = ["PTS_C"]
+            slots = _pts_layout_slots(
+                default_count(entry, rules, fallback=1)
+            )
         else:
             slots = []
 
