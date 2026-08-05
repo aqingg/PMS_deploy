@@ -41,6 +41,9 @@ router = APIRouter(
     tags=["Project API"]
 )
 
+CONFIGURED_STORAGE_TYPES = {"local", "public"}
+REQUEST_STORAGE_TYPES = CONFIGURED_STORAGE_TYPES | {"cloud"}
+
 # ===============================================================
 # GET /project/getProject
 # ===============================================================
@@ -414,10 +417,46 @@ def get_path_mapping(label: str):
             # ⭐ 返回结构统一
             return {
                 "relative": item.get("RelativePath"),
-                "absolute": item.get("AbsolutePath")
+                "absolute": item.get("AbsolutePath"),
+                "storage_type": item.get("StorageType"),
             }
 
     return None
+
+
+def resolve_storage_type(label: str, configured_value, requested_type: str | None) -> str:
+    """Resolve a relative mapping root from configuration, request, then local."""
+    if configured_value is not None and str(configured_value).strip():
+        if not isinstance(configured_value, str):
+            raise HTTPException(
+                status_code=500,
+                detail=(
+                    f"Invalid StorageType for label={label!r}: expected 'local' or "
+                    f"'public', got {configured_value!r}"
+                ),
+            )
+
+        configured_type = configured_value.strip().lower()
+        if configured_type not in CONFIGURED_STORAGE_TYPES:
+            raise HTTPException(
+                status_code=500,
+                detail=(
+                    f"Invalid StorageType for label={label!r}: expected 'local' or "
+                    f"'public', got {configured_value!r}"
+                ),
+            )
+        return configured_type
+
+    fallback_type = str(requested_type or "").strip().lower() or "local"
+    if fallback_type not in REQUEST_STORAGE_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Invalid requested path type for label={label!r}: expected one of "
+                f"{sorted(REQUEST_STORAGE_TYPES)}, got {requested_type!r}"
+            ),
+        )
+    return fallback_type
 
 
 def find_level1_parent_name(taskTree, targetTaskId):
@@ -454,7 +493,7 @@ def get_path(
     projectId: int,
     username: str,
     department: str,
-    type: str,
+    type: str = "",
     db: Session = Depends(get_db)
 ):
     project = db.query(Project).filter(Project.id == projectId).first()
@@ -479,6 +518,11 @@ def get_path(
 
     absolute_path = mapping.get("absolute")
     relative = mapping.get("relative")
+    storage_type = resolve_storage_type(
+        label,
+        mapping.get("storage_type"),
+        type,
+    )
 
     # ============================================================
     # ⭐ 2. absolutePath 优先逻辑
@@ -507,7 +551,8 @@ def get_path(
         return {
             "success": True,
             "root": "(absolute)",
-            "path": final_path
+            "path": final_path,
+            "storage_type": "absolute",
         }
 
     # ============================================================
@@ -517,9 +562,20 @@ def get_path(
         raise HTTPException(status_code=400, detail=f"No RelativePath found for label={label}")
 
     root_paths = extract_root_paths(projectInfo)
-    root = root_paths.get(type)
+    root = root_paths.get(storage_type)
     if not root:
-        raise HTTPException(status_code=400, detail=f"No root path for type={type}")
+        root_label = {
+            "local": "Local Link",
+            "public": "Public Link",
+            "cloud": "SharePoint",
+        }.get(storage_type, storage_type)
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Project does not define {root_label} required by "
+                f"label={label!r}, storage_type={storage_type!r}"
+            ),
+        )
 
     # -------------------- Relative AlgoID Logic --------------------
     if "AlgoID" in relative:
@@ -552,7 +608,7 @@ def get_path(
         relative = relative.replace("ProjectID_Parameter_ID", p1)
 
     # -------------------- Final Path Combination --------------------
-    if type == "cloud":
+    if storage_type == "cloud":
         final_path = root.rstrip("/") + "/" + relative.lstrip("\\/")
     else:
         final_path = root.rstrip("\\") + "\\" + relative.lstrip("\\")
@@ -560,7 +616,8 @@ def get_path(
     return {
         "success": True,
         "root": root,
-        "path": final_path
+        "path": final_path,
+        "storage_type": storage_type,
     }
 
 

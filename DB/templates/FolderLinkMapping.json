@@ -27,17 +27,20 @@
   {
     "TagName": "Algo Tasks",
     "FileKeyWord": "AlgoTasks.json",
-    "RelativePath": "\\40.Application\\B.Algo\\AlgoID"
+    "RelativePath": "\\40.Application\\B.Algo\\AlgoID",
+    "StorageType": "local"
   },
   {
     "TagName": "Official DLL",
     "FileKeyWord": ".xml",
-    "RelativePath": "\\40.Application\\B.Algo\\AlgoID\\00_DesignXml"
+    "RelativePath": "\\40.Application\\B.Algo\\AlgoID\\00_DesignXml",
+    "StorageType": "local"
   },
   {
     "TagName": "ARTS & ARTR",
     "FileKeyWord": "ARTS_ARTR.json",
-    "RelativePath": "\\40.Application\\B.Algo\\AlgoID"
+    "RelativePath": "\\40.Application\\B.Algo\\AlgoID",
+    "StorageType": "local"
   },
   {
     "TagName": "Mounting Picture (Template)",
@@ -54,12 +57,14 @@
   {
     "TagName": "Mounting Picture From Customer",
     "FileKeyWord": "",
-    "RelativePath": "\\40.Application\\A.Vehicle_integration\\01_Packaging"
+    "RelativePath": "\\40.Application\\A.Vehicle_integration\\01_Packaging",
+    "StorageType": "local"
   },
   {
     "TagName": "Hammer Test Report",
     "FileKeyWord": "",
-    "RelativePath": "\\40.Application\\A.Vehicle_integration\\05_Modal_analysis"
+    "RelativePath": "\\40.Application\\A.Vehicle_integration\\05_Modal_analysis",
+    "StorageType": "local"
   },
   {
     "TagName": "Mounting Assessment Excel (Template)",
@@ -70,37 +75,44 @@
   {
     "TagName": "Mounting Assessment Mail (CS)",
     "FileKeyWord": "Sensor_Map",
-    "RelativePath": "\\40.Application\\A.Vehicle_integration\\01_Packaging"
+    "RelativePath": "\\40.Application\\A.Vehicle_integration\\01_Packaging",
+    "StorageType": "local"
   },
   {
     "TagName": "Mounting Assessment Excel (PS)",
     "FileKeyWord": "Sensor_Map",
-    "RelativePath": "\\40.Application\\A.Vehicle_integration\\01_Packaging"
+    "RelativePath": "\\40.Application\\A.Vehicle_integration\\01_Packaging",
+    "StorageType": "local"
   },
   {
     "TagName": "Mounting Assessment Report (CS)",
     "FileKeyWord": "Sensor_Map",
-    "RelativePath": "\\40.Application\\A.Vehicle_integration\\01_Packaging"
+    "RelativePath": "\\40.Application\\A.Vehicle_integration\\01_Packaging",
+    "StorageType": "local"
   },
   {
     "TagName": "Mounting Assessment Report (PS)",
     "FileKeyWord": "Sensor_Map",
-    "RelativePath": "\\40.Application\\A.Vehicle_integration\\01_Packaging"
+    "RelativePath": "\\40.Application\\A.Vehicle_integration\\01_Packaging",
+    "StorageType": "local"
   },
   {
     "TagName": "Sensor Map",
     "FileKeyWord": "",
-    "RelativePath": "\\40.Application\\A.Vehicle_integration\\03_Sensor_map"
+    "RelativePath": "\\40.Application\\A.Vehicle_integration\\03_Sensor_map",
+    "StorageType": "public"
   },
   {
     "TagName": "Sensor Map Mail",
     "FileKeyWord": "",
-    "RelativePath": "\\40.Application\\A.Vehicle_integration\\03_Sensor_map"
+    "RelativePath": "\\40.Application\\A.Vehicle_integration\\03_Sensor_map",
+    "StorageType": "public"
   },
   {
     "TagName": "Mounting&Function Checklist Mail",
     "FileKeyWord": "",
-    "RelativePath": "\\40.Application\\A.Vehicle_integration\\04_Mounting_checklist"
+    "RelativePath": "\\40.Application\\A.Vehicle_integration\\04_Mounting_checklist",
+    "StorageType": "local"
   },
   {
     "TagName": "IAR_Template",
@@ -111,7 +123,8 @@
   {
     "TagName": "IAR_Report",
     "FileKeyWord": "",
-    "RelativePath": "\\40.Application\\A.Vehicle_integration\\06_TCU_No_9_Sens_dir"
+    "RelativePath": "\\40.Application\\A.Vehicle_integration\\06_TCU_No_9_Sens_dir",
+    "StorageType": "public"
   },
   {
     "TagName": "TCD09_Input",
@@ -130,7 +143,8 @@
   {
     "TagName": "TCD09_Output",
     "FileKeyWord": "",
-    "RelativePath": "\\40.Application\\A.Vehicle_integration"
+    "RelativePath": "\\40.Application\\A.Vehicle_integration",
+    "StorageType": "local"
   },
   {
     "TagName": "Customer RTTF Standard (Template)",
@@ -141,12 +155,14 @@
   {
     "TagName": "Draft Customer RTTF Mail",
     "FileKeyWord": "",
-    "RelativePath": "\\40.Application\\C.Calibration\\ProjectID_Parameter_ID\\03_Results\\RTTF_Confirmation"
+    "RelativePath": "\\40.Application\\C.Calibration\\ProjectID_Parameter_ID\\03_Results\\RTTF_Confirmation",
+    "StorageType": "local"
   },
   {
     "TagName": "RTTF Macro",
     "FileKeyWord": "",
-    "RelativePath": "\\40.Application\\C.Calibration\\ProjectID_Parameter_ID\\03_Results\\RTTF_Confirmation"
+    "RelativePath": "\\40.Application\\C.Calibration\\ProjectID_Parameter_ID\\03_Results\\RTTF_Confirmation",
+    "StorageType": "local"
   },
   {
     "TagName": "ARS Calibration (Doors link)",
@@ -166,7 +182,8 @@
   {
     "TagName": "BBMReview ARS_Calibration",
     "FileKeyWord": "",
-    "RelativePath": "\\40.Application\\C.Calibration\\ProjectID_Parameter_ID\\06_Official_Release\\BBMReview"
+    "RelativePath": "\\40.Application\\C.Calibration\\ProjectID_Parameter_ID\\06_Official_Release\\BBMReview",
+    "StorageType": "local"
   },
   {
     "TagName": "Click to open Online data handling tool",
@@ -182,7 +199,8 @@
   {
     "TagName": "BBMReview handled crash data",
     "FileKeyWord": "",
-    "RelativePath": "\\40.Application\\C.Calibration\\ProjectID_Parameter_ID\\06_Official_Release\\BBMReview"
+    "RelativePath": "\\40.Application\\C.Calibration\\ProjectID_Parameter_ID\\06_Official_Release\\BBMReview",
+    "StorageType": "local"
   },
   {
     "TagName": "MDS_SetupChecklist (Template)",
@@ -203,12 +221,14 @@
   {
     "TagName": "MDS_SetupChecklist (Report)",
     "FileKeyWord": "",
-    "RelativePath": "\\40.Application\\C.Calibration\\ProjectID_Parameter_ID\\01_MDS"
+    "RelativePath": "\\40.Application\\C.Calibration\\ProjectID_Parameter_ID\\01_MDS",
+    "StorageType": "local"
   },
   {
     "TagName": "Mapping Assignment (Report)",
     "FileKeyWord": "",
-    "RelativePath": "\\40.Application\\C.Calibration\\ProjectID_Parameter_ID\\01_MDS"
+    "RelativePath": "\\40.Application\\C.Calibration\\ProjectID_Parameter_ID\\01_MDS",
+    "StorageType": "local"
   },
   {
     "TagName": "Base .ALG",
@@ -218,12 +238,14 @@
   {
     "TagName": "Draft .ALG",
     "FileKeyWord": "",
-    "RelativePath": "\\40.Application\\C.Calibration\\ProjectID_Parameter_ID\\02_Parameter"
+    "RelativePath": "\\40.Application\\C.Calibration\\ProjectID_Parameter_ID\\02_Parameter",
+    "StorageType": "local"
   },
   {
     "TagName": "OrCa Database",
     "FileKeyWord": "",
-    "RelativePath": "\\40.Application\\C.Calibration\\ProjectID_Parameter_ID\\02_Parameter\\OrCa_Database"
+    "RelativePath": "\\40.Application\\C.Calibration\\ProjectID_Parameter_ID\\02_Parameter\\OrCa_Database",
+    "StorageType": "local"
   },
   {
     "TagName": "SimjobStar config file",
@@ -254,22 +276,26 @@
   {
     "TagName": "Customer simulation result",
     "FileKeyWord": "",
-    "RelativePath": "\\40.Application\\C.Calibration\\ProjectID_Parameter_ID\\03_Results"
+    "RelativePath": "\\40.Application\\C.Calibration\\ProjectID_Parameter_ID\\03_Results",
+    "StorageType": "local"
   },
   {
     "TagName": "Checker (Report)",
     "FileKeyWord": "",
-    "RelativePath": "\\40.Application\\C.Calibration\\ProjectID_Parameter_ID\\04_Internal_Release\\Checker"
+    "RelativePath": "\\40.Application\\C.Calibration\\ProjectID_Parameter_ID\\04_Internal_Release\\Checker",
+    "StorageType": "local"
   },
   {
     "TagName": "Walkthrough (Report)",
     "FileKeyWord": "",
-    "RelativePath": "\\40.Application\\C.Calibration\\ProjectID_Parameter_ID\\04_Internal_Release\\Walkthrough"
+    "RelativePath": "\\40.Application\\C.Calibration\\ProjectID_Parameter_ID\\04_Internal_Release\\Walkthrough",
+    "StorageType": "local"
   },
   {
     "TagName": "CcaRoT (Report)",
     "FileKeyWord": "",
-    "RelativePath": "\\40.Application\\C.Calibration\\ProjectID_Parameter_ID\\04_Internal_Release\\CCaRoT"
+    "RelativePath": "\\40.Application\\C.Calibration\\ProjectID_Parameter_ID\\04_Internal_Release\\CCaRoT",
+    "StorageType": "local"
   },
   {
     "TagName": "Official .ALG",
@@ -290,13 +316,15 @@
   {
     "TagName": "Official Simulation Results",
     "FileKeyWord": "",
-    "RelativePath": "\\40.Application\\C.Calibration\\ProjectID_Parameter_ID\\03_Results\\Official_Simulation"
+    "RelativePath": "\\40.Application\\C.Calibration\\ProjectID_Parameter_ID\\03_Results\\Official_Simulation",
+    "StorageType": "local"
   },
 
   {
     "TagName": "Customer approval E-mail(draft) ",
     "FileKeyWord": "",
-    "RelativePath": "\\40.Application\\C.Calibration\\ProjectID_Parameter_ID\\06_Official_Release\\Customer_Approval_Email"
+    "RelativePath": "\\40.Application\\C.Calibration\\ProjectID_Parameter_ID\\06_Official_Release\\Customer_Approval_Email",
+    "StorageType": "local"
   },
   {
     "TagName": "Customer_Approval_Email",
@@ -331,12 +359,14 @@
   {
     "TagName": "Calibration CheckPoint",
     "FileKeyWord": "",
-    "RelativePath": "\\40.Application\\C.Calibration\\ProjectID_Parameter_ID\\06_Official_Release"
+    "RelativePath": "\\40.Application\\C.Calibration\\ProjectID_Parameter_ID\\06_Official_Release",
+    "StorageType": "local"
   },
   {
     "TagName": "Test Inputs",
     "FileKeyWord": "",
-    "RelativePath": "\\40.Application\\C.Calibration\\ProjectID_Parameter_ID\\05_Test_Input"
+    "RelativePath": "\\40.Application\\C.Calibration\\ProjectID_Parameter_ID\\05_Test_Input",
+    "StorageType": "local"
   },
   {
     "TagName": "ARS_Cal report (doors link)",
@@ -372,7 +402,8 @@
   {
     "TagName": "VAR report",
     "FileKeyWord": "",
-    "RelativePath": "\\40.Application\\C.Calibration\\ProjectID_Parameter_ID\\06_Official_Release\\ARTR_VAR"
+    "RelativePath": "\\40.Application\\C.Calibration\\ProjectID_Parameter_ID\\06_Official_Release\\ARTR_VAR",
+    "StorageType": "local"
   },
   {
     "TagName": "ONETCD&TCD08_Template",
@@ -383,6 +414,7 @@
   {
     "TagName": "ONETCD&TCD08_Report",
     "FileKeyWord": "",
-    "RelativePath": "\\40.Application\\C.Calibration\\ProjectID_Parameter_ID\\06_Official_Release\\TCD08_Report"
+    "RelativePath": "\\40.Application\\C.Calibration\\ProjectID_Parameter_ID\\06_Official_Release\\TCD08_Report",
+    "StorageType": "local"
   }
 ]
