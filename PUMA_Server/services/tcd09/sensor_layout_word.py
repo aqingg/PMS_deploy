@@ -1,11 +1,11 @@
 from __future__ import annotations
-
 # 本文件仅负责通过 Word COM 操作汽车底图和可编辑矩形 Shape。
-# 它消费布局模型数据，完成底图识别、Shape 创建、定位、保存和资源释放。
+# 它消费布局模型数据，完成底图识别、Shape 创建、定位、目录更新、保存和资源释放。
 
 import io
 import gc
 import json
+import logging
 import shutil
 import tempfile
 import threading
@@ -22,7 +22,6 @@ SERVER_ROOT = THIS_DIR.parents[1]
 DEFAULT_LAYOUT_RULES_PATH = (
     SERVER_ROOT / "config" / "tcd09_sensor_layout_rules.json"
 )
-
 # Word / Office constants. Numeric constants avoid generated COM wrappers.
 WD_ALERTS_NONE = 0
 WD_DO_NOT_SAVE_CHANGES = 0
@@ -37,6 +36,7 @@ MSO_TRUE = -1
 MSO_FALSE = 0
 MSO_AUTOMATION_SECURITY_FORCE_DISABLE = 3
 
+logger = logging.getLogger("uvicorn.error")
 _WORD_COM_LOCK = threading.RLock()
 
 
@@ -54,7 +54,6 @@ def _load_rules(path: str | Path) -> dict[str, Any]:
             status_code=500,
             detail=f"Invalid TCD09 sensor layout rules: {rules_path}: {exc}",
         ) from exc
-
     if not isinstance(data, dict):
         raise HTTPException(
             status_code=500,
@@ -104,7 +103,6 @@ def _find_base_picture(document, alt_text: str):
     for shape in document.Shapes:
         if _safe_text(getattr(shape, "AlternativeText", "")) == alt_text:
             floating_matches.append(shape)
-
     if len(floating_matches) > 1:
         raise HTTPException(
             status_code=400,
@@ -126,12 +124,10 @@ def _find_base_picture(document, alt_text: str):
                 ),
             )
         return base
-
     inline_matches = []
     for inline_shape in document.InlineShapes:
         if _safe_text(getattr(inline_shape, "AlternativeText", "")) == alt_text:
             inline_matches.append(inline_shape)
-
     if inline_matches:
         raise HTTPException(
             status_code=400,
@@ -141,7 +137,6 @@ def _find_base_picture(document, alt_text: str):
                 "fix its page position, and run TCD09 again."
             ),
         )
-
     raise HTTPException(
         status_code=400,
         detail=(
@@ -164,7 +159,6 @@ def _delete_old_generated_shapes(document, prefix: str) -> int:
 def _apply_text_style(shape, text: str, rules: dict[str, Any]) -> None:
     font_rule = rules.get("font", {})
     default_rule = rules.get("default_shape", {})
-
     text_frame = shape.TextFrame
     text_frame.AutoSize = MSO_FALSE
     text_frame.WordWrap = MSO_TRUE
@@ -178,7 +172,6 @@ def _apply_text_style(shape, text: str, rules: dict[str, Any]) -> None:
         text_frame.VerticalAnchor = MSO_ANCHOR_MIDDLE
     except Exception:
         pass
-
     text_range = text_frame.TextRange
     text_range.Text = text
     text_range.ParagraphFormat.Alignment = WD_ALIGN_PARAGRAPH_CENTER
@@ -201,14 +194,12 @@ def _create_label_shape(
     base_top = float(base.Top)
     base_width = float(base.Width)
     base_height = float(base.Height)
-
     shape_width = base_width * float(slot_rule["width"])
     shape_height = base_height * float(slot_rule["height"])
     center_x = base_left + base_width * float(slot_rule["x"])
     center_y = base_top + base_height * float(slot_rule["y"])
     shape_left = center_x - shape_width / 2.0
     shape_top = center_y - shape_height / 2.0
-
     anchor = base.Anchor.Duplicate
     shape = document.Shapes.AddShape(
         MSO_SHAPE_RECTANGLE,
@@ -224,7 +215,6 @@ def _create_label_shape(
     shape.RelativeVerticalPosition = base.RelativeVerticalPosition
     shape.Left = shape_left
     shape.Top = shape_top
-
     prefix = str(rules.get("generated_shape_prefix") or "TCD09_SENSOR_")
     shape.Name = f"{prefix}{slot_name}_LABEL"
     shape.AlternativeText = f"TCD09 editable sensor label: {slot_name}"
@@ -236,7 +226,6 @@ def _create_label_shape(
         shape.LayoutInCell = base.LayoutInCell
     except Exception:
         pass
-
     default_rule = rules.get("default_shape", {})
     shape.Fill.Visible = MSO_TRUE
     shape.Fill.ForeColor.RGB = _rgb(slot_rule.get("fill_rgb", [220, 220, 220]))
@@ -259,7 +248,6 @@ def _create_label_shape(
             default_rule.get("line_weight_pt", 1.0),
         )
     )
-
     shape.WrapFormat.Type = WD_WRAP_FRONT
     try:
         shape.WrapFormat.AllowOverlap = MSO_TRUE
@@ -271,7 +259,6 @@ def _create_label_shape(
     shape.Rotation = float(slot_rule.get("rotation", 0.0))
     shape.ZOrder(MSO_BRING_TO_FRONT)
     return shape
-
 
 
 def _normalized_rotation(slot_rule: dict[str, Any]) -> int:
@@ -288,7 +275,6 @@ def _visual_label_box(
     base_top = float(base.Top)
     base_width = float(base.Width)
     base_height = float(base.Height)
-
     raw_width = base_width * float(slot_rule["width"])
     raw_height = base_height * float(slot_rule["height"])
     center_x = base_left + base_width * float(slot_rule["x"])
@@ -299,7 +285,6 @@ def _visual_label_box(
         visual_width, visual_height = raw_height, raw_width
     else:
         visual_width, visual_height = raw_width, raw_height
-
     return (
         center_x - visual_width / 2.0,
         center_y - visual_height / 2.0,
@@ -318,7 +303,6 @@ def _resolve_marker_side(
             status_code=500,
             detail="TCD09 layout slot is missing marker configuration.",
         )
-
     expected_type = str(marker_rule.get("type") or "").strip().casefold()
     actual_type = str(marker.get("type") or "").strip().casefold()
     if expected_type and actual_type != expected_type:
@@ -329,7 +313,6 @@ def _resolve_marker_side(
                 f"expected {expected_type}, got {actual_type or 'empty'}."
             ),
         )
-
     fixed_side = str(marker_rule.get("fixed_side") or "").strip().casefold()
     if fixed_side:
         side = fixed_side
@@ -342,7 +325,6 @@ def _resolve_marker_side(
                 detail="TCD09 marker configuration has no direction_sides.",
             )
         side = str(direction_sides.get(state) or "").strip().casefold()
-
     if side not in {"left", "right", "top", "bottom"}:
         raise HTTPException(
             status_code=500,
@@ -358,7 +340,6 @@ def _marker_geometry(
     side: str,
 ) -> tuple[float, float, float, float]:
     """Attach the marker to one edge of the visible label box.
-
     This deliberately avoids one global dx/dy. Each slot declares which edge
     is physically outward, and the marker is calculated from that label's
     actual displayed width and height.
@@ -372,7 +353,6 @@ def _marker_geometry(
     length_ratio = float(marker_style.get("length_ratio", 0.45))
     thickness_ratio = float(marker_style.get("thickness_ratio", 0.12))
     gap_ratio = float(marker_style.get("gap_ratio", 0.0))
-
     if side in {"left", "right"}:
         marker_width = max(2.0, label_width * thickness_ratio)
         marker_height = max(4.0, label_height * length_ratio)
@@ -393,7 +373,6 @@ def _marker_geometry(
             if side == "top"
             else label_top + label_height + gap
         )
-
     return marker_left, marker_top, marker_width, marker_height
 
 
@@ -413,7 +392,6 @@ def _create_marker_shape(
             status_code=500,
             detail='TCD09 layout rules must define "marker_styles".',
         )
-
     marker_style = marker_styles.get(marker_type)
     if not isinstance(marker_style, dict):
         raise HTTPException(
@@ -428,7 +406,6 @@ def _create_marker_shape(
         marker_style,
         side,
     )
-
     anchor = base.Anchor.Duplicate
     shape = document.Shapes.AddShape(
         MSO_SHAPE_RECTANGLE,
@@ -442,7 +419,6 @@ def _create_marker_shape(
     shape.RelativeVerticalPosition = base.RelativeVerticalPosition
     shape.Left = left
     shape.Top = top
-
     prefix = str(rules.get("generated_shape_prefix") or "TCD09_SENSOR_")
     suffix = "CONNECTOR" if marker_type == "connector" else "LOCATOR"
     shape.Name = f"{prefix}{slot_name}_{suffix}"
@@ -457,7 +433,6 @@ def _create_marker_shape(
         shape.LayoutInCell = base.LayoutInCell
     except Exception:
         pass
-
     shape.Fill.Visible = MSO_TRUE
     shape.Fill.ForeColor.RGB = _rgb(
         marker_style.get(
@@ -466,7 +441,6 @@ def _create_marker_shape(
         )
     )
     shape.Fill.Transparency = float(marker_style.get("fill_transparency", 0.0))
-
     line_weight = float(marker_style.get("line_weight_pt", 0.0))
     if line_weight <= 0:
         shape.Line.Visible = MSO_FALSE
@@ -487,23 +461,42 @@ def _create_marker_shape(
     return shape
 
 
+def _refresh_document_toc(document) -> int:
+    """Refresh page layout, all fields and every TOC in the open Word document.
+
+    This mirrors the TCD08 ``mode="full"`` sequence, but reuses the Word
+    instance that TCD09 already opened for editable sensor Shapes.
+    """
+
+    toc_count = int(document.TablesOfContents.Count)
+    if toc_count <= 0:
+        return 0
+
+    document.Repaginate()
+    for field in document.Fields:
+        field.Update()
+    for toc in document.TablesOfContents:
+        toc.Update()
+    return toc_count
+
+
 def insert_tcd09_sensor_layout_shapes(
     profile: dict[str, Any],
     source: str | Path | io.BytesIO,
     *,
     rules_path: str | Path = DEFAULT_LAYOUT_RULES_PATH,
 ) -> io.BytesIO:
-    """Add independent, editable Word Shapes over the marked car picture.
+    """Add editable Word Shapes and refresh the existing TOC.
 
     This function must be the last Word-processing step because later
-    python-docx saves can discard or alter Office drawing objects.
+    python-docx saves can discard or alter Office drawing objects. TCD09 TOC
+    refresh is performed in the same Word COM session after all labels and
+    markers are created and immediately before SaveAs2.
     """
-
     rules = _load_rules(rules_path)
     model = build_sensor_layout_model(profile)
     labels = model.get("labels", [])
     slots = rules["slots"]
-
     unknown_slots = [
         str(item.get("slot") or "")
         for item in labels
@@ -517,7 +510,6 @@ def insert_tcd09_sensor_layout_shapes(
                 + ", ".join(sorted(set(unknown_slots)))
             ),
         )
-
     try:
         import pythoncom
         import win32com.client
@@ -531,7 +523,6 @@ def insert_tcd09_sensor_layout_shapes(
         ) from exc
 
     content = _stream_bytes(source)
-
     with _WORD_COM_LOCK:
         temp_root = Path(tempfile.mkdtemp(prefix="puma_tcd09_layout_"))
         input_path = temp_root / "input.docx"
@@ -543,7 +534,6 @@ def insert_tcd09_sensor_layout_shapes(
         document = None
         try:
             input_path.write_bytes(content)
-
             word = win32com.client.DispatchEx("Word.Application")
             word.Visible = False
             word.DisplayAlerts = WD_ALERTS_NONE
@@ -552,7 +542,6 @@ def insert_tcd09_sensor_layout_shapes(
                 word.AutomationSecurity = MSO_AUTOMATION_SECURITY_FORCE_DISABLE
             except Exception:
                 pass
-
             document = word.Documents.Open(
                 str(input_path.resolve()),
                 ReadOnly=False,
@@ -564,7 +553,6 @@ def insert_tcd09_sensor_layout_shapes(
                 document,
                 str(rules.get("base_image_alt_text") or "").strip(),
             )
-
             prefix = str(
                 rules.get("generated_shape_prefix")
                 or "TCD09_SENSOR_"
@@ -576,7 +564,6 @@ def insert_tcd09_sensor_layout_shapes(
                 text = str(item.get("text") or "").strip()
                 if not text:
                     continue
-
                 slot_rule = slots[slot_name]
                 _create_label_shape(
                     document,
@@ -586,7 +573,6 @@ def insert_tcd09_sensor_layout_shapes(
                     slot_rule=slot_rule,
                     rules=rules,
                 )
-
                 marker = item.get("marker")
                 if isinstance(marker, dict):
                     _create_marker_shape(
@@ -598,6 +584,24 @@ def insert_tcd09_sensor_layout_shapes(
                         rules=rules,
                     )
 
+            # TCD08's full TOC mode performs Repaginate -> Fields.Update ->
+            # TablesOfContents.Update. TCD09 does the same here, while the
+            # document is already open in Word for editable Shape generation.
+            try:
+                toc_count = _refresh_document_toc(document)
+                logger.info(
+                    "[TCD09] Refreshed %s Word table(s) of contents.",
+                    toc_count,
+                )
+            except Exception as exc:
+                # Match TCD08 behavior: TOC failure is a warning and must not
+                # discard an otherwise valid generated report.
+                logger.warning(
+                    "[TCD09] TOC refresh failed but report generation continues. error=%s",
+                    exc,
+                    exc_info=True,
+                )
+
             document.SaveAs2(
                 str(output_path.resolve()),
                 FileFormat=WD_FORMAT_DOCUMENT_DEFAULT,
@@ -606,7 +610,6 @@ def insert_tcd09_sensor_layout_shapes(
 
             result = io.BytesIO(output_path.read_bytes())
             result.seek(0)
-
         except HTTPException:
             raise
         except Exception as exc:
@@ -632,7 +635,6 @@ def insert_tcd09_sensor_layout_shapes(
             gc.collect()
             pythoncom.CoUninitialize()
             gc.collect()
-
             # Cleanup must never replace a successfully generated report with
             # WinError 32. Word can release its final file handle shortly after
             # Quit returns, especially when this runs inside the API process.

@@ -19,6 +19,7 @@ from services.datamerge import (
 )
 from services.tcd09 import (
     insert_excel_section_images,
+    remove_tcd09_template_instructions,
     select_tcd09_files_by_path,
     select_tcd09_template_file,
     select_tcd09_ufs_excel_file,
@@ -199,6 +200,7 @@ async def _generate_tcd09_report(
         filled_stream,
         include_email_placeholders=False,
     )
+    filled_stream = remove_tcd09_template_instructions(filled_stream)
     # Word COM must run last. A later python-docx save may remove or alter
     # editable Office Shapes.
     return insert_tcd09_sensor_layout_shapes(profile, filled_stream)
@@ -232,7 +234,8 @@ async def fill_tcd09_report(
     1. Insert configured Excel images.
     2. Expand and fill Sensor Overview rows.
     3. Fill the remaining ordinary PMS text placeholders.
-    4. Add independent editable Word sensor-label Shapes.
+    4. Remove TCD09 template editing instructions.
+    5. Add independent editable Word sensor-label Shapes and refresh the TOC.
     """
 
     selected_file, expected_filename = select_tcd09_template_file(files)

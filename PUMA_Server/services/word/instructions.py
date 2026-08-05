@@ -40,7 +40,7 @@ DEFAULT_TEMPLATE_INSTRUCTIONS = [
     "The red text identifies template-text and hints and should be adapted for customer specific report. Not changed text should be color changed (if values and text are applicable) or removed (if not necessary or not applicable) ",
     "The blue text identifies hints for the use of a report in Acquisition-Phase and should be adapted for customer specific reports. Not changed text should be color changed (if values and text are applicable) or removed (if not necessary or not applicable)",
     "(modify chapter if not applicable) ",
-    "(如不适用修改该段) ",
+    "(如不适用修改该段)",
     "Please check if the result file number and classification is correct. Don't forget to attach the zipped simulation result in .pdf report.",
 ]
 
@@ -80,9 +80,17 @@ def normalize_instruction_text(text: str) -> str:
     return clean_text(text).strip().lower()
 
 
-def full_paragraph_instruction_set(instructions: list[str]) -> set[str]:
+def full_paragraph_instruction_set(
+    instructions: list[str],
+    full_paragraph_instructions: list[str] | None = None,
+) -> set[str]:
+    paragraph_instructions = (
+        FULL_PARAGRAPH_TEMPLATE_INSTRUCTIONS
+        if full_paragraph_instructions is None
+        else full_paragraph_instructions
+    )
     full_paragraph_norm = {
-        normalize_instruction_text(value) for value in FULL_PARAGRAPH_TEMPLATE_INSTRUCTIONS if value
+        normalize_instruction_text(value) for value in paragraph_instructions if value
     }
 
     return {
@@ -202,6 +210,7 @@ def remove_template_instruction_text_in_xml(
     input_docm: Path,
     output_docm: Path,
     instructions: list[str] | None = None,
+    full_paragraph_instructions: list[str] | None = None,
 ) -> InstructionRemovalSummary:
     """从正文 document.xml 中删除固定模板提示语。
 
@@ -210,7 +219,10 @@ def remove_template_instruction_text_in_xml(
     """
     target_instructions = instructions or DEFAULT_TEMPLATE_INSTRUCTIONS
     patterns = instruction_removal_patterns(target_instructions)
-    full_instruction_set = full_paragraph_instruction_set(target_instructions)
+    full_instruction_set = full_paragraph_instruction_set(
+        target_instructions,
+        full_paragraph_instructions=full_paragraph_instructions,
+    )
 
     with zipfile.ZipFile(input_docm, "r") as archive:
         document_xml = archive.read("word/document.xml")
@@ -263,6 +275,7 @@ def remove_template_instruction_text_in_xml(
 def remove_template_instruction_text(
     document_path: Path,
     instructions: list[str] | None = None,
+    full_paragraph_instructions: list[str] | None = None,
     use_local_temp: bool = True,
 ) -> InstructionRemovalSummary:
     """删除报告正文中残留的模板维护提示语。
@@ -275,6 +288,7 @@ def remove_template_instruction_text(
             document_path,
             document_path,
             instructions=instructions,
+            full_paragraph_instructions=full_paragraph_instructions,
         )
         logger.info(
             "[TCD08] Removed template instruction text. replacements=%s paragraphs=%s",
@@ -292,6 +306,7 @@ def remove_template_instruction_text(
             temp_path,
             output_path,
             instructions=instructions,
+            full_paragraph_instructions=full_paragraph_instructions,
         )
 
         if not _same_file(output_path, document_path):
