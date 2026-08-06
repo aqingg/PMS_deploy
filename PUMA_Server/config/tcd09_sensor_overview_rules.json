@@ -1,4 +1,298 @@
 {
+  "channel_rows": {
+    "exact_models": {
+      "SMA760": [
+        {
+          "direction": "High-g-x (45°/90°)",
+          "measurement": "±128g"
+        },
+        {
+          "direction": "High-g-y (45°/90°)",
+          "measurement": "±128g"
+        },
+        {
+          "direction": "High-g-z (45°/90°)",
+          "measurement": "±128g"
+        }
+      ],
+      "SMA720": [
+        {
+          "direction": "Mid-g-z",
+          "measurement": "±32g"
+        }
+      ],
+      "SMA860": [
+        {
+          "direction": "High-g-x",
+          "measurement": "±128g"
+        },
+        {
+          "direction": "High-g-y",
+          "measurement": "±128g"
+        }
+      ],
+      "SMG810": [
+        {
+          "direction": "ωx/ωy",
+          "measurement": "±300°/s"
+        }
+      ],
+      "SMI800": [
+        {
+          "direction": "Mid-g-x",
+          "measurement": "±35g"
+        },
+        {
+          "direction": "Low-g-x",
+          "measurement": "±6g"
+        },
+        {
+          "direction": "Mid-g-y",
+          "measurement": "±35g"
+        },
+        {
+          "direction": "Low-g-y",
+          "measurement": "±6g"
+        },
+        {
+          "direction": "ωz",
+          "measurement": "±300°/s"
+        }
+      ],
+      "SMI860": [
+        {
+          "direction": "Mid-g-x",
+          "measurement": "±35g"
+        },
+        {
+          "direction": "Low-g-x",
+          "measurement": "±6g"
+        },
+        {
+          "direction": "Mid-g-y",
+          "measurement": "±35g"
+        },
+        {
+          "direction": "Low-g-y",
+          "measurement": "±6g"
+        },
+        {
+          "direction": "Mid-g-z",
+          "measurement": "±25g"
+        },
+        {
+          "direction": "Low-g-z",
+          "measurement": "±6g"
+        },
+        {
+          "direction": "ωx",
+          "measurement": "±300°/s"
+        },
+        {
+          "direction": "ωy",
+          "measurement": "±300°/s"
+        },
+        {
+          "direction": "ωz",
+          "measurement": "±300°/s"
+        }
+      ],
+      "SMI970": [
+        {
+          "direction": "Mid-g-x",
+          "measurement": "±35g"
+        },
+        {
+          "direction": "Low-g-x",
+          "measurement": "±6g"
+        },
+        {
+          "direction": "Mid-g-y",
+          "measurement": "±35g"
+        },
+        {
+          "direction": "Low-g-y",
+          "measurement": "±6g"
+        },
+        {
+          "direction": "Mid-g-z",
+          "measurement": "±25g"
+        },
+        {
+          "direction": "Low-g-z",
+          "measurement": "±6g"
+        },
+        {
+          "direction": "ωx",
+          "measurement": "±300°/s"
+        },
+        {
+          "direction": "ωy",
+          "measurement": "±300°/s"
+        },
+        {
+          "direction": "ωz",
+          "measurement": "±300°/s"
+        }
+      ],
+      "SMU3": [
+        {
+          "direction": "Mid-g-x",
+          "measurement": "±35g"
+        },
+        {
+          "direction": "Low-g-x",
+          "measurement": "±6g"
+        },
+        {
+          "direction": "Mid-g-y",
+          "measurement": "±35g"
+        },
+        {
+          "direction": "Low-g-y",
+          "measurement": "±6g"
+        },
+        {
+          "direction": "Mid-g-z",
+          "measurement": "±25g"
+        },
+        {
+          "direction": "Low-g-z",
+          "measurement": "±6g"
+        },
+        {
+          "direction": "ωx",
+          "measurement": "±300°/s"
+        },
+        {
+          "direction": "ωy",
+          "measurement": "±300°/s"
+        },
+        {
+          "direction": "ωz",
+          "measurement": "±300°/s"
+        }
+      ],
+      "UFS6s": [
+        {
+          "direction": "x",
+          "measurement": "±480g"
+        }
+      ],
+      "PAS6s": [
+        {
+          "direction": "y",
+          "measurement": "±120g"
+        }
+      ],
+      "PPS3": [
+        {
+          "direction": "p",
+          "measurement": "P0:536-1100mbar"
+        },
+        {
+          "direction": "",
+          "measurement": "Pressure output range:"
+        },
+        {
+          "direction": "",
+          "measurement": "Pn:-5%~15%"
+        }
+      ],
+      "PPS3e": [
+        {
+          "direction": "p",
+          "measurement": "P0:455-1100mbar"
+        },
+        {
+          "direction": "",
+          "measurement": "Pressure output range:"
+        },
+        {
+          "direction": "",
+          "measurement": "Pn:-5%~15%"
+        }
+      ],
+      "PTS1": [
+        {
+          "direction": "p",
+          "measurement": "P0:536-1100mbar"
+        },
+        {
+          "direction": "",
+          "measurement": "Pressure output range:"
+        },
+        {
+          "direction": "",
+          "measurement": "Pn:-5%~15%"
+        }
+      ],
+      "PTS1e": [
+        {
+          "direction": "p",
+          "measurement": "P0:455-1100mbar"
+        },
+        {
+          "direction": "",
+          "measurement": "Pressure output range:"
+        },
+        {
+          "direction": "",
+          "measurement": "Pn:-5%~15%/-15%~23.4%"
+        }
+      ],
+      "PCS": [
+        {
+          "direction": "x",
+          "measurement": "±480g"
+        }
+      ]
+    },
+    "sensor_families": {
+      "UFS": [
+        {
+          "direction": "x",
+          "measurement": "±480g"
+        }
+      ],
+      "PAS": [
+        {
+          "direction": "y",
+          "measurement": "±120g"
+        }
+      ],
+      "PPS": [
+        {
+          "direction": "p",
+          "measurement": "N/A"
+        }
+      ],
+      "PTS": [
+        {
+          "direction": "p",
+          "measurement": "N/A"
+        }
+      ],
+      "PCS": [
+        {
+          "direction": "x",
+          "measurement": "±480g"
+        }
+      ],
+      "RCS": [
+        {
+          "direction": "x",
+          "measurement": "±480g"
+        }
+      ]
+    },
+    "default": [
+      {
+        "direction": "N/A",
+        "measurement": "N/A"
+      }
+    ]
+  },
   "sensing_direction": {
     "exact_models": {
       "SMA760": [
@@ -92,7 +386,9 @@
       "PCS": [
         "x"
       ],
-      "RCS": ["x"]
+      "RCS": [
+        "x"
+      ]
     },
     "default": [
       "N/A"
@@ -175,7 +471,9 @@
       "PCS": [
         "±480g"
       ],
-      "RCS": ["±480g"]
+      "RCS": [
+        "±480g"
+      ]
     },
     "default": [
       "N/A"

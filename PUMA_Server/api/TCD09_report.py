@@ -20,6 +20,7 @@ from services.datamerge import (
 from services.tcd09 import (
     insert_excel_section_images,
     remove_tcd09_template_instructions,
+    remove_unused_sensor_references,
     select_tcd09_files_by_path,
     select_tcd09_template_file,
     select_tcd09_ufs_excel_file,
@@ -111,7 +112,6 @@ def _build_local_fallback_profile(
         owner_value = str(owner_item.get("value") or "").strip()
         if owner_value:
             profile["author"] = owner_value
-
     if profile.get("project") in {None, "", "N/A"}:
         profile["project"] = profile.get("projectName") or "N/A"
 
@@ -200,13 +200,19 @@ async def _generate_tcd09_report(
         filled_stream,
         include_email_placeholders=False,
     )
+    filled_stream = remove_unused_sensor_references(profile, filled_stream)
     filled_stream = remove_tcd09_template_instructions(filled_stream)
+
     # Word COM must run last. A later python-docx save may remove or alter
     # editable Office Shapes.
     return insert_tcd09_sensor_layout_shapes(profile, filled_stream)
 
 
-def _tcd09_response(filled_stream: io.BytesIO, expected_filename: str, projectid: str):
+def _tcd09_response(
+    filled_stream: io.BytesIO,
+    expected_filename: str,
+    projectid: str,
+):
     headers = {
         "Content-Disposition": f'attachment; filename="{expected_filename}"',
         "X-TCD09-Mode": "docx-images-sensor-overview-editable-layout",
@@ -234,8 +240,9 @@ async def fill_tcd09_report(
     1. Insert configured Excel images.
     2. Expand and fill Sensor Overview rows.
     3. Fill the remaining ordinary PMS text placeholders.
-    4. Remove TCD09 template editing instructions.
-    5. Add independent editable Word sensor-label Shapes and refresh the TOC.
+    4. Remove References entries for peripheral sensors not configured.
+    5. Remove TCD09 template editing instructions.
+    6. Add independent editable Word sensor-label Shapes and refresh the TOC.
     """
 
     selected_file, expected_filename = select_tcd09_template_file(files)
@@ -264,7 +271,12 @@ async def fill_tcd09_report(
             detail="Uploaded TCD09 UFS Excel is empty.",
         )
 
-    filled_stream = await _generate_tcd09_report(projectid, content, excel_content, db)
+    filled_stream = await _generate_tcd09_report(
+        projectid,
+        content,
+        excel_content,
+        db,
+    )
     return _tcd09_response(filled_stream, expected_filename, projectid)
 
 
@@ -288,9 +300,15 @@ async def fill_tcd09_report_by_path(
         ) from exc
 
     if not content:
-        raise HTTPException(status_code=400, detail=f"TCD09 template is empty: {template_path}")
+        raise HTTPException(
+            status_code=400,
+            detail=f"TCD09 template is empty: {template_path}",
+        )
     if not excel_content:
-        raise HTTPException(status_code=400, detail=f"TCD09 UFS Excel is empty: {excel_path}")
+        raise HTTPException(
+            status_code=400,
+            detail=f"TCD09 UFS Excel is empty: {excel_path}",
+        )
 
     filled_stream = await _generate_tcd09_report(
         request.projectid,
@@ -298,4 +316,8 @@ async def fill_tcd09_report_by_path(
         excel_content,
         db,
     )
-    return _tcd09_response(filled_stream, expected_filename, request.projectid)
+    return _tcd09_response(
+        filled_stream,
+        expected_filename,
+        request.projectid,
+    )

@@ -6,6 +6,7 @@ from __future__ import annotations
 import io
 import json
 from copy import deepcopy
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterator
 
@@ -34,6 +35,13 @@ DEFAULT_SENSORMAP_RULES_PATH = SERVER_ROOT / "config" / "sensormap_sensor_rules.
 DEFAULT_SENSOR_OVERVIEW_RULES_PATH = (
     SERVER_ROOT / "config" / "tcd09_sensor_overview_rules.json"
 )
+
+
+@dataclass(frozen=True)
+class SensorOverviewEntry:
+    sensor_type: str
+    sensor_location: str
+    channel_rows: tuple[tuple[str, str], ...]
 
 
 def _load_sensormap_rules(
@@ -100,23 +108,23 @@ def _sensor_location(entry: SensorEntry, rules: dict[str, Any]) -> str:
     family = entry.family
     if family == "UFS":
         positions = entry.positions or three_position_set_from_count(default_count(entry, rules, fallback=2))
-        return _format_three_positions(positions, "longitudinal beam")
+        return _format_three_positions(positions, "(longitudinal beam)")
     if family == "RCS":
         positions = entry.positions or three_position_set_from_count(default_count(entry, rules, fallback=2))
-        return _format_three_positions(positions, "rear trunk")
+        return _format_three_positions(positions, "(rear trunk)")
     if family == "PAS":
         positions = entry.positions or pas_positions_from_count(default_count(entry, rules, fallback=2), rules)
         return _format_pas_positions(positions)
     if family == "PCS":
         positions = entry.positions or three_position_set_from_count(default_count(entry, rules, fallback=1))
-        return _format_three_positions(positions, "front bumper")
+        return _format_three_positions(positions, "(front bumper)")
     if family == "PPS":
         positions = {normalize_pps_position(position) for position in entry.positions}
         if not positions:
             positions = pps_positions_from_count(default_count(entry, rules, fallback=2))
         return _format_pps_positions(positions)
     if family == "PTS":
-        return "Front bumper"
+        return "(front bumper)"
     return "N/A"
 
 
@@ -131,8 +139,26 @@ def _load_sensor_overview_rules(
             data = json.load(file)
     except (OSError, json.JSONDecodeError) as exc:
         raise HTTPException(status_code=500, detail=f"Invalid TCD09 Sensor Overview rules: {path}: {exc}") from exc
-    if not isinstance(data, dict) or not isinstance(data.get("sensing_direction"), dict):
-        raise HTTPException(status_code=500, detail='TCD09 Sensor Overview rules must define "sensing_direction".')
+    if not isinstance(data, dict):
+        raise HTTPException(
+            status_code=500,
+            detail="TCD09 Sensor Overview rules must be a JSON object.",
+        )
+    if not isinstance(data.get("sensing_direction"), dict):
+        raise HTTPException(
+            status_code=500,
+            detail='TCD09 Sensor Overview rules must define "sensing_direction".',
+        )
+    if not isinstance(data.get("measurement"), dict):
+        raise HTTPException(
+            status_code=500,
+            detail='TCD09 Sensor Overview rules must define "measurement".',
+        )
+    if "channel_rows" in data and not isinstance(data.get("channel_rows"), dict):
+        raise HTTPException(
+            status_code=500,
+            detail='"channel_rows" must be a JSON object when configured.',
+        )
     return data
 
 
@@ -146,18 +172,175 @@ def _as_rule_lines(value: Any) -> list[str]:
     return [str(line).strip() for line in values if str(line).strip()]
 
 
-def _overview_rule_value(entry: SensorEntry, overview_rules: dict[str, Any], rule_name: str) -> str:
-    rules = overview_rules.get(rule_name, {})
+def _lookup_rule_config(
+    entry: SensorEntry,
+    rules: dict[str, Any],
+) -> Any:
     exact_models = rules.get("exact_models", {})
     sensor_families = rules.get("sensor_families", {})
-    exact_lookup = {str(key).strip().casefold(): value for key, value in exact_models.items() if str(key).strip()} if isinstance(exact_models, dict) else {}
-    family_lookup = {str(key).strip().upper(): value for key, value in sensor_families.items() if str(key).strip()} if isinstance(sensor_families, dict) else {}
+
+    exact_lookup = (
+        {
+            str(key).strip().casefold(): value
+            for key, value in exact_models.items()
+            if str(key).strip()
+        }
+        if isinstance(exact_models, dict)
+        else {}
+    )
+    family_lookup = (
+        {
+            str(key).strip().upper(): value
+            for key, value in sensor_families.items()
+            if str(key).strip()
+        }
+        if isinstance(sensor_families, dict)
+        else {}
+    )
+
     configured = exact_lookup.get(entry.display_name.casefold())
     if configured is None:
         configured = family_lookup.get(entry.family.upper())
     if configured is None:
-        configured = rules.get("default", ["N/A"])
-    return "\n".join(_as_rule_lines(configured) or ["N/A"])
+        configured = rules.get("default")
+    return configured
+
+
+def _overview_rule_lines(
+    entry: SensorEntry,
+    overview_rules: dict[str, Any],
+    rule_name: str,
+) -> list[str]:
+    rules = overview_rules.get(rule_name, {})
+    if not isinstance(rules, dict):
+        return ["N/A"]
+    configured = _lookup_rule_config(entry, rules)
+    return _as_rule_lines(configured) or ["N/A"]
+
+
+def _overview_rule_value(
+    entry: SensorEntry,
+    overview_rules: dict[str, Any],
+    rule_name: str,
+) -> str:
+    """Backward-compatible joined-string helper."""
+
+    return "\n".join(
+        _overview_rule_lines(entry, overview_rules, rule_name)
+    )
+
+
+def _parse_channel_rows(value: Any) -> list[tuple[str, str]]:
+    if not isinstance(value, (list, tuple)):
+        return []
+
+    rows: list[tuple[str, str]] = []
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+
+        direction = str(item.get("direction") or "").strip()
+        measurement = str(item.get("measurement") or "").strip()
+        if not direction and not measurement:
+            continue
+        rows.append((direction, measurement))
+    return rows
+
+
+def _legacy_channel_rows(
+    entry: SensorEntry,
+    overview_rules: dict[str, Any],
+) -> list[tuple[str, str]]:
+    directions = _overview_rule_lines(
+        entry, overview_rules, "sensing_direction"
+    )
+    measurements = _overview_rule_lines(
+        entry, overview_rules, "measurement"
+    )
+
+    if len(directions) == len(measurements):
+        return list(zip(directions, measurements))
+
+    if len(measurements) == 1:
+        return [(direction, measurements[0]) for direction in directions]
+
+    if len(directions) == 1:
+        return [
+            (directions[0] if index == 0 else "", measurement)
+            for index, measurement in enumerate(measurements)
+        ]
+
+    raise HTTPException(
+        status_code=500,
+        detail=(
+            "TCD09 Sensor Overview direction/measurement counts do not match "
+            f"for {entry.display_name}: "
+            f"{len(directions)} direction values and "
+            f"{len(measurements)} measurement values. "
+            'Add an explicit entry under "channel_rows".'
+        ),
+    )
+
+
+def _overview_channel_rows(
+    entry: SensorEntry,
+    overview_rules: dict[str, Any],
+) -> list[tuple[str, str]]:
+    channel_rules = overview_rules.get("channel_rows", {})
+    if isinstance(channel_rules, dict):
+        configured = _lookup_rule_config(entry, channel_rules)
+        parsed_rows = _parse_channel_rows(configured)
+        if parsed_rows:
+            return parsed_rows
+
+    return _legacy_channel_rows(entry, overview_rules)
+
+
+def _build_sensor_overview_entries(
+    profile: dict[str, Any],
+    *,
+    sensormap_rules_path: str | Path = DEFAULT_SENSORMAP_RULES_PATH,
+    overview_rules_path: str | Path = DEFAULT_SENSOR_OVERVIEW_RULES_PATH,
+) -> list[SensorOverviewEntry]:
+    sensor_map_rules = _load_sensormap_rules(sensormap_rules_path)
+    overview_rules = _load_sensor_overview_rules(overview_rules_path)
+    parsed_entries = [
+        *merge_sensor_entries(
+            profile.get("internal_sensor_configuration"),
+            force_inertial=True,
+        ),
+        *merge_sensor_entries(
+            profile.get("peripheral_sensor_configuration"),
+            force_inertial=False,
+        ),
+    ]
+
+    entries: list[SensorOverviewEntry] = []
+    seen: set[tuple[str, str, tuple[tuple[str, str], ...]]] = set()
+
+    for entry in parsed_entries:
+        channel_rows = tuple(
+            _overview_channel_rows(entry, overview_rules)
+            or [("N/A", "N/A")]
+        )
+        overview_entry = SensorOverviewEntry(
+            sensor_type=entry.display_name,
+            sensor_location=_sensor_location(entry, sensor_map_rules),
+            channel_rows=channel_rows,
+        )
+        key = (
+            overview_entry.sensor_type.casefold(),
+            overview_entry.sensor_location.casefold(),
+            tuple(
+                (direction.casefold(), measurement.casefold())
+                for direction, measurement in overview_entry.channel_rows
+            ),
+        )
+        if key not in seen:
+            seen.add(key)
+            entries.append(overview_entry)
+
+    return entries
 
 
 def build_sensor_overview_rows(
@@ -166,27 +349,30 @@ def build_sensor_overview_rows(
     sensormap_rules_path: str | Path = DEFAULT_SENSORMAP_RULES_PATH,
     overview_rules_path: str | Path = DEFAULT_SENSOR_OVERVIEW_RULES_PATH,
 ) -> list[tuple[str, str, str, str]]:
-    """Build the four Sensor Overview table values for each parsed sensor."""
+    """Build backward-compatible four-value rows.
 
-    sensor_map_rules = _load_sensormap_rules(sensormap_rules_path)
-    overview_rules = _load_sensor_overview_rules(overview_rules_path)
-    entries = [
-        *merge_sensor_entries(profile.get("internal_sensor_configuration"), force_inertial=True),
-        *merge_sensor_entries(profile.get("peripheral_sensor_configuration"), force_inertial=False),
-    ]
+    The Word writer uses structured channel rows internally. This helper
+    keeps the previous joined-string return format for existing callers.
+    """
+
     rows: list[tuple[str, str, str, str]] = []
-    seen: set[tuple[str, str, str, str]] = set()
-    for entry in entries:
-        row = (
-            entry.display_name,
-            _sensor_location(entry, sensor_map_rules),
-            _overview_rule_value(entry, overview_rules, "sensing_direction"),
-            _overview_rule_value(entry, overview_rules, "measurement"),
+    for entry in _build_sensor_overview_entries(
+        profile,
+        sensormap_rules_path=sensormap_rules_path,
+        overview_rules_path=overview_rules_path,
+    ):
+        rows.append(
+            (
+                entry.sensor_type,
+                entry.sensor_location,
+                "\n".join(
+                    direction for direction, _ in entry.channel_rows
+                ),
+                "\n".join(
+                    measurement for _, measurement in entry.channel_rows
+                ),
+            )
         )
-        key = tuple(value.casefold() for value in row)
-        if key not in seen:
-            seen.add(key)
-            rows.append(row)
     return rows
 
 
@@ -197,7 +383,11 @@ def parse_sensor_types(value: Any) -> list[str]:
 
 def build_sensor_type_rows(profile: dict[str, Any]) -> list[str]:
     """Backward-compatible Sensor Type-only helper."""
-    return [row[0] for row in build_sensor_overview_rows(profile)]
+
+    return [
+        entry.sensor_type
+        for entry in _build_sensor_overview_entries(profile)
+    ]
 
 
 def _iter_tables(container) -> Iterator[Any]:
@@ -260,22 +450,142 @@ def _find_sensor_template_rows(document) -> list[tuple[Any, Any]]:
     return matches
 
 
-def _expand_template_row(table, template_row, rows: list[tuple[str, str, str, str]]) -> int:
+def _word_namespace(element) -> str:
+    tag = str(getattr(element, "tag", ""))
+    if tag.startswith("{") and "}" in tag:
+        return tag[1:].split("}", 1)[0]
+    raise HTTPException(
+        status_code=500,
+        detail="Unable to determine Word XML namespace.",
+    )
+
+
+def _remove_fixed_row_height(row_xml) -> None:
+    """Let every channel use a compact automatic Word row height."""
+
+    row_properties = next(
+        (
+            child
+            for child in row_xml
+            if str(getattr(child, "tag", "")).endswith("}trPr")
+        ),
+        None,
+    )
+    if row_properties is None:
+        return
+
+    for child in list(row_properties):
+        if str(getattr(child, "tag", "")).endswith("}trHeight"):
+            row_properties.remove(child)
+
+
+def _set_vertical_merge(
+    row_xml,
+    *,
+    cell_index: int,
+    restart: bool,
+) -> None:
+    cell_xml = _cell_xml(row_xml, cell_index)
+    if cell_xml is None:
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Unable to vertically merge Sensor Overview "
+                f"column #{cell_index + 1}."
+            ),
+        )
+
+    namespace = _word_namespace(cell_xml)
+    cell_properties = next(
+        (
+            child
+            for child in cell_xml
+            if str(getattr(child, "tag", "")).endswith("}tcPr")
+        ),
+        None,
+    )
+    if cell_properties is None:
+        cell_properties = cell_xml.makeelement(
+            f"{{{namespace}}}tcPr"
+        )
+        cell_xml.insert(0, cell_properties)
+
+    for child in list(cell_properties):
+        if str(getattr(child, "tag", "")).endswith("}vMerge"):
+            cell_properties.remove(child)
+
+    vertical_merge = cell_properties.makeelement(
+        f"{{{namespace}}}vMerge"
+    )
+    if restart:
+        vertical_merge.set(f"{{{namespace}}}val", "restart")
+    cell_properties.append(vertical_merge)
+
+
+def _expand_template_row(
+    table,
+    template_row,
+    entries: list[SensorOverviewEntry],
+) -> int:
     template_xml = template_row._tr
-    values = rows or [("N/A", "N/A", "N/A", "N/A")]
+    values = entries or [
+        SensorOverviewEntry(
+            sensor_type="N/A",
+            sensor_location="N/A",
+            channel_rows=(("N/A", "N/A"),),
+        )
+    ]
     placeholders = (
         SENSOR_TYPE_ROWS_PLACEHOLDER,
         SENSOR_LOCATION_ROWS_PLACEHOLDER,
         SENSOR_DIRECTION_ROWS_PLACEHOLDER,
         SENSOR_MEASUREMENT_ROWS_PLACEHOLDER,
     )
-    for values_for_row in values:
-        copied_row_xml = deepcopy(template_xml)
-        for cell_index, (placeholder, value) in enumerate(zip(placeholders, values_for_row)):
-            _replace_placeholder_in_cell_xml(copied_row_xml, cell_index=cell_index, placeholder=placeholder, replacement=value)
-        template_xml.addprevious(copied_row_xml)
+
+    generated_row_count = 0
+    for entry in values:
+        generated_rows = []
+        channel_rows = entry.channel_rows or (("N/A", "N/A"),)
+
+        for channel_index, (direction, measurement) in enumerate(channel_rows):
+            copied_row_xml = deepcopy(template_xml)
+            _remove_fixed_row_height(copied_row_xml)
+            row_values = (
+                entry.sensor_type if channel_index == 0 else "",
+                entry.sensor_location if channel_index == 0 else "",
+                direction,
+                measurement,
+            )
+
+            for cell_index, (placeholder, value) in enumerate(
+                zip(placeholders, row_values)
+            ):
+                _replace_placeholder_in_cell_xml(
+                    copied_row_xml,
+                    cell_index=cell_index,
+                    placeholder=placeholder,
+                    replacement=value,
+                )
+
+            template_xml.addprevious(copied_row_xml)
+            generated_rows.append(copied_row_xml)
+            generated_row_count += 1
+
+        if len(generated_rows) > 1:
+            for row_index, generated_row in enumerate(generated_rows):
+                _set_vertical_merge(
+                    generated_row,
+                    cell_index=0,
+                    restart=row_index == 0,
+                )
+                _set_vertical_merge(
+                    generated_row,
+                    cell_index=1,
+                    restart=row_index == 0,
+                )
+
     table._tbl.remove(template_xml)
-    return len(values)
+    return generated_row_count
 
 
 def fill_tcd09_sensor_type_rows(profile: dict[str, Any], source: str | Path | io.BytesIO) -> io.BytesIO:
@@ -296,9 +606,9 @@ def fill_tcd09_sensor_type_rows(profile: dict[str, Any], source: str | Path | io
                 "<TCD09_SENSOR_MEASUREMENT_ROWS> in column 4 of the same row."
             ),
         )
-    overview_rows = build_sensor_overview_rows(profile)
+    overview_entries = _build_sensor_overview_entries(profile)
     for table, template_row in template_rows:
-        _expand_template_row(table, template_row, overview_rows)
+        _expand_template_row(table, template_row, overview_entries)
     output = io.BytesIO()
     document.save(output)
     output.seek(0)
