@@ -27,6 +27,7 @@ from services.tcd09 import (
     insert_tcd09_sensor_layout_shapes,
 )
 from services.tcd09.sensor_overview import fill_tcd09_sensor_type_rows
+from utils.file_loader import extract_root_paths
 
 
 router = APIRouter(prefix="/report", tags=["Report"])
@@ -63,6 +64,32 @@ def _extract_pms_uuid_from_project_info(project_info: dict[str, Any]) -> str:
     if isinstance(uuid_item, dict):
         return str(uuid_item.get("value") or "").strip()
     return ""
+
+
+def _get_tcd09_project_public_root(
+    project_identifier: str,
+    db: Session,
+) -> str:
+    project_id = _to_int(project_identifier)
+    if project_id is None:
+        raise HTTPException(status_code=400, detail="TCD09 projectid must be a project ID.")
+
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found.")
+
+    project_info = _parse_project_info_json(project.projectInfo)
+    rows = project_info.get("projectInfo")
+    if not isinstance(rows, list):
+        raise HTTPException(status_code=500, detail="projectInfo structure is invalid.")
+
+    public_root = str(extract_root_paths(rows).get("public") or "").strip()
+    if not public_root:
+        raise HTTPException(
+            status_code=400,
+            detail="Project does not define the Public Link required for TCD09.",
+        )
+    return public_root
 
 
 def _build_local_fallback_profile(
@@ -285,11 +312,10 @@ async def fill_tcd09_report_by_path(
     request: TCD09PathReportRequest,
     db: Session = Depends(get_db),
 ):
-    """Generate TCD09 from Word/Excel files on the configured public share."""
+    """Generate TCD09 from its fixed Word template and project Public Link Excel."""
 
-    template_path, excel_path, expected_filename = select_tcd09_files_by_path(
-        request.template_paths
-    )
+    project_public_root = _get_tcd09_project_public_root(request.projectid, db)
+    template_path, excel_path, expected_filename = select_tcd09_files_by_path(project_public_root)
     try:
         content = template_path.read_bytes()
         excel_content = excel_path.read_bytes()
