@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import io
 import json
+import re
 from datetime import datetime
 from typing import Any, Optional
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
@@ -90,6 +92,23 @@ def _get_tcd09_project_public_root(
             detail="Project does not define the Public Link required for TCD09.",
         )
     return public_root
+
+
+def _safe_tcd09_filename_part(value: Any) -> str:
+    """Convert a project name into a safe Windows filename component."""
+    text = str(value or "").strip()
+    text = re.sub(r'[<>:"/\\|?*]+', "_", text)
+    text = re.sub(r"\s+", "_", text)
+    text = text.strip("._ ")
+    return text or "TCD09_Report"
+
+
+def _get_tcd09_output_filename(profile: dict[str, Any]) -> str:
+    project_name = _safe_tcd09_filename_part(
+        profile.get("projectName") or profile.get("project")
+    )
+    date_stamp = datetime.now().strftime("%Y%m%d")
+    return f"{project_name}_TCD09_{date_stamp}.docx"
 
 
 def _build_local_fallback_profile(
@@ -232,16 +251,22 @@ async def _generate_tcd09_report(
 
     # Word COM must run last. A later python-docx save may remove or alter
     # editable Office Shapes.
-    return insert_tcd09_sensor_layout_shapes(profile, filled_stream)
+    return (
+        insert_tcd09_sensor_layout_shapes(profile, filled_stream),
+        _get_tcd09_output_filename(profile),
+    )
 
 
 def _tcd09_response(
     filled_stream: io.BytesIO,
-    expected_filename: str,
+    output_filename: str,
     projectid: str,
 ):
     headers = {
-        "Content-Disposition": f'attachment; filename="{expected_filename}"',
+        "Content-Disposition": (
+            'attachment; filename="TCD09_Report.docx"; '
+            f"filename*=UTF-8''{quote(output_filename)}"
+        ),
         "X-TCD09-Mode": "docx-images-sensor-overview-editable-layout",
         "X-TCD09-ProjectId": str(projectid or ""),
     }
@@ -298,13 +323,13 @@ async def fill_tcd09_report(
             detail="Uploaded TCD09 UFS Excel is empty.",
         )
 
-    filled_stream = await _generate_tcd09_report(
+    filled_stream, output_filename = await _generate_tcd09_report(
         projectid,
         content,
         excel_content,
         db,
     )
-    return _tcd09_response(filled_stream, expected_filename, projectid)
+    return _tcd09_response(filled_stream, output_filename, projectid)
 
 
 @router.post("/fillTCD09ReportByPath")
@@ -336,7 +361,7 @@ async def fill_tcd09_report_by_path(
             detail=f"TCD09 UFS Excel is empty: {excel_path}",
         )
 
-    filled_stream = await _generate_tcd09_report(
+    filled_stream, output_filename = await _generate_tcd09_report(
         request.projectid,
         content,
         excel_content,
@@ -344,6 +369,6 @@ async def fill_tcd09_report_by_path(
     )
     return _tcd09_response(
         filled_stream,
-        expected_filename,
+        output_filename,
         request.projectid,
     )
