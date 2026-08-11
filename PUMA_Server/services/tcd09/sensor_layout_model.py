@@ -101,14 +101,14 @@ def _pts_layout_slots(count: int) -> list[str]:
 
 def _layout_text(display_name: str, slot: str) -> str:
     suffixes = {
-        "UFS_L": "L", "UFS_C": "C", "UFS_R": "R",
-        "RCS_L": "L", "RCS_C": "C", "RCS_R": "R",
-        "PCS_L": "L", "PCS_C": "C", "PCS_R": "R",
-        "PTS_L": "L", "PTS_C": "C", "PTS_R": "R",
-        "PAS_B_L": "B-L", "PAS_B_R": "B-R",
-        "PAS_C_L": "C-L", "PAS_C_R": "C-R",
-        "PPS_FRONT_L": "F-L", "PPS_FRONT_R": "F-R",
-        "PPS_REAR_L": "R-L", "PPS_REAR_R": "R-R",
+        "UFS_L": "D", "UFS_C": "C", "UFS_R": "P",
+        "RCS_L": "D", "RCS_C": "C", "RCS_R": "P",
+        "PCS_L": "D", "PCS_C": "C", "PCS_R": "P",
+        "PTS_L": "D", "PTS_C": "C", "PTS_R": "P",
+        "PAS_B_L": "B-D", "PAS_B_R": "B-P",
+        "PAS_C_L": "C-D", "PAS_C_R": "C-P",
+        "PPS_FRONT_L": "D", "PPS_FRONT_R": "P",
+        "PPS_REAR_L": "D", "PPS_REAR_R": "P",
     }
     return f"{display_name}-{suffixes[slot]}" if slot in suffixes else display_name
 
@@ -135,13 +135,19 @@ def build_sensor_layout_model(
         default="normal",
     )
 
-    def add_label(slot: str, text: str, marker_type: str, marker_state: str) -> None:
+    def add_label(
+        slot: str,
+        text: str,
+        marker_type: str | None,
+        marker_state: str,
+    ) -> None:
         if slot not in labels_by_slot:
             labels_by_slot[slot] = []
             slot_order.append(slot)
         if text not in labels_by_slot[slot]:
             labels_by_slot[slot].append(text)
-        marker_by_slot[slot] = {"type": marker_type, "state": marker_state}
+        if marker_type:
+            marker_by_slot[slot] = {"type": marker_type, "state": marker_state}
 
     inertial_entries = merge_sensor_entries(
         profile.get("internal_sensor_configuration"), force_inertial=True
@@ -180,13 +186,17 @@ def build_sensor_layout_model(
             add_label(
                 slot,
                 _layout_text(entry.display_name, slot),
-                "locator",
+                None if family in {"PPS", "PTS"} else "locator",
                 ufs_direction if family == "UFS" else "outward",
             )
 
     return {
         "labels": [
-            {"slot": slot, "text": "\r".join(labels_by_slot[slot]), "marker": marker_by_slot[slot]}
+            {
+                "slot": slot,
+                "text": "\r".join(labels_by_slot[slot]),
+                "marker": marker_by_slot.get(slot),
+            }
             for slot in slot_order
         ],
         "ecu_direction": ecu_direction,
