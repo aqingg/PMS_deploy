@@ -112,7 +112,7 @@
     ],
     "description": ""
   },
-    "Mounting&Function_Checklist": {
+  "Mounting&Function_Checklist": {
     "inputs": [
       { "label": "Sensor Scope" },
       { "label": "Calibration Scope" }
@@ -154,17 +154,26 @@
     ],
     "description": "IAR."
   },
-
- 
-"ONETCD&TCD09": {
+  "ONETCD&TCD09": {
     "inputs": [
       { "label": "TCD09_Input" }
     ],
-    "operation":{
+    "operation": {
       "operation_name": "Fill_TCD09",
+      "preflight": {
+        "enabled": true,
+        "input_label": "TCD09_Input",
+        "storage_type": "public",
+        "open_folder": true,
+        "title": "Check Required Input Files",
+        "message": "Please verify that the EXCEL have been placed in the input folder before continuing.",
+        "confirm_text": "Files are ready",
+        "cancel_text": "Cancel"
+      },
       "operation_detail": {
         "type": "httpWithParameter",
         "need_parameter": ["projectid"],
+        "input_type": "public",
         "method": "POST",
         "url": "http://127.0.0.1:7175/report/fillTCD09Report",
         "body": {
@@ -220,8 +229,8 @@
   "Data_Handle & Reivew": {
     "inputs": [
       { "label": "Click to open Online data handling tool" },
-	  { "label": "Channel Overview link" },
-	  { "label": "Reviewer name1" }
+      { "label": "Channel Overview link" },
+      { "label": "Reviewer name1" }
     ],
     "operation": {
       "operation_name": "Open BBM System",
@@ -230,7 +239,7 @@
         "url": "http://server/api/algo/create",
         "body": {
           "url": "https://rb-bbm-reviewtool01.apps.intranet.bosch.com/ReviewTool/dashboard"
-       }
+        }
       }
     },
     "outputs": [
@@ -238,7 +247,7 @@
     ],
     "description": "Auto. data handling & BBM creation not ready. Please use crash impoter for data handling, then invite BBM review."
   },
-    "MDS_Setup & Map Assignment": {
+  "MDS_Setup & Map Assignment": {
     "inputs": [
       { "label": "Calibration Scope" },
       { "label": "Sensor Scope" },
@@ -282,13 +291,13 @@
     ],
     "description": "Auto. calibration database and auto. threshold function not ready, Please use OrCa to create database and MDSng for threshold drawing."
   },
-   "Cali Internal Test": {
+  "Cali Internal Test": {
     "inputs": [
       { "label": "SimjobStar config file" },
-	  { "label": "Checker (Template)" },
+      { "label": "Checker (Template)" },
       { "label": "Checker_input_ARS_Calibration" },
       { "label": "Checker_input_Fire/Nofire" },
-	  { "label": "CcaRoT setup file)" },
+      { "label": "CcaRoT setup file)" },
       { "label": "Draft .ALG" }
     ],
     "operation": {
@@ -301,9 +310,9 @@
     },
     "outputs": [
       { "label": "Customer simulation result"},
-	    { "label": "Checker (Report)"},
+      { "label": "Checker (Report)"},
       { "label": "Walkthrough (Report)"},
-	    { "label": "CcaRoT (Report)"}
+      { "label": "CcaRoT (Report)"}
     ],
     "description": "Auto. report generation function not ready. Please manually complete internal test."
   },
@@ -312,7 +321,7 @@
       { "label": "SimjobStar config file" },
       { "label": "MDS Folder" },
       { "label": "Official .ALG" },
-	  { "label": "Customer approval E-mail (Template)" }
+      { "label": "Customer approval E-mail (Template)" }
     ],
     "operation": {
       "operation_name": "Generate Official simulation result and customer approval E-mail",
@@ -324,15 +333,15 @@
     },
     "outputs": [
       { "label": "Official Simulation Results" },
-	  { "label": "Customer approval E-mail(draft) " }
+      { "label": "Customer approval E-mail(draft) " }
     ],
     "description": "Taget function is to auto. generate official simulation result and E-mail. But this is not ready now."
   },
-   "Calibration CP": {
+  "Calibration CP": {
     "inputs": [
       { "label": "Official .ALG"},
       { "label": "Official .C"},
-	  { "label": "BBMReview CrashData" },
+      { "label": "BBMReview CrashData" },
       { "label": "BBMReview ARS_Calibration" },
       { "label": "BBMReview CCaRoT" },
       { "label": "BBMReview Checker" },
@@ -372,14 +381,14 @@
     ],
     "description": "Pop out CIA functino not ready now, please find CIA via AppETC."
   },
-   "ARTR_Cal & VAR": {
+  "ARTR_Cal & VAR": {
     "inputs": [
       { "label": "ARS_Cal report (doors link)" },
       { "label": "ARTR_Cal report (doorslink)" },
       { "label": "Cali CP task ID" },
-	  { "label": "Persim/Sefita report (share-point link)" },
+      { "label": "Persim/Sefita report (share-point link)" },
       { "label": "Mounting report(share-point link)"},
-	  { "label": "VAR(template)"}
+      { "label": "VAR(template)"}
     ],
     "operation": {
       "operation_name": "Generate VAR report",

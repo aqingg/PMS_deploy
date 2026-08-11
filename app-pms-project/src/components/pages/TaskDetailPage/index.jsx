@@ -64,6 +64,12 @@ export default function TaskDetailPage() {
   const [operationRunning, setOperationRunning] = useState(false);
   const [operationText, setOperationText] = useState("");
 
+  // Preflight state: prevents repeated clicks while resolving/opening the folder
+  // or while the confirmation dialog is waiting for user input.
+  const [preflightPending, setPreflightPending] = useState(false);
+  const [preflightModalOpen, setPreflightModalOpen] = useState(false);
+  const [activePreflight, setActivePreflight] = useState(null);
+
   // Modal — Missing Email
   const [missingEmailModalOpen, setMissingEmailModalOpen] = useState(false);
 
@@ -81,7 +87,7 @@ export default function TaskDetailPage() {
       normalized.includes("no files found in email folder") ||
       normalized.includes("email folder not found") ||
       normalized.includes("customer_approval_email") ||
-      normalized.includes("Please place the email first.")
+      normalized.includes("please place the email first.")
     );
   };
 
@@ -294,7 +300,6 @@ export default function TaskDetailPage() {
     }
 
     task.status = newStatus;
-
     const res = await updateWorkFlow({
       username: user.username,
       department: user.department,
@@ -315,7 +320,6 @@ export default function TaskDetailPage() {
   // ================================
   const updateTaskName = async () => {
     if (savingTaskName) return;
-
     const rawName = String(newTaskName || "");
     const cleaned = rawName.trim().replace(ILLEGAL_REGEX, "");
     const hasIllegalChars = WINDOWS_ILLEGAL_REGEX.test(rawName);
@@ -331,7 +335,6 @@ export default function TaskDetailPage() {
       messageApi.error("Project ID is missing. Task name cannot be saved.");
       return;
     }
-
     const updated = JSON.parse(JSON.stringify(projectWorkFlow));
     const node = findTaskNodeById(updated.taskTree, taskId);
 
@@ -356,7 +359,6 @@ export default function TaskDetailPage() {
         .filter((item) => item.id !== taskId)
         .map((item) => getNodeName(item).toLowerCase())
         .filter(Boolean);
-
       if (siblingNames.includes(cleaned.toLowerCase())) {
         messageApi.error(`CalibrationID already exists: ${cleaned}`);
         return;
@@ -373,7 +375,6 @@ export default function TaskDetailPage() {
         messageApi.error("The local folder rename function is unavailable.");
         return;
       }
-
       setSavingTaskName(true);
 
       try {
@@ -447,7 +448,6 @@ export default function TaskDetailPage() {
         workflow: updated,
         projectId: effectiveProjectId,
       });
-
       if (res?.success) {
         setCurrentTask({ ...node });
         setEditModalOpen(false);
@@ -479,7 +479,6 @@ export default function TaskDetailPage() {
     if (!effectiveProjectId) {
       throw new Error("Project ID is missing. Operation cannot be executed.");
     }
-
     // 创建一个Promise数组，每个Promise负责获取一个参数
     const parameterPromises = parameterNames.map((name) => getParameter(name));
 
@@ -507,19 +506,29 @@ export default function TaskDetailPage() {
     };
 
     // Only Fill_IAR output should use Public Link.
-    // Inputs still use Local Link, so the local IAR template reading logic is unchanged.
+    // Inputs use local by default. A workflow can explicitly override the input
+    // storage type with operation_detail.input_type (TCD09 uses "public").
     const operationBodyUrl = String(operation_detail.body?.url || "");
     const isIARFill =
       currentTask?.taskName === "IAR" ||
       operationBodyUrl.includes("/fillIARDocuments") ||
       operationBodyUrl.includes("/puma/projects/documents");
 
-    const inputType = "local";
+    const configuredInputType = String(operation_detail.input_type || "local")
+      .trim()
+      .toLowerCase();
+    const inputType = ["local", "public", "cloud"].includes(configuredInputType)
+      ? configuredInputType
+      : "local";
     const outputType = isIARFill ? "public" : "local";
 
     let input_files = [];
 
     if (!isTCD08Fill && !isSensorMap) {
+      if (!taskInputs?.[0]?.label) {
+        throw new Error("Operation input is not configured.");
+      }
+
       const input_path = await getRealPathFromBackend({
         label: taskInputs[0].label,
         taskId,
@@ -534,6 +543,10 @@ export default function TaskDetailPage() {
     let output_path = "";
 
     if (!isSensorMap) {
+      if (!taskOutputs?.[0]?.label) {
+        throw new Error("Operation output is not configured.");
+      }
+
       output_path = await getRealPathFromBackend({
         label: taskOutputs[0].label,
         taskId,
@@ -563,37 +576,38 @@ export default function TaskDetailPage() {
       finalBody.projectId = effectiveProjectId;
       finalBody.taskId = taskId;
     }
-if (isSensorMap) {
-  const peripheralSensor = getProjectInfoValue("Peripheral Sensor");
-  const calibrationScope = getProjectInfoValue("Calibration Scope");
-  const publicLink = getProjectInfoValue("Public Link");
 
-  if (!peripheralSensor) {
-    throw new Error(
-      "Peripheral Sensor is missing. Please fill it in Project Info first."
-    );
-  }
+    if (isSensorMap) {
+      const peripheralSensor = getProjectInfoValue("Peripheral Sensor");
+      const calibrationScope = getProjectInfoValue("Calibration Scope");
+      const publicLink = getProjectInfoValue("Public Link");
 
-  if (!calibrationScope) {
-    throw new Error(
-      "Calibration Scope is missing. Please fill it in Project Info first."
-    );
-  }
+      if (!peripheralSensor) {
+        throw new Error(
+          "Peripheral Sensor is missing. Please fill it in Project Info first."
+        );
+      }
 
-  if (!publicLink) {
-    throw new Error(
-      "Public Link is missing. Please fill it in Project Info first."
-    );
-  }
+      if (!calibrationScope) {
+        throw new Error(
+          "Calibration Scope is missing. Please fill it in Project Info first."
+        );
+      }
 
-  finalBody.peripheralSensor = peripheralSensor;
-  finalBody.calibrationScope = calibrationScope;
-  finalBody.publicLink = publicLink;
-  finalBody.projectName = projectName;
-  finalBody.project_info = projectInfo;
-  finalBody.projectId = effectiveProjectId;
-  finalBody.taskId = taskId;
-}
+      if (!publicLink) {
+        throw new Error(
+          "Public Link is missing. Please fill it in Project Info first."
+        );
+      }
+
+      finalBody.peripheralSensor = peripheralSensor;
+      finalBody.calibrationScope = calibrationScope;
+      finalBody.publicLink = publicLink;
+      finalBody.projectName = projectName;
+      finalBody.project_info = projectInfo;
+      finalBody.projectId = effectiveProjectId;
+      finalBody.taskId = taskId;
+    }
 
     // 2. 发送请求
     const response = await fetch(url, {
@@ -655,7 +669,10 @@ if (isSensorMap) {
     }
   }
 
-  const executeOperation = () => {
+  // ======================================================
+  // 真正执行 Operation：保留原有 operation loading / error 处理
+  // ======================================================
+  const executeOperationCore = () => {
     if (!taskOperation) {
       messageApi.warning("This task requires manual operation.");
       return;
@@ -665,9 +682,8 @@ if (isSensorMap) {
       return;
     }
 
-    // 下面的内容需要按照 Operation 的 type 进行处理
     const { operation_name, operation_detail } = taskOperation;
-    const { type } = operation_detail;
+    const { type } = operation_detail || {};
 
     setOperationText(`Executing: ${operation_name}. Please wait...`);
     setOperationRunning(true);
@@ -705,10 +721,127 @@ if (isSensorMap) {
 
       Modal.error({
         title: "Operation Failed",
-        content: caughtError.message || "Operation failed. Please check the console for details.",
+        content:
+          caughtError.message ||
+          "Operation failed. Please check the console for details.",
         okText: "OK",
       });
     })();
+  };
+
+  // ======================================================
+  // 通用 Preflight Check
+  // Workflow 未配置 preflight 时，直接执行原 operation。
+  // 配置后：resolve path -> open folder -> English confirmation -> execute core.
+  // ======================================================
+  const runPreflight = async (preflight) => {
+    const effectiveProjectId = getEffectiveProjectId();
+
+    if (!effectiveProjectId) {
+      throw new Error("Project ID is missing. Preflight check cannot be started.");
+    }
+
+    const inputLabel = String(
+      preflight?.input_label || taskInputs?.[0]?.label || ""
+    ).trim();
+
+    if (!inputLabel) {
+      throw new Error("Preflight input folder is not configured.");
+    }
+
+    const requestedStorageType = String(preflight?.storage_type || "local")
+      .trim()
+      .toLowerCase();
+    const storageType = ["local", "public", "cloud"].includes(requestedStorageType)
+      ? requestedStorageType
+      : "local";
+
+    const inputPath = await getRealPathFromBackend({
+      label: inputLabel,
+      taskId,
+      projectId: effectiveProjectId,
+      user,
+      type: storageType,
+    });
+
+    if (!inputPath) {
+      throw new Error(`Unable to resolve the preflight input folder: ${inputLabel}`);
+    }
+
+    if (preflight?.open_folder !== false) {
+      const openResponse = await fetch(
+        `http://127.0.0.1:7175/openPath?path=${encodeURIComponent(inputPath)}`,
+        { method: "GET" }
+      );
+
+      if (!openResponse.ok) {
+        throw new Error(
+          `Unable to open the input folder (${openResponse.status} ${openResponse.statusText}).`
+        );
+      }
+
+      let openResult = null;
+      try {
+        openResult = await openResponse.json();
+      } catch (e) {
+        // Keep HTTP success as success when the local client does not return JSON.
+      }
+
+      if (openResult && openResult.success === false) {
+        throw new Error(
+          openResult.error || openResult.message || "Unable to open the input folder."
+        );
+      }
+    }
+
+    setActivePreflight(preflight);
+    setPreflightModalOpen(true);
+  };
+
+  const cancelPreflight = () => {
+    setPreflightModalOpen(false);
+    setActivePreflight(null);
+    setPreflightPending(false);
+  };
+
+  const confirmPreflight = () => {
+    setPreflightModalOpen(false);
+    setActivePreflight(null);
+    setPreflightPending(false);
+    executeOperationCore();
+  };
+
+  const executeOperation = () => {
+    if (!taskOperation) {
+      messageApi.warning("This task requires manual operation.");
+      return;
+    }
+
+    if (operationRunning || preflightPending) {
+      return;
+    }
+
+    const preflight = taskOperation.preflight;
+
+    if (!preflight?.enabled) {
+      executeOperationCore();
+      return;
+    }
+
+    setPreflightPending(true);
+
+    void runPreflight(preflight).catch((error) => {
+      setPreflightPending(false);
+      console.error("Preflight Check Failed:", error);
+
+      Modal.error({
+        title: "Preflight Check Failed",
+        content:
+          error?.message ||
+          "Unable to open or resolve the required input folder. Please check the folder configuration and try again.",
+        okText: "OK",
+      });
+    });
   };
 
   // ================================
@@ -871,6 +1004,24 @@ if (isSensorMap) {
       </Modal>
 
       {/* Operation Loading Modal */}
+      <Modal
+        open={preflightModalOpen}
+        title={activePreflight?.title || "Check Required Input Files"}
+        okText={activePreflight?.confirm_text || "Files are ready"}
+        cancelText={activePreflight?.cancel_text || "Cancel"}
+        onOk={confirmPreflight}
+        onCancel={cancelPreflight}
+        centered
+        closable
+        maskClosable={false}
+        keyboard
+      >
+        <div style={{ lineHeight: 1.7, whiteSpace: "pre-line" }}>
+          {activePreflight?.message ||
+            "Please verify that the required input files have been placed in the input folder before continuing."}
+        </div>
+      </Modal>
+
       <Modal
         open={operationRunning}
         title="Operation in Progress"
