@@ -166,7 +166,7 @@
         "storage_type": "public",
         "open_folder": true,
         "title": "Check Required Input Files",
-        "message": "Please verify that the EXCEL have been placed in the input folder before continuing.",
+        "message": "Please verify that EXCEL have been placed in the input folder before continuing.",
         "confirm_text": "Files are ready",
         "cancel_text": "Cancel"
       },
@@ -409,6 +409,16 @@
     ],
     "operation": {
       "operation_name": "Fill_ONETCD&TCD08",
+      "preflight": {
+        "enabled": true,
+        "input_label": "TCD08_Email_Input",
+        "storage_type": "local",
+        "open_folder": true,
+        "title": "Check Required Email Files",
+        "message": "Please verify that the required two email files have been placed in the input folder before continuing.",
+        "confirm_text": "Files are ready",
+        "cancel_text": "Cancel"
+      },
       "operation_detail": {
         "type": "httpWithParameter",
         "need_parameter": ["uuid","projectid"],
