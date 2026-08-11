@@ -402,9 +402,22 @@ def _iter_images_for_window(
 
             row = int(row_node.text) + 1
             col = int(col_node.text) + 1
+            center_row = float(row)
+            center_col = float(col)
+            to_node = anchor.find("xdr:to", DRAWING_NAMESPACES)
+            if to_node is not None:
+                to_row_node = to_node.find("xdr:row", DRAWING_NAMESPACES)
+                to_col_node = to_node.find("xdr:col", DRAWING_NAMESPACES)
+                if to_row_node is not None and to_col_node is not None:
+                    # Two-cell anchors describe the opposite corner of the
+                    # image. Use the midpoint of the start/end cells for
+                    # section membership, while retaining the start cell for
+                    # a stable output sort order.
+                    center_row = (row + int(to_row_node.text) + 1) / 2
+                    center_col = (col + int(to_col_node.text) + 1) / 2
             if not (
-                start_row <= row < end_row
-                and col >= customer_start_column
+                start_row <= center_row < end_row
+                and center_col >= customer_start_column
             ):
                 continue
 

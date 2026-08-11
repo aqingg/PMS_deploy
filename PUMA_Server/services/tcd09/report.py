@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-import re
 from pathlib import Path
 from typing import Any
 
@@ -14,10 +13,6 @@ TCD09_INPUT_TAG_NAME = "TCD09_Input"
 DEFAULT_TCD09_FILENAME = "QSTL0461_Instruction_Airbag-ECU_and_Sensor_installation_V1.4.docx"
 SUPPORTED_TCD09_SUFFIXES = {".docx", ".docm"}
 SUPPORTED_TCD09_EXCEL_SUFFIXES = {".xlsx", ".xlsm"}
-IAR_REPORT_FILENAME_PATTERN = re.compile(
-    r".+_Installation_Assessment_Review_\d{8}\.xlsx\Z",
-    re.IGNORECASE,
-)
 
 
 def _safe_upload_filename(filename: str | None) -> str:
@@ -211,11 +206,6 @@ def _get_tcd09_input_relative_path() -> str:
     return relative_path
 
 
-def _is_iar_report_excel(path: Path) -> bool:
-    """Return whether a file name follows IAR's generated report convention."""
-    return bool(IAR_REPORT_FILENAME_PATTERN.fullmatch(path.name))
-
-
 def _select_single_tcd09_excel(input_directory: Path, public_root: Path) -> Path:
     if not _path_is_within(input_directory, public_root):
         raise HTTPException(
@@ -236,7 +226,6 @@ def _select_single_tcd09_excel(input_directory: Path, public_root: Path) -> Path
                 path.is_file()
                 and not path.name.startswith("~$")
                 and path.suffix.lower() in SUPPORTED_TCD09_EXCEL_SUFFIXES
-                and not _is_iar_report_excel(path)
                 and os.access(path, os.R_OK)
             )
         ]
@@ -254,16 +243,34 @@ def _select_single_tcd09_excel(input_directory: Path, public_root: Path) -> Path
                 f"{input_directory}."
             ),
         )
-    if len(candidates) > 1:
-        names = sorted(path.name for path in candidates)
+    if len(candidates) == 1:
+        return candidates[0]
+
+    picture_candidates = [
+        path
+        for path in candidates
+        if "图片收集" in path.name or "图片" in path.name
+    ]
+    if len(picture_candidates) == 1:
+        return picture_candidates[0]
+
+    names = sorted(path.name for path in candidates)
+    picture_names = sorted(path.name for path in picture_candidates)
+    if picture_candidates:
         raise HTTPException(
             status_code=409,
             detail=(
-                "Multiple TCD09 Excel files were found. Keep exactly one .xlsm or "
-                f".xlsx file in {input_directory}. Found={names}"
+                "Multiple Excel files with '图片' were found. Keep exactly one "
+                f"TCD09 picture Excel in {input_directory}. Found={picture_names}"
             ),
         )
-    return candidates[0]
+    raise HTTPException(
+        status_code=409,
+        detail=(
+            "Multiple Excel files were found, but none has '图片收集' or '图片' "
+            f"in its file name. Found={names}"
+        ),
+    )
 
 
 def select_tcd09_files_by_path(project_public_root: str) -> tuple[Path, Path, str]:

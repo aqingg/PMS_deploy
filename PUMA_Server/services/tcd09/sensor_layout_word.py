@@ -353,11 +353,22 @@ def _marker_geometry(
     length_ratio = float(marker_style.get("length_ratio", 0.45))
     thickness_ratio = float(marker_style.get("thickness_ratio", 0.12))
     gap_ratio = float(marker_style.get("gap_ratio", 0.0))
+
+    marker_rule = slot_rule.get("marker")
+    along_edge_offset = 0.0
+    if isinstance(marker_rule, dict):
+        along_edge_offset = float(marker_rule.get("along_edge_offset", 0.0))
+    # Keep configuration bounded: -1.0 means fully toward the top/left end,
+    # +1.0 means fully toward the bottom/right end, 0.0 keeps the old center.
+    along_edge_offset = max(-1.0, min(1.0, along_edge_offset))
+
     if side in {"left", "right"}:
         marker_width = max(2.0, label_width * thickness_ratio)
         marker_height = max(4.0, label_height * length_ratio)
         gap = label_width * gap_ratio
-        marker_top = label_top + (label_height - marker_height) / 2.0
+        center_top = label_top + (label_height - marker_height) / 2.0
+        available_travel = max(0.0, (label_height - marker_height) / 2.0)
+        marker_top = center_top + available_travel * along_edge_offset
         marker_left = (
             label_left - gap - marker_width
             if side == "left"
@@ -367,7 +378,9 @@ def _marker_geometry(
         marker_width = max(4.0, label_width * length_ratio)
         marker_height = max(2.0, label_height * thickness_ratio)
         gap = label_height * gap_ratio
-        marker_left = label_left + (label_width - marker_width) / 2.0
+        center_left = label_left + (label_width - marker_width) / 2.0
+        available_travel = max(0.0, (label_width - marker_width) / 2.0)
+        marker_left = center_left + available_travel * along_edge_offset
         marker_top = (
             label_top - gap - marker_height
             if side == "top"
