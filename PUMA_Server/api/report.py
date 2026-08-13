@@ -14,6 +14,7 @@ from starlette.background import BackgroundTask
 
 from models.database import get_db
 from services.tcd08.report import generate_tcd08_report
+from services.path_resolver import PathResolverError, resolve_path
 from services.sensormap_service import (
     SensorMapConfigError,
     SensorMapError,
@@ -547,6 +548,34 @@ def _resolve_sensor_map_output_directory(
 
     if explicit_output not in (None, ""):
         return Path(str(explicit_output).strip())
+
+    project_info_value = _sensor_map_get_first(
+        data,
+        "project_info",
+        "projectInfo",
+    )
+    if isinstance(project_info_value, str):
+        project_info_value = _parse_project_info(project_info_value)
+
+    if isinstance(project_info_value, dict):
+        project_info_rows = project_info_value.get("projectInfo")
+    else:
+        project_info_rows = project_info_value
+
+    if isinstance(project_info_rows, list):
+        task_id = str(
+            _sensor_map_get_first(data, "taskId", "task_id", default="") or ""
+        ).strip()
+        try:
+            resolved = resolve_path(
+                project_info=project_info_rows,
+                project_workflow={},
+                label="Sensor Map",
+                task_id=task_id,
+            )
+        except PathResolverError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return Path(str(resolved["path"]))
 
     public_link = _sensor_map_get_first(
         data,

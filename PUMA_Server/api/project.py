@@ -2,9 +2,6 @@ from fastapi import APIRouter, Body, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from utils.file_loader import (
-    load_json,
-    extract_root_paths,
-    load_folder_mapping,
     load_template,
     build_local_workspace_paths,
 )
@@ -20,6 +17,10 @@ from crud.project import (
 )
 from models.project import Project
 from models.database import get_db
+from services.path_resolver import (
+    PathResolverError,
+    resolve_path,
+)
 import uuid
 from schemas.project import (
     ProjectInfoUpdate,
@@ -40,9 +41,6 @@ router = APIRouter(
     prefix="/project",
     tags=["Project API"]
 )
-
-CONFIGURED_STORAGE_TYPES = {"local", "public"}
-REQUEST_STORAGE_TYPES = CONFIGURED_STORAGE_TYPES | {"cloud"}
 
 # ===============================================================
 # GET /project/getProject
@@ -401,91 +399,6 @@ async def reorder_projects_api(req: ProjectReorderRequest, db: Session = Depends
 # ===============================================================
 # GET /project/getPath
 # ===============================================================
-def get_path_mapping(label: str):
-    """
-    从 folder_mapping.json 中读取:
-    {
-        "TagName": "...",
-        "RelativePath": "...",
-        "AbsolutePath": "..."   # optional
-    }
-    """
-    mappings = load_folder_mapping()
-    for item in mappings:
-        if item["TagName"] == label:
-
-            # ⭐ 返回结构统一
-            return {
-                "relative": item.get("RelativePath"),
-                "absolute": item.get("AbsolutePath"),
-                "storage_type": item.get("StorageType"),
-            }
-
-    return None
-
-
-def resolve_storage_type(label: str, configured_value, requested_type: str | None) -> str:
-    """Resolve a relative mapping root from configuration, request, then local."""
-    if configured_value is not None and str(configured_value).strip():
-        if not isinstance(configured_value, str):
-            raise HTTPException(
-                status_code=500,
-                detail=(
-                    f"Invalid StorageType for label={label!r}: expected 'local' or "
-                    f"'public', got {configured_value!r}"
-                ),
-            )
-
-        configured_type = configured_value.strip().lower()
-        if configured_type not in CONFIGURED_STORAGE_TYPES:
-            raise HTTPException(
-                status_code=500,
-                detail=(
-                    f"Invalid StorageType for label={label!r}: expected 'local' or "
-                    f"'public', got {configured_value!r}"
-                ),
-            )
-        return configured_type
-
-    fallback_type = str(requested_type or "").strip().lower() or "local"
-    if fallback_type not in REQUEST_STORAGE_TYPES:
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                f"Invalid requested path type for label={label!r}: expected one of "
-                f"{sorted(REQUEST_STORAGE_TYPES)}, got {requested_type!r}"
-            ),
-        )
-    return fallback_type
-
-
-def find_level1_parent_name(taskTree, targetTaskId):
-    for node in taskTree:
-        children1 = node.get("children", [])
-        for child1 in children1:
-            if child1.get("id") == targetTaskId:
-                return child1["taskName"]
-
-            for child2 in child1.get("children", []):
-                if child2.get("id") == targetTaskId:
-                    return child1["taskName"]
-
-    return None
-
-
-def find_level1_name_under_root(taskTree, targetTaskId):
-    for node in taskTree:
-        for child1 in node.get("children", []):
-            if child1.get("id") == targetTaskId:
-                return child1["taskName"]
-
-            for child2 in child1.get("children", []):
-                if child2.get("id") == targetTaskId:
-                    return child1["taskName"]
-
-    return None
-
-
 @router.get("/getPath")
 def get_path(
     label: str,
@@ -509,116 +422,19 @@ def get_path(
     if not isinstance(projectInfo, list):
         raise HTTPException(status_code=500, detail="projectInfo structure invalid")
 
-    # ============================================================
-    # ⭐ 1. 从 JSON 读取 mapping（包含 absolute & relative）
-    # ============================================================
-    mapping = get_path_mapping(label)
-    if not mapping:
-        raise HTTPException(status_code=400, detail=f"No mapping found for label={label}")
-
-    absolute_path = mapping.get("absolute")
-    relative = mapping.get("relative")
-    storage_type = resolve_storage_type(
-        label,
-        mapping.get("storage_type"),
-        type,
-    )
-
-    # ============================================================
-    # ⭐ 2. absolutePath 优先逻辑
-    # ============================================================
-    if absolute_path:
-        final_path = absolute_path
-
-        # ---------------- AlgoID 替换 ----------------
-        if "AlgoID" in final_path:
-            workflow = json.loads(project.projectWorkFlow)
-            taskTree = workflow.get("taskTree", [])
-            level1_name = find_level1_parent_name(taskTree, taskId)
-            if not level1_name:
-                raise HTTPException(status_code=400, detail=f"Cannot find level1 parent for taskId {taskId}")
-            final_path = final_path.replace("AlgoID", level1_name)
-
-        # -------- ProjectID_Parameter_ID 替换 --------
-        if "ProjectID_Parameter_ID" in final_path:
-            workflow = json.loads(project.projectWorkFlow)
-            taskTree = workflow.get("taskTree", [])
-            p1 = find_level1_name_under_root(taskTree, taskId)
-            if not p1:
-                raise HTTPException(status_code=400, detail=f"Cannot find parameter-level1 parent for taskId {taskId}")
-            final_path = final_path.replace("ProjectID_Parameter_ID", p1)
-
-        return {
-            "success": True,
-            "root": "(absolute)",
-            "path": final_path,
-            "storage_type": "absolute",
-        }
-
-    # ============================================================
-    # ⭐ 3. 没有 absolutePath → 使用 relative（你原来的逻辑）
-    # ============================================================
-    if not relative:
-        raise HTTPException(status_code=400, detail=f"No RelativePath found for label={label}")
-
-    root_paths = extract_root_paths(projectInfo)
-    root = root_paths.get(storage_type)
-    if not root:
-        root_label = {
-            "local": "Local Link",
-            "public": "Public Link",
-            "cloud": "SharePoint",
-        }.get(storage_type, storage_type)
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                f"Project does not define {root_label} required by "
-                f"label={label!r}, storage_type={storage_type!r}"
-            ),
+    try:
+        project_workflow = json.loads(project.projectWorkFlow)
+        return resolve_path(
+            project_info=projectInfo,
+            project_workflow=project_workflow,
+            label=label,
+            task_id=taskId,
+            requested_type=type,
         )
-
-    # -------------------- Relative AlgoID Logic --------------------
-    if "AlgoID" in relative:
-        workflow_raw = project.projectWorkFlow
-        try:
-            workflow = json.loads(workflow_raw)
-        except:
-            raise HTTPException(status_code=500, detail="Failed to parse projectWorkFlow JSON")
-
-        taskTree = workflow.get("taskTree", [])
-        level1_name = find_level1_parent_name(taskTree, taskId)
-        if not level1_name:
-            raise HTTPException(status_code=400, detail=f"Cannot find level1 parent for taskId {taskId}")
-
-        relative = relative.replace("AlgoID", level1_name)
-
-    # -------- Relative ProjectID_Parameter_ID Logic --------
-    if "ProjectID_Parameter_ID" in relative:
-        workflow_raw = project.projectWorkFlow
-        try:
-            workflow = json.loads(workflow_raw)
-        except:
-            raise HTTPException(status_code=500, detail="Failed to parse projectWorkFlow JSON")
-
-        taskTree = workflow.get("taskTree", [])
-        p1 = find_level1_name_under_root(taskTree, taskId)
-        if not p1:
-            raise HTTPException(status_code=400, detail=f"Cannot find calibration-level1 parent for taskId {taskId}")
-
-        relative = relative.replace("ProjectID_Parameter_ID", p1)
-
-    # -------------------- Final Path Combination --------------------
-    if storage_type == "cloud":
-        final_path = root.rstrip("/") + "/" + relative.lstrip("\\/")
-    else:
-        final_path = root.rstrip("\\") + "\\" + relative.lstrip("\\")
-
-    return {
-        "success": True,
-        "root": root,
-        "path": final_path,
-        "storage_type": storage_type,
-    }
+    except json.JSONDecodeError as e:
+        raise HTTPException(status_code=500, detail=f"projectWorkFlow JSON decode error: {e}") from e
+    except PathResolverError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 # ===============================================================

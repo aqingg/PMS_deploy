@@ -163,7 +163,6 @@
       "preflight": {
         "enabled": true,
         "input_label": "TCD09_Input",
-        "storage_type": "public",
         "open_folder": true,
         "title": "Check Required Input Files",
         "message": "Please verify that EXCEL have been placed in the input folder before continuing.",
@@ -173,7 +172,6 @@
       "operation_detail": {
         "type": "httpWithParameter",
         "need_parameter": ["projectid"],
-        "input_type": "public",
         "method": "POST",
         "url": "http://127.0.0.1:7175/report/fillTCD09Report",
         "body": {
@@ -412,7 +410,6 @@
       "preflight": {
         "enabled": true,
         "input_label": "TCD08_Email_Input",
-        "storage_type": "local",
         "open_folder": true,
         "title": "Check Required Email Files",
         "message": "Please verify that the required two email files have been placed in the input folder before continuing.",

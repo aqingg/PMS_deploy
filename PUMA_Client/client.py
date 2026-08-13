@@ -1563,12 +1563,9 @@ def client_fill_tcd09_report(payload: dict = Body(...)):
     """Forward TCD09 public-share paths as JSON and save the generated Word locally."""
     try:
         projectid = str(payload.get("projectid") or "").strip()
-        template_paths = payload.get("template_paths")
         save_path_raw = payload.get("save_path")
         if not projectid:
             raise HTTPException(status_code=400, detail="projectid is required")
-        if not isinstance(template_paths, list) or not template_paths:
-            raise HTTPException(status_code=400, detail="template_paths is required")
         if not save_path_raw:
             raise HTTPException(status_code=400, detail="save_path is required")
 
@@ -1578,9 +1575,10 @@ def client_fill_tcd09_report(payload: dict = Body(...)):
         if not server_report_url:
             raise HTTPException(status_code=400, detail="server_report_url is required")
 
+        # TCD09 模板和 Excel 路径由 8086 Path Resolver 根据 projectid 统一解析。
         response = _post_json_to_report_server(
             server_report_url,
-            {"projectid": projectid, "template_paths": template_paths},
+            {"projectid": projectid},
         )
         if response.status_code < 200 or response.status_code >= 300:
             detail = response.text[:2000] if response.text else response.reason

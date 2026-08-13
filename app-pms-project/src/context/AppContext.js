@@ -29,8 +29,8 @@ export function AppProvider({ children }) {
     LOCAL_RENAME_CALIBRATION_FOLDER: "/renameCalibrationFolder",
 
     // 调试时建议用本地： http://127.0.0.1:8086/app-puma
-    BASE: "https://oss-dthub.apac.bosch.com/app-puma",
-    //BASE: "http://127.0.0.1:8086/app-puma",
+    // BASE: "https://oss-dthub.apac.bosch.com/app-puma",
+    BASE: "http://127.0.0.1:8086/app-puma",
 
     PROJECT_GET: "/project/getProject",
     PROJECT_CREATE: "/project/createProject",
@@ -241,15 +241,22 @@ export function AppProvider({ children }) {
   // ⭐ 文件夹功能 —— requestPathAndExecute
   // =====================================================
   const getRealPathFromBackend = async ({ label, taskId, projectId, user, type }) => {
+    const params = {
+      label,
+      taskId,
+      projectId,
+      username: user.username,
+      department: user.department,
+    };
+
+    // type 仅作为 Folder Open 等显式按钮的兼容回退；
+    // 工作流、Preflight 和 Fill Operation 不再自行决定 local/public。
+    if (type) {
+      params.type = type;
+    }
+
     const res = await axios.get(API.BASE + API.PROJECT_GETPATH, {
-      params: {
-        label,
-        taskId,
-        projectId,
-        username: user.username,
-        department: user.department,
-        type,
-      },
+      params,
     });
 
     if (!res.data?.success) {

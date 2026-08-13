@@ -19,6 +19,7 @@ from services.datamerge import (
     fetch_single_project_details,
     fill_docx_by_placeholders,
 )
+from services.path_resolver import get_mapping_entry, resolve_path
 from services.tcd08.rules import (
     red_paragraph_deletion_rules,
     red_paragraph_text_rewrite_rules,
@@ -35,8 +36,6 @@ from services.word_sections import (
     rewrite_red_paragraph_text_batch,
     update_tocs_with_word,
 )
-from utils.file_loader import load_folder_mapping
-
 logger = logging.getLogger("uvicorn.error")
 
 
@@ -193,7 +192,7 @@ REPLACE_RED_FONT_WITH_BLACK_ENABLED = True
 
 # 红转黑白名单：这些章节保留红色，不执行红转黑。
 # 示例：{"4.1"}
-RED_TO_BLACK_SECTION_WHITELIST: set[str] = {"3.3","4.1"}
+RED_TO_BLACK_SECTION_WHITELIST: set[str] = {"3.3", "4.1"}
 
 # 是否把整条文档处理链路放到本地临时目录执行：
 # - True：先在服务器 temp 路径处理（含 TOC），最后统一复制到输出目录。
@@ -202,30 +201,17 @@ RED_TO_BLACK_SECTION_WHITELIST: set[str] = {"3.3","4.1"}
 PROCESS_ALL_STEPS_IN_LOCAL_TEMP = True
 
 
-def _mapping_by_tag(tag_name: str) -> dict:
-    """从 FolderLinkMapping.json 中找到指定 TagName 的配置项。"""
-    for item in load_folder_mapping():
-        if item.get("TagName") == tag_name:
-            return item
-    raise HTTPException(status_code=400, detail=f"No folder mapping found for {tag_name}")
-
-
-def _mapping_base_path(item: dict, tag_name: str) -> Path:
-    """读取某个 mapping 配置的 AbsolutePath，并确认路径存在。"""
-    absolute_path = item.get("AbsolutePath") or ""
-    if not absolute_path:
-        raise HTTPException(status_code=400, detail=f"No AbsolutePath configured for {tag_name}")
-
-    path = Path(absolute_path)
-    if not path.exists():
-        raise HTTPException(status_code=404, detail=f"Configured path not found: {path}")
-    return path
-
-
 def _resolve_template_paths() -> list[Path]:
     """解析 TCD08 模板文件路径。模板仍来自服务器/公盘 AbsolutePath。"""
-    item = _mapping_by_tag("ONETCD&TCD08_Template")
-    base_path = _mapping_base_path(item, "ONETCD&TCD08_Template")
+    item = get_mapping_entry("ONETCD&TCD08_Template")
+    resolved = resolve_path(
+        project_info=[],
+        project_workflow={},
+        label="ONETCD&TCD08_Template",
+    )
+    base_path = Path(str(resolved["path"]))
+    if not base_path.exists():
+        raise HTTPException(status_code=404, detail=f"Configured path not found: {base_path}")
     file_keyword = (item.get("FileKeyWord") or "").strip()
 
     if file_keyword:
@@ -258,19 +244,22 @@ def _resolve_template_paths() -> list[Path]:
     return template_paths
 
 
-def _resolve_output_dir() -> Path:
+def _resolve_output_dir(
+    project_info: dict[str, Any],
+    workflow: dict[str, Any],
+    task_id: Optional[str],
+) -> Path:
     """
     旧接口兜底输出目录。
     新架构下 7175 调用 8086 时，会传 forced_output_dir，通常不会走这里。
     """
-    item = _mapping_by_tag("ONETCD&TCD08_Report")
-    absolute_path = item.get("AbsolutePath") or ""
-    if not absolute_path:
-        raise HTTPException(
-            status_code=400,
-            detail="No AbsolutePath configured for ONETCD&TCD08_Report",
-        )
-    output_dir = Path(absolute_path)
+    resolved = resolve_path(
+        project_info=project_info,
+        project_workflow=workflow,
+        label="ONETCD&TCD08_Report",
+        task_id=str(task_id or ""),
+    )
+    output_dir = Path(str(resolved["path"]))
     output_dir.mkdir(parents=True, exist_ok=True)
     return output_dir
 
@@ -522,7 +511,11 @@ async def generate_tcd08_report(
         output_dir.mkdir(parents=True, exist_ok=True)
         logger.info("[TCD08] Using forced server output dir: %s", output_dir)
     else:
-        output_dir = _resolve_output_dir()
+        output_dir = _resolve_output_dir(
+            resolved_project_info,
+            workflow,
+            task_id,
+        )
         logger.info("[TCD08] Using legacy output dir: %s", output_dir)
 
     if isinstance(email_summary, dict) and email_summary:

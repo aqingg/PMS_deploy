@@ -6,7 +6,6 @@ import logging
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
-from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
@@ -16,7 +15,7 @@ from models.database import get_db
 from models.project import Project
 from services.IAR_fill import fill_excel_by_placeholders
 from services.datamerge import apply_project_info_overrides, fetch_single_project_details
-from utils.file_loader import load_folder_mapping
+from services.path_resolver import PathResolverError, get_mapping_entry, resolve_path
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -107,7 +106,7 @@ def _get_iar_file_keyword_from_mapping() -> str:
         {"TagName": "IAR_Template", "FileKeyWord": "QSCL0415_...xlsx"}
     """
     try:
-        mappings = load_folder_mapping()
+        mapping = get_mapping_entry(IAR_TEMPLATE_TAG_NAME)
     except Exception as exc:
         logger.warning(
             "[IAR] Failed to load FolderLinkMapping.json. Fallback to default keyword. error=%s",
@@ -115,24 +114,8 @@ def _get_iar_file_keyword_from_mapping() -> str:
         )
         return DEFAULT_IAR_FILE_KEYWORD
 
-    if not isinstance(mappings, list):
-        return DEFAULT_IAR_FILE_KEYWORD
-
-    for item in mappings:
-        if not isinstance(item, dict):
-            continue
-        if item.get("TagName") == IAR_TEMPLATE_TAG_NAME:
-            keyword = str(item.get("FileKeyWord") or "").strip()
-            return keyword or DEFAULT_IAR_FILE_KEYWORD
-
-    for item in mappings:
-        if not isinstance(item, dict):
-            continue
-        keyword = str(item.get("FileKeyWord") or "").strip()
-        if keyword.casefold() == DEFAULT_IAR_FILE_KEYWORD.casefold():
-            return keyword
-
-    return DEFAULT_IAR_FILE_KEYWORD
+    keyword = str(mapping.get("FileKeyWord") or "").strip()
+    return keyword or DEFAULT_IAR_FILE_KEYWORD
 
 
 def _select_iar_upload_file(files: list[UploadFile], expected_filename: str) -> UploadFile:
@@ -453,81 +436,24 @@ def _extract_project_root(project_info: dict[str, Any], root_label: str) -> str:
     return ""
 
 
-def _normalize_relative_path(relative_path: Any) -> str:
-    text = str(relative_path or "").strip()
-    if not text:
-        return ""
-    text = text.replace("/", "\\")
-    while text.startswith("\\"):
-        text = text[1:]
-    return text
-
-
-def _is_url(value: str) -> bool:
-    text = str(value or "").strip().lower()
-    return text.startswith("http://") or text.startswith("https://")
-
-
-def _join_root_and_relative(root: str, relative_path: str) -> str:
-    """
-    Join a Public Link root and a FolderLinkMapping RelativePath.
-
-    Supports both Windows/UNC style roots and browser URL roots.
-    """
-    root_text = str(root or "").strip()
-    rel_text = _normalize_relative_path(relative_path)
-    if not root_text:
-        return "N/A"
-    if not rel_text:
-        return root_text
-
-    if _is_url(root_text):
-        root_url = root_text.rstrip("/")
-        parts = [quote(part) for part in rel_text.replace("\\", "/").split("/") if part]
-        return root_url + "/" + "/".join(parts)
-
-    return str(Path(root_text) / Path(rel_text))
-
-
-def _mapping_by_tag_name() -> dict[str, dict[str, Any]]:
-    try:
-        mappings = load_folder_mapping()
-    except Exception as exc:
-        logger.warning("[IAR] Failed to load FolderLinkMapping for public links. error=%s", exc)
-        return {}
-
-    result: dict[str, dict[str, Any]] = {}
-    if not isinstance(mappings, list):
-        return result
-
-    for item in mappings:
-        if not isinstance(item, dict):
-            continue
-        tag = str(item.get("TagName") or "").strip()
-        if tag:
-            result[tag] = item
-    return result
-
-
 def _resolve_public_link_by_tag_candidates(
     *,
-    public_root: str,
+    project_info: dict[str, Any],
     tag_candidates: list[str],
-    mapping_lookup: dict[str, dict[str, Any]],
 ) -> str:
     for tag_name in tag_candidates:
-        item = mapping_lookup.get(tag_name)
-        if not item:
+        try:
+            resolved = resolve_path(
+                project_info=project_info,
+                project_workflow={},
+                label=tag_name,
+            )
+        except PathResolverError:
             continue
 
-        absolute_path = str(item.get("AbsolutePath") or "").strip()
-        relative_path = str(item.get("RelativePath") or "").strip()
-
-        if _is_meaningful(relative_path):
-            return _join_root_and_relative(public_root, relative_path)
-
-        if _is_meaningful(absolute_path):
-            return absolute_path
+        resolved_path = str(resolved.get("path") or "").strip()
+        if resolved_path:
+            return resolved_path
 
     return "N/A"
 
@@ -559,12 +485,10 @@ def _build_iar_public_link_profile(project_info: dict[str, Any]) -> dict[str, An
             profile[alias] = profile.get(source_key, "N/A")
         return profile
 
-    mapping_lookup = _mapping_by_tag_name()
     for key, tag_candidates in PUBLIC_LINK_PLACEHOLDER_SPECS.items():
         profile[key] = _resolve_public_link_by_tag_candidates(
-            public_root=public_root,
+            project_info=project_info,
             tag_candidates=tag_candidates,
-            mapping_lookup=mapping_lookup,
         )
 
     for alias, source_key in PUBLIC_LINK_ALIASES.items():
@@ -665,6 +589,9 @@ async def _build_iar_profile(
 
     if not _is_meaningful(profile.get("projectName")) and _is_meaningful(profile.get("project")):
         profile["projectName"] = profile["project"]
+
+    # Keep IAR's report date consistent with TCD08's automatic date field.
+    profile["report_date"] = datetime.now().strftime("%Y.%m.%d")
 
     public_link_profile = _build_iar_public_link_profile(local_project_info)
     profile.update(public_link_profile)

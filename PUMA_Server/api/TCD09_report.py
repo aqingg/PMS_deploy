@@ -29,7 +29,7 @@ from services.tcd09 import (
     insert_tcd09_sensor_layout_shapes,
 )
 from services.tcd09.sensor_overview import fill_tcd09_sensor_type_rows
-from utils.file_loader import extract_root_paths
+from services.path_resolver import PathResolverError, resolve_path
 
 
 router = APIRouter(prefix="/report", tags=["Report"])
@@ -68,10 +68,10 @@ def _extract_pms_uuid_from_project_info(project_info: dict[str, Any]) -> str:
     return ""
 
 
-def _get_tcd09_project_public_root(
+def _get_tcd09_project_paths(
     project_identifier: str,
     db: Session,
-) -> str:
+) -> tuple[str, str, str]:
     project_id = _to_int(project_identifier)
     if project_id is None:
         raise HTTPException(status_code=400, detail="TCD09 projectid must be a project ID.")
@@ -85,13 +85,28 @@ def _get_tcd09_project_public_root(
     if not isinstance(rows, list):
         raise HTTPException(status_code=500, detail="projectInfo structure is invalid.")
 
-    public_root = str(extract_root_paths(rows).get("public") or "").strip()
-    if not public_root:
-        raise HTTPException(
-            status_code=400,
-            detail="Project does not define the Public Link required for TCD09.",
+    try:
+        workflow = json.loads(project.projectWorkFlow)
+        # TCD09 固定模板和项目输入目录均由统一 Path Resolver 按标签解析。
+        template_result = resolve_path(
+            project_info=rows,
+            project_workflow=workflow,
+            label="TCD09_Word_Template",
         )
-    return public_root
+        input_result = resolve_path(
+            project_info=rows,
+            project_workflow=workflow,
+            label="TCD09_Input",
+        )
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=500, detail="Project workflow JSON is invalid.") from exc
+    except PathResolverError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    template_root = str(template_result["path"])
+    input_directory = str(input_result["path"])
+    public_root = str(input_result["root"])
+    return template_root, input_directory, public_root
 
 
 def _safe_tcd09_filename_part(value: Any) -> str:
@@ -339,8 +354,15 @@ async def fill_tcd09_report_by_path(
 ):
     """Generate TCD09 from its fixed Word template and project Public Link Excel."""
 
-    project_public_root = _get_tcd09_project_public_root(request.projectid, db)
-    template_path, excel_path, expected_filename = select_tcd09_files_by_path(project_public_root)
+    template_root, input_directory, public_root = _get_tcd09_project_paths(
+        request.projectid,
+        db,
+    )
+    template_path, excel_path, expected_filename = select_tcd09_files_by_path(
+        template_root,
+        input_directory,
+        public_root,
+    )
     try:
         content = template_path.read_bytes()
         excel_content = excel_path.read_bytes()

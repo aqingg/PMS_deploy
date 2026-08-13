@@ -2,14 +2,12 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any
 
 from fastapi import HTTPException, UploadFile
 
-from utils.file_loader import load_folder_mapping
+from services.path_resolver import get_mapping_entry
 
 TCD09_TEMPLATE_TAG_NAME = "TCD09_Word_Template"
-TCD09_INPUT_TAG_NAME = "TCD09_Input"
 DEFAULT_TCD09_FILENAME = "QSTL0461_Instruction_Airbag-ECU_and_Sensor_installation_V1.4.docx"
 SUPPORTED_TCD09_SUFFIXES = {".docx", ".docm"}
 SUPPORTED_TCD09_EXCEL_SUFFIXES = {".xlsx", ".xlsm"}
@@ -21,33 +19,13 @@ def _safe_upload_filename(filename: str | None) -> str:
 
 
 def _get_mapping_keyword(tag_name: str, fallback: str) -> str:
-    mapping = _get_mapping_entry(tag_name)
-    if not mapping:
+    try:
+        mapping = get_mapping_entry(tag_name)
+    except Exception:
         return fallback
 
     keyword = str(mapping.get("FileKeyWord") or "").strip()
     return keyword or fallback
-
-
-def _get_mapping_entry(tag_name: str) -> dict[str, Any] | None:
-    try:
-        mappings = load_folder_mapping()
-    except Exception as exc:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to load FolderLinkMapping.json: {exc}",
-        ) from exc
-
-    if not isinstance(mappings, list):
-        return None
-
-    for item in mappings:
-        if not isinstance(item, dict):
-            continue
-        if item.get("TagName") == tag_name:
-            return item
-
-    return None
 
 
 def get_tcd09_expected_filename() -> str:
@@ -159,9 +137,8 @@ def _validate_readable_file(
     return path
 
 
-def _get_fixed_tcd09_template_path() -> tuple[Path, str]:
-    mapping = _get_mapping_entry(TCD09_TEMPLATE_TAG_NAME)
-    template_root_value = str((mapping or {}).get("AbsolutePath") or "").strip()
+def _get_fixed_tcd09_template_path(template_root_value: str) -> tuple[Path, str]:
+    template_root_value = str(template_root_value or "").strip()
     if not template_root_value:
         raise HTTPException(
             status_code=500,
@@ -183,27 +160,6 @@ def _get_fixed_tcd09_template_path() -> tuple[Path, str]:
         ),
         expected_filename,
     )
-
-
-def _get_tcd09_input_relative_path() -> str:
-    mapping = _get_mapping_entry(TCD09_INPUT_TAG_NAME)
-    if not mapping:
-        raise HTTPException(
-            status_code=500,
-            detail=f"FolderLinkMapping.json is missing {TCD09_INPUT_TAG_NAME}.",
-        )
-    if str(mapping.get("StorageType") or "").strip().lower() != "public":
-        raise HTTPException(
-            status_code=500,
-            detail=f"{TCD09_INPUT_TAG_NAME} must configure StorageType='public'.",
-        )
-    relative_path = str(mapping.get("RelativePath") or "").strip()
-    if not relative_path:
-        raise HTTPException(
-            status_code=500,
-            detail=f"{TCD09_INPUT_TAG_NAME} must configure RelativePath.",
-        )
-    return relative_path
 
 
 def _select_single_tcd09_excel(input_directory: Path, public_root: Path) -> Path:
@@ -273,16 +229,21 @@ def _select_single_tcd09_excel(input_directory: Path, public_root: Path) -> Path
     )
 
 
-def select_tcd09_files_by_path(project_public_root: str) -> tuple[Path, Path, str]:
-    """Select the fixed Word template and one Excel from a project's Public Link."""
+def select_tcd09_files_by_path(
+    template_root: str,
+    input_directory: str,
+    public_root: str,
+) -> tuple[Path, Path, str]:
+    """Select TCD09 files from directories already resolved by Path Resolver."""
 
-    public_root_value = str(project_public_root or "").strip()
-    if not public_root_value:
+    public_root_path = Path(str(public_root or "").strip())
+    if not str(public_root_path):
         raise HTTPException(status_code=400, detail="Project Public Link must not be empty.")
-    public_root = Path(public_root_value)
 
-    template_path, expected_filename = _get_fixed_tcd09_template_path()
-    relative_path = _get_tcd09_input_relative_path()
-    input_directory = public_root / relative_path.lstrip("\\/")
-    excel_path = _select_single_tcd09_excel(input_directory, public_root)
+    template_path, expected_filename = _get_fixed_tcd09_template_path(template_root)
+    input_directory_path = Path(str(input_directory or "").strip())
+    if not str(input_directory_path):
+        raise HTTPException(status_code=400, detail="TCD09 input directory must not be empty.")
+
+    excel_path = _select_single_tcd09_excel(input_directory_path, public_root_path)
     return template_path, excel_path, expected_filename

@@ -486,6 +486,7 @@ export default function TaskDetailPage() {
     const parameterResults = await Promise.all(parameterPromises);
 
     const isTCD08Fill = operation_detail.url?.includes("/fillTCD08Report");
+    const isTCD09Fill = operation_detail.url?.includes("/fillTCD09Report");
     const isSensorMap = operation_detail.url?.includes("/generateSensorMap");
 
     const getProjectInfoValue = (label) => {
@@ -505,26 +506,9 @@ export default function TaskDetailPage() {
       return "";
     };
 
-    // Only Fill_IAR output should use Public Link.
-    // Inputs use local by default. A workflow can explicitly override the input
-    // storage type with operation_detail.input_type (TCD09 uses "public").
-    const operationBodyUrl = String(operation_detail.body?.url || "");
-    const isIARFill =
-      currentTask?.taskName === "IAR" ||
-      operationBodyUrl.includes("/fillIARDocuments") ||
-      operationBodyUrl.includes("/puma/projects/documents");
-
-    const configuredInputType = String(operation_detail.input_type || "local")
-      .trim()
-      .toLowerCase();
-    const inputType = ["local", "public", "cloud"].includes(configuredInputType)
-      ? configuredInputType
-      : "local";
-    const outputType = isIARFill ? "public" : "local";
-
     let input_files = [];
 
-    if (!isTCD08Fill && !isSensorMap) {
+    if (!isTCD08Fill && !isTCD09Fill && !isSensorMap) {
       if (!taskInputs?.[0]?.label) {
         throw new Error("Operation input is not configured.");
       }
@@ -534,7 +518,6 @@ export default function TaskDetailPage() {
         taskId,
         projectId: effectiveProjectId,
         user,
-        type: inputType,
       });
 
       input_files = await getOfficeFiles(input_path);
@@ -552,7 +535,6 @@ export default function TaskDetailPage() {
         taskId,
         projectId: effectiveProjectId,
         user,
-        type: outputType,
       });
     }
 
@@ -580,7 +562,12 @@ export default function TaskDetailPage() {
     if (isSensorMap) {
       const peripheralSensor = getProjectInfoValue("Peripheral Sensor");
       const calibrationScope = getProjectInfoValue("Calibration Scope");
-      const publicLink = getProjectInfoValue("Public Link");
+      const sensorMapOutputPath = await getRealPathFromBackend({
+        label: "Sensor Map",
+        taskId,
+        projectId: effectiveProjectId,
+        user,
+      });
 
       if (!peripheralSensor) {
         throw new Error(
@@ -594,15 +581,9 @@ export default function TaskDetailPage() {
         );
       }
 
-      if (!publicLink) {
-        throw new Error(
-          "Public Link is missing. Please fill it in Project Info first."
-        );
-      }
-
       finalBody.peripheralSensor = peripheralSensor;
       finalBody.calibrationScope = calibrationScope;
-      finalBody.publicLink = publicLink;
+      finalBody.outputDirectory = sensorMapOutputPath;
       finalBody.projectName = projectName;
       finalBody.project_info = projectInfo;
       finalBody.projectId = effectiveProjectId;
@@ -749,19 +730,11 @@ export default function TaskDetailPage() {
       throw new Error("Preflight input folder is not configured.");
     }
 
-    const requestedStorageType = String(preflight?.storage_type || "local")
-      .trim()
-      .toLowerCase();
-    const storageType = ["local", "public", "cloud"].includes(requestedStorageType)
-      ? requestedStorageType
-      : "local";
-
     const inputPath = await getRealPathFromBackend({
       label: inputLabel,
       taskId,
       projectId: effectiveProjectId,
       user,
-      type: storageType,
     });
 
     if (!inputPath) {
