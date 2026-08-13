@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 from urllib.parse import quote
 
+from services.folder_resolver import FuzzyFolderAmbiguousError, resolve_fuzzy_relative_path
 from utils.file_loader import extract_root_paths, load_folder_mapping
 
 
@@ -232,7 +233,15 @@ def resolve_path(
     elif storage_type == "cloud":
         final_path = str(root).rstrip("/") + "/" + relative_path.lstrip("\\/")
     else:
-        final_path = str(root).rstrip("\\") + "\\" + relative_path.lstrip("\\")
+        try:
+            # FolderLinkMapping keeps the standard directory names. When the
+            # server can inspect this root (for example a Public Link/UNC),
+            # return the safest matching real directory name instead.
+            final_path = resolve_fuzzy_relative_path(str(root), relative_path)
+        except FuzzyFolderAmbiguousError as exc:
+            raise PathResolverError(
+                f"Ambiguous folder mapping for label={label!r}: {exc}"
+            ) from exc
 
     return {
         "success": True,
