@@ -1,7 +1,8 @@
 // ---------------------------------------------------------
-// AppContext.js —— 前端 B（完整修复版）
+// AppContext.js —— 前端 B（完整修复版 + Transfer Data）
 // Copy Template 最小方案：新增 copyApplicationTemplate()
 // Public Link 初始化改为 createFolders，只创建 A.Vehicle_integration 下 01-07
+// Transfer Data：新增单 Project Download / Import
 // ---------------------------------------------------------
 
 import React, {
@@ -29,8 +30,8 @@ export function AppProvider({ children }) {
     LOCAL_RENAME_CALIBRATION_FOLDER: "/renameCalibrationFolder",
 
     // 调试时建议用本地： http://127.0.0.1:8086/app-puma
-    // BASE: "https://oss-dthub.apac.bosch.com/app-puma",
-    BASE: "http://127.0.0.1:8086/app-puma",
+    BASE: "https://oss-dthub.apac.bosch.com/app-puma",
+    //BASE: "http://127.0.0.1:8086/app-puma",
 
     PROJECT_GET: "/project/getProject",
     PROJECT_CREATE: "/project/createProject",
@@ -38,6 +39,10 @@ export function AppProvider({ children }) {
     PROJECT_INFO_UPDATE: "/project/updateProjectInfo",
     PROJECT_WF_UPDATE: "/project/updateWorkFlow",
     PROJECT_GETPATH: "/project/getPath",
+
+    // Transfer Data
+    PROJECT_DATA_DOWNLOAD: "/project/downloadProject",
+    PROJECT_DATA_IMPORT: "/project/importProject",
 
     // Parameter
     PROJECT_GETUUID: "/project/getProjectUUID",
@@ -71,7 +76,7 @@ export function AppProvider({ children }) {
   const [messageApi, contextHolder] = message.useMessage();
   const [loading, setLoading] = useState(false);
   const [needCreate, setNeedCreate] = useState(false);
-  const [selectableDepartments, setSelectableDepartments] = useState([]); // ⭐ 永远保持为数组
+  const [selectableDepartments, setSelectableDepartments] = useState([]);
   const [selectedDepartment, setSelectedDepartment] = useState(null);
   const [, setEventSource] = useState(null);
   const [refreshFlag, setRefreshFlag] = useState(0);
@@ -112,7 +117,6 @@ export function AppProvider({ children }) {
       if (pid) localStorage.setItem("projectId", pid);
       setProjectId(pid ?? null);
 
-      // 读取 userinfo
       const userinfo = await request("GET", API.LOCAL + "/userinfo");
       const username = userinfo.data?.machine_id;
       if (!username) return;
@@ -128,7 +132,6 @@ export function AppProvider({ children }) {
           params: { username, projectId: pid },
         });
 
-        // ⭐ 项目不存在 OR 无权限 → needCreate
         if (res.data.exists === false) {
           setNeedCreate(true);
           setSelectableDepartments(
@@ -138,7 +141,6 @@ export function AppProvider({ children }) {
           return;
         }
 
-        // 正常获取项目
         const data = res.data.data;
         tmpUser.department = data.department;
         info = structuredClone(data.projectInfo);
@@ -171,14 +173,13 @@ export function AppProvider({ children }) {
   }, [projectId]);
 
   // =====================================================
-  // ⭐ SSE 连接 —— 仿照前端 A 的成功写法
+  // ⭐ SSE 连接
   // =====================================================
   const connectSSE = useCallback(() => {
     if (!user.username || user.username === "Unknown") return;
 
     const url = API.BASE + API.SSE + `?user=${user.username}`;
     console.log(" Connecting SSE:", url);
-
     const es = new EventSource(url);
     es.onopen = () => console.log(" SSE Connected");
 
@@ -195,21 +196,18 @@ export function AppProvider({ children }) {
       const { event, payload } = msg;
       const currentPid = projectIdRef.current;
 
-      // 1) 项目信息更新
       if (event === "ProjectUpdated" && payload.projectId === currentPid) {
         setMsgQueue((q) => [...q, { evt: "ProjectUpdated", payload }]);
         setRefreshFlag((v) => v + 1);
         return;
       }
 
-      // 2) 工作流更新
       if (event === "WorkflowUpdated" && payload.projectId === currentPid) {
         setMsgQueue((q) => [...q, { evt: "WorkflowUpdated", payload }]);
         setRefreshFlag((v) => v + 1);
         return;
       }
 
-      // 3) 当前项目被删除
       if (event === "ProjectDeleted" && payload.projectId === currentPid) {
         messageApi.error("❌ 当前项目已被删除");
         localStorage.removeItem("projectId");
@@ -230,7 +228,6 @@ export function AppProvider({ children }) {
     connectSSE();
   }, [connectSSE]);
 
-  // SSE → 重新 initApp
   useEffect(() => {
     if (projectId !== null && user.username !== "Unknown") {
       initApp();
@@ -249,8 +246,6 @@ export function AppProvider({ children }) {
       department: user.department,
     };
 
-    // type 仅作为 Folder Open 等显式按钮的兼容回退；
-    // 工作流、Preflight 和 Fill Operation 不再自行决定 local/public。
     if (type) {
       params.type = type;
     }
@@ -307,7 +302,6 @@ export function AppProvider({ children }) {
     }
 
     try {
-      // ① 后端解析真实路径
       const realPath = await getRealPathFromBackend({
         label,
         taskId,
@@ -316,7 +310,6 @@ export function AppProvider({ children }) {
         type,
       });
 
-      // ② 通知本地客户端（7175）打开 / 复制路径
       const clientEndpoint =
         mode === "open" ? API.LOCAL + "/openPath" : API.LOCAL + "/copyPath";
 
@@ -335,21 +328,13 @@ export function AppProvider({ children }) {
     }
   };
 
-  // =====================================================
-  // ⭐ actions —— 提供给按钮组件调用
-  // =====================================================
   const actions = {
-    // Local
     openLocal: (payload) => requestPathAndExecute({ ...payload, mode: "open", type: "local" }),
     copyLocal: (payload) => requestPathAndExecute({ ...payload, mode: "copy", type: "local" }),
-
-    // Public
     openPublic: (payload) =>
       requestPathAndExecute({ ...payload, mode: "open", type: "public" }),
     copyPublic: (payload) =>
       requestPathAndExecute({ ...payload, mode: "copy", type: "public" }),
-
-    // Cloud / SharePoint
     openCloud: (payload) => requestPathAndExecute({ ...payload, mode: "open", type: "cloud" }),
     copyCloud: (payload) => requestPathAndExecute({ ...payload, mode: "copy", type: "cloud" }),
   };
@@ -382,7 +367,6 @@ export function AppProvider({ children }) {
       const res = await request("POST", API.BASE + API.PROJECT_INFO_UPDATE, {
         data: finalData,
       });
-      // 防止 Context 持有可变引用
       setProjectInfo(structuredClone(res.data.data.projectInfo));
       setProjectProgress(res.data.data.projectInfoRate ?? 0);
       return { success: true };
@@ -400,6 +384,125 @@ export function AppProvider({ children }) {
       return { success: true };
     } catch (err) {
       return { success: false };
+    }
+  };
+
+  // =====================================================
+  // Transfer Data
+  // =====================================================
+  const parseDownloadFileName = (contentDisposition, fallbackName) => {
+    if (!contentDisposition) return fallbackName;
+
+    const utf8Match = contentDisposition.match(/filename\*=UTF-8''([^;]+)/i);
+    if (utf8Match?.[1]) {
+      try {
+        return decodeURIComponent(utf8Match[1].trim());
+      } catch {
+        return utf8Match[1].trim();
+      }
+    }
+
+    const normalMatch = contentDisposition.match(/filename="?([^";]+)"?/i);
+    return normalMatch?.[1]?.trim() || fallbackName;
+  };
+
+  const readBlobErrorDetail = async (err, fallback) => {
+    try {
+      const blob = err?.response?.data;
+      if (blob instanceof Blob) {
+        const text = await blob.text();
+        const parsed = JSON.parse(text);
+        return parsed?.detail || parsed?.message || fallback;
+      }
+    } catch {
+      // ignore secondary parsing errors
+    }
+
+    return (
+      err?.response?.data?.detail ||
+      err?.response?.data?.message ||
+      err?.message ||
+      fallback
+    );
+  };
+
+  const downloadProjectData = async (targetProjectId = projectId) => {
+    if (!targetProjectId) {
+      return { success: false, message: "projectId is missing" };
+    }
+
+    if (!user?.username || user.username === "Unknown") {
+      return { success: false, message: "username is missing" };
+    }
+
+    try {
+      const res = await axios.get(API.BASE + API.PROJECT_DATA_DOWNLOAD, {
+        params: {
+          username: user.username,
+          projectId: targetProjectId,
+        },
+        responseType: "blob",
+      });
+
+      const fallbackName = `${projectName || "Project"}.puma.json`;
+      const fileName = parseDownloadFileName(
+        res.headers?.["content-disposition"],
+        fallbackName
+      );
+
+      return {
+        success: true,
+        blob: res.data,
+        fileName,
+      };
+    } catch (err) {
+      console.error("downloadProjectData failed:", err);
+      const detail = await readBlobErrorDetail(
+        err,
+        "Download Project Data request failed"
+      );
+      return { success: false, message: detail };
+    }
+  };
+
+  const importProjectData = async (projectData) => {
+    if (!projectData || typeof projectData !== "object") {
+      return { success: false, message: "Project data is empty or invalid" };
+    }
+
+    if (!user?.username || user.username === "Unknown") {
+      return { success: false, message: "username is missing" };
+    }
+
+    try {
+      const res = await request("POST", API.BASE + API.PROJECT_DATA_IMPORT, {
+        data: {
+          username: user.username,
+          projectData,
+        },
+      });
+
+      if (!res.data?.success || !res.data?.data?.id) {
+        return {
+          success: false,
+          message: res.data?.message || "Import Project Data failed",
+        };
+      }
+
+      return {
+        success: true,
+        projectId: res.data.data.id,
+        projectName: res.data.data.projectName,
+        data: res.data.data,
+      };
+    } catch (err) {
+      console.error("importProjectData failed:", err);
+      const detail =
+        err.response?.data?.detail ||
+        err.response?.data?.message ||
+        err.message ||
+        "Import Project Data request failed";
+      return { success: false, message: detail };
     }
   };
 
@@ -434,7 +537,6 @@ export function AppProvider({ children }) {
     }
   };
 
-  // 获取并返回筛选后的 PMS 客户和项目数据
   const getProjectFromPMS = async () => {
     try {
       const url = `${SimpleProjectInfoList}?gatewayKey=${gatewayKey}`;
@@ -449,7 +551,6 @@ export function AppProvider({ children }) {
     }
   };
 
-  // 根据 UUID 获取项目详细信息
   const getProjectInfoFromPMS = async (uuid) => {
     try {
       const url = `${API.LOCAL}/PMSInfo/${uuid}`;
@@ -472,7 +573,6 @@ export function AppProvider({ children }) {
     try {
       const url = `${API.BASE}${API.PROJECT_GETUUID}/${targetProjectId}`;
       const res = await request("GET", url);
-
       if (res.data.uuid) {
         return { success: true, uuid: res.data.uuid };
       }
@@ -491,8 +591,7 @@ export function AppProvider({ children }) {
       case "uuid": {
         const result = await getProjectUUID();
         if (result && result.uuid) {
-          const para = result.uuid;
-          return { success: true, parameter: para };
+          return { success: true, parameter: result.uuid };
         }
 
         const errorMessage = "获取 UUID 失败";
@@ -522,15 +621,11 @@ export function AppProvider({ children }) {
     }
   };
 
-  // Public Link 初始化：
-  // 不再调用 /copy-folder 复制完整 40.Application。
-  // 这里只创建 Public Link\40.Application\A.Vehicle_integration 下的固定 01-07 文件夹。
-  // Local Link 的完整 ABCD copy 仍由 createCalibrationWorkspace + copyApplicationTemplate 负责，不受影响。
+  // Public Link 初始化：只创建 A.Vehicle_integration 下的固定目录。
   const SetUpApplicationFloder = async (publicLinkValue) => {
     const publicRoot = String(publicLinkValue || "")
       .trim()
       .replace(/[\\/]+$/, "");
-
     if (!publicRoot) {
       console.warn("SetUpApplicationFloder: publicLinkValue is empty");
       messageApi.error("Public Link is empty. Cannot create public folders.");
@@ -596,7 +691,6 @@ export function AppProvider({ children }) {
       console.warn("createCalibrationWorkspace: projectId is missing");
       return { success: false, message: "projectId is missing" };
     }
-
     if (!user?.username || user.username === "Unknown") {
       console.warn("createCalibrationWorkspace: username is missing");
       return { success: false, message: "username is missing" };
@@ -655,7 +749,6 @@ export function AppProvider({ children }) {
       const res = await request("POST", API.LOCAL + API.LOCAL_CREATE_FOLDERS, {
         data: { folders: folderList },
       });
-
       if (res.data?.success) {
         return {
           success: true,
@@ -680,9 +773,6 @@ export function AppProvider({ children }) {
     }
   };
 
-  // 新 Copy Template 接口：给 EditPage / Progress 调用。
-  // destinationApplicationDir 必须是本地项目的 40.Application 目录。
-  // calibrationIds 来自 workflow 的 C.Calibration 子节点。
   const copyApplicationTemplate = async (destinationApplicationDir, calibrationIds = []) => {
     const target = String(destinationApplicationDir || "").trim();
     const normalizedCalibrationIds = Array.isArray(calibrationIds)
@@ -734,9 +824,6 @@ export function AppProvider({ children }) {
     }
   };
 
-  // Rename CalibrationID 本地文件夹：给 TaskDetailPage 的 Edit Task Name 使用。
-  // 只改 40.Application\C.Calibration\{CalibrationID} 文件夹名称，
-  // 不复制、不删除、不修改其子目录内容。
   const renameCalibrationFolder = async (
     destinationApplicationDir,
     oldCalibrationId,
@@ -817,9 +904,6 @@ export function AppProvider({ children }) {
     return () => clearTimeout(timer);
   }, [msgQueue, messageApi]);
 
-  // =====================================================
-  // ⭐ 浏览器标题同步（Project Loaded 后）
-  // =====================================================
   useEffect(() => {
     if (projectName) {
       document.title = `${projectName}`;
@@ -850,6 +934,8 @@ export function AppProvider({ children }) {
           createProject,
           rewriteProjectInfo,
           updateWorkFlow,
+          downloadProjectData,
+          importProjectData,
           getTaskDetail,
           getWorkFlowTemplate,
           getParameter,

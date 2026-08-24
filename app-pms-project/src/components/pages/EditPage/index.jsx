@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   Button,
   Divider,
@@ -9,8 +9,16 @@ import {
   message,
   Modal,
   Select,
+  Dropdown,
 } from "antd";
-import { ImportOutlined, ExportOutlined, LinkOutlined } from "@ant-design/icons";
+import {
+  ImportOutlined,
+  ExportOutlined,
+  LinkOutlined,
+  DownloadOutlined,
+  UploadOutlined,
+  SwapOutlined,
+} from "@ant-design/icons";
 import { useAppContext } from "../../../context/AppContext";
 
 export default function EditProjectPage() {
@@ -28,6 +36,8 @@ export default function EditProjectPage() {
     loadTeamMembers,
     getProjectInfoFromPMS,
     getProjectFromPMS,
+    downloadProjectData,
+    importProjectData,
   } = useAppContext();
 
   // modal 开关
@@ -50,6 +60,10 @@ export default function EditProjectPage() {
   const [projectModalVisible, setProjectModalVisible] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [selectedProject, setSelectedProject] = useState(null);
+
+  // Transfer Data
+  const transferImportInputRef = useRef(null);
+  const [transferBusy, setTransferBusy] = useState(false);
 
   // 按首字母排序（忽略大小写）
   const sortedMembers = [...teamMembers].sort((a, b) =>
@@ -117,7 +131,6 @@ export default function EditProjectPage() {
   const owner = projectInfo.owner || { label: "Owner", value: "" };
   const proxies = projectInfo.proxies || { label: "Proxies", value: "" };
   const uuid = projectInfo.uuid || { label: "UUID", value: "" };
-
   // =================================================================================
   // ⭐ 二维表单行渲染
   // =================================================================================
@@ -329,6 +342,9 @@ export default function EditProjectPage() {
           calibrationIds,
           destinationApplicationDir,
           copyResult,
+          createdCount,
+          skippedCount,
+          copiedFilesCount,
         });
       } else {
         console.error("copyApplicationTemplate failed:", copyResult);
@@ -484,7 +500,6 @@ export default function EditProjectPage() {
     if (localPos) {
       newInfo[localPos.rIdx][localPos.cIdx] = localPath;
     }
-
     if (publicPos) {
       newInfo[publicPos.rIdx][publicPos.cIdx] = publicPath;
     }
@@ -576,7 +591,6 @@ export default function EditProjectPage() {
             } else {
               pmsValue = String(pmsValue);
             }
-
             // 更新 newInfo
             newInfo[rIdx][cIdx] = pmsValue;
           }
@@ -592,10 +606,148 @@ export default function EditProjectPage() {
     }
   }
 
+  // =================================================================================
+  // Transfer Data: download / import one complete Project data file
+  // =================================================================================
+  async function handleTransferDownload() {
+    if (!projectId) {
+      messageApi.error("Project ID is missing. Cannot download project data.");
+      return;
+    }
+
+    if (typeof downloadProjectData !== "function") {
+      messageApi.error("Download Project Data API is unavailable.");
+      return;
+    }
+
+    try {
+      setTransferBusy(true);
+      messageApi.loading({
+        content: "Preparing project data...",
+        key: "transfer-data",
+        duration: 0,
+      });
+
+      const result = await downloadProjectData(projectId);
+
+      if (!result?.success || !result?.blob) {
+        throw new Error(result?.message || "Failed to download project data");
+      }
+
+      const objectUrl = URL.createObjectURL(result.blob);
+      const anchor = document.createElement("a");
+      anchor.href = objectUrl;
+      anchor.download = result.fileName || `${projectName || "Project"}.puma.json`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(objectUrl);
+
+      messageApi.success({
+        content: "Project data downloaded successfully.",
+        key: "transfer-data",
+      });
+    } catch (error) {
+      console.error("Transfer Data download failed:", error);
+      messageApi.error({
+        content: error?.message || "Failed to download project data.",
+        key: "transfer-data",
+      });
+    } finally {
+      setTransferBusy(false);
+    }
+  }
+
+  function handleTransferImportClick() {
+    if (transferBusy) return;
+    transferImportInputRef.current?.click();
+  }
+
+  async function handleTransferImportFile(event) {
+    const file = event.target.files?.[0];
+    // 允许连续选择同一个文件
+    event.target.value = "";
+
+    if (!file) return;
+
+    if (typeof importProjectData !== "function") {
+      messageApi.error("Import Project Data API is unavailable.");
+      return;
+    }
+
+    try {
+      setTransferBusy(true);
+      messageApi.loading({
+        content: "Importing project data...",
+        key: "transfer-data",
+        duration: 0,
+      });
+
+      const text = await file.text();
+      let fileData = null;
+
+      try {
+        fileData = JSON.parse(text);
+      } catch (parseError) {
+        throw new Error("The selected file is not a valid JSON file.");
+      }
+
+      const result = await importProjectData(fileData);
+
+      if (!result?.success) {
+        throw new Error(result?.message || "Failed to import project data");
+      }
+
+      messageApi.success({
+        content: `Project imported successfully: ${result.projectName || "New Project"}`,
+        key: "transfer-data",
+      });
+
+      // Import 创建的是一条新的 Project 数据。
+      // 成功后直接切换到新项目，避免用户仍停留在旧 Project 页面。
+      if (result.projectId) {
+        localStorage.setItem("projectId", String(result.projectId));
+        window.location.hash = `#/edit?projectId=${encodeURIComponent(result.projectId)}`;
+        window.location.reload();
+      }
+    } catch (error) {
+      console.error("Transfer Data import failed:", error);
+      messageApi.error({
+        content: error?.message || "Failed to import project data.",
+        key: "transfer-data",
+      });
+    } finally {
+      setTransferBusy(false);
+    }
+  }
+
+  const transferDataItems = [
+    {
+      key: "download",
+      icon: <DownloadOutlined />,
+      label: "Download",
+    },
+    {
+      key: "import",
+      icon: <UploadOutlined />,
+      label: "Import",
+    },
+  ];
+
+  function handleTransferMenuClick({ key }) {
+    if (key === "download") {
+      handleTransferDownload();
+      return;
+    }
+
+    if (key === "import") {
+      handleTransferImportClick();
+    }
+  }
+
   async function getUUIDFromPMS() {
     try {
       const pmsItems = await getProjectFromPMS();
-
       if (pmsItems && pmsItems.length > 0) {
         setPmsData(pmsItems);
         setSelectedCustomer(null);
@@ -647,7 +799,6 @@ export default function EditProjectPage() {
     setSelectedProject(null);
     setPmsData([]);
   }
-
   // 过滤重复的 customer_name
   const customerOptions = Array.from(new Set(pmsData.map((item) => item.customer_name)))
     .filter(Boolean) // 过滤掉空值
@@ -659,7 +810,6 @@ export default function EditProjectPage() {
     .filter((item) => item.customer_name === selectedCustomer)
     .map((item) => ({ label: item.project_name, value: item.project_name }))
     .sort((a, b) => a.label.localeCompare(b.label));
-
   // =================================================================================
   // ⭐ UI
   // =================================================================================
@@ -667,13 +817,21 @@ export default function EditProjectPage() {
     <div style={{ position: "relative" }}>
       {contextHolder}
 
+      <input
+        ref={transferImportInputRef}
+        type="file"
+        accept=".json,.puma.json,application/json"
+        style={{ display: "none" }}
+        onChange={handleTransferImportFile}
+      />
+
       <Row align="middle">
         <Col flex="auto">
           <h1 className="text-2xl font-bold m-0">{projectName}</h1>
         </Col>
 
         <Col flex="none">
-          <div style={{ display: "flex", gap: 12 }}>
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap", justifyContent: "flex-end" }}>
             {/* Auto Fill Links */}
             <Button
               type="default"
@@ -703,6 +861,30 @@ export default function EditProjectPage() {
             >
               Import From PMS
             </Button>
+
+            {/* Transfer Data: current Project Download / local Project Import */}
+            <Dropdown
+              menu={{
+                items: transferDataItems,
+                onClick: handleTransferMenuClick,
+              }}
+              trigger={["click"]}
+              disabled={transferBusy}
+            >
+              <Button
+                type="default"
+                loading={transferBusy}
+                style={{
+                  height: 40,
+                  width: 150,
+                  fontSize: 13,
+                  fontWeight: 600,
+                }}
+                icon={!transferBusy ? <SwapOutlined style={{ fontSize: 20 }} /> : null}
+              >
+                Transfer Data
+              </Button>
+            </Dropdown>
 
             {/* Jump To PMS */}
             <Button

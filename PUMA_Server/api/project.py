@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Body, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from utils.file_loader import (
@@ -8,12 +8,13 @@ from utils.file_loader import (
 from crud.project import (
     get_project,
     create_project,
+    import_project,
     update_project_info,
     update_workflow,
     list_projects,
     update_project_meta,
     delete_project,
-    reorder_projects
+    reorder_projects,
 )
 from models.project import Project
 from models.database import get_db
@@ -28,11 +29,15 @@ from schemas.project import (
     CreateProjectRequest,
     ProjectMetaUpdate,
     ProjectReorderRequest,
-    ProjectDeleteRequest
+    ProjectDeleteRequest,
+    ProjectImportRequest,
 )
 import json
 import os
 import copy
+import re
+from datetime import datetime, timezone
+from urllib.parse import quote
 
 # ⭐ 新增：使用统一 SSE 事件系统（替代 WebSocket）
 from api.sse import event_bus
@@ -41,6 +46,7 @@ router = APIRouter(
     prefix="/project",
     tags=["Project API"]
 )
+
 
 # ===============================================================
 # GET /project/getProject
@@ -67,7 +73,6 @@ def get_project_api(username: str, projectId: int, db: Session = Depends(get_db)
     meta = json.loads(project.projectInfo)
     owner = meta.get("owner", {}).get("value", "")
     proxies = meta.get("proxies", {}).get("value", "")
-
     can_access = (
         user_name == owner or
         (proxies and user_name in proxies)
@@ -86,7 +91,6 @@ def get_project_api(username: str, projectId: int, db: Session = Depends(get_db)
 # UUID 生成
 # ===============================================================
 def assign_uuid_to_tasktree_and_details(task_tree, task_details):
-
     uuid_detail_map = {}
 
     def dfs(node):
@@ -130,7 +134,11 @@ async def create_project_api(data: CreateProjectRequest, db: Session = Depends(g
         raise HTTPException(status_code=400, detail="Project already exists")
 
     team_members = load_template("TeamMembers.json")
-    account_to_name = {tm["account"]: tm["name"] for tm in team_members if "account" in tm and "name" in tm}
+    account_to_name = {
+        tm["account"]: tm["name"]
+        for tm in team_members
+        if "account" in tm and "name" in tm
+    }
 
     owner_name = account_to_name.get(data.username)
     if not owner_name:
@@ -194,8 +202,264 @@ async def create_project_api(data: CreateProjectRequest, db: Session = Depends(g
             "username": data.username
         }
     })
-
     return {"message": "Project created", "data": created.to_dict()}
+
+
+# ===============================================================
+# Transfer Data helpers
+# ===============================================================
+def _load_project_json_field(raw_value, field_name, default):
+    if not raw_value:
+        return copy.deepcopy(default)
+    try:
+        value = json.loads(raw_value) if isinstance(raw_value, str) else raw_value
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"{field_name} JSON decode error: {exc}",
+        ) from exc
+    return value
+
+
+def _get_team_user_name(username: str):
+    team_members = load_template("TeamMembers.json")
+    account_to_name = {
+        tm["account"]: tm["name"]
+        for tm in team_members
+        if "account" in tm and "name" in tm
+    }
+    return account_to_name.get(username)
+
+
+def _normalize_proxy_names(raw_value):
+    if isinstance(raw_value, list):
+        return [str(x).strip() for x in raw_value if str(x).strip()]
+    return [x.strip() for x in str(raw_value or "").split(",") if x.strip()]
+
+
+def _ensure_transfer_access(project: Project, username: str):
+    user_name = _get_team_user_name(username)
+    if not user_name:
+        raise HTTPException(status_code=403, detail="Unauthorized user")
+
+    meta = _load_project_json_field(project.projectInfo, "projectInfo", {})
+    owner = meta.get("owner", {}).get("value", "")
+    proxies = _normalize_proxy_names(meta.get("proxies", {}).get("value", ""))
+
+    if user_name != owner and user_name not in proxies:
+        raise HTTPException(status_code=403, detail="No permission to transfer this project")
+
+    return user_name, meta
+
+
+def _validate_import_file(project_data: dict):
+    if not isinstance(project_data, dict):
+        raise HTTPException(status_code=400, detail="Invalid Project data file")
+
+    if project_data.get("format") != "PUMA_PROJECT":
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid Project data file: format must be PUMA_PROJECT",
+        )
+
+    if project_data.get("version") != 1:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported Project data version: {project_data.get('version')}",
+        )
+
+    payload = project_data.get("project")
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="Invalid Project data file: project is missing")
+
+    required = ["projectName", "department", "projectInfo", "projectWorkFlow"]
+    missing = [key for key in required if key not in payload]
+    if missing:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid Project data file: missing {', '.join(missing)}",
+        )
+
+    if not isinstance(payload.get("projectName"), str) or not payload["projectName"].strip():
+        raise HTTPException(status_code=400, detail="projectName must be a non-empty string")
+
+    if not isinstance(payload.get("department"), str) or not payload["department"].strip():
+        raise HTTPException(status_code=400, detail="department must be a non-empty string")
+
+    if not isinstance(payload.get("projectInfo"), dict):
+        raise HTTPException(status_code=400, detail="projectInfo must be an object")
+
+    workflow = payload.get("projectWorkFlow")
+    if not isinstance(workflow, dict):
+        raise HTTPException(status_code=400, detail="projectWorkFlow must be an object")
+    if not isinstance(workflow.get("taskTree", []), list):
+        raise HTTPException(status_code=400, detail="projectWorkFlow.taskTree must be a list")
+    if not isinstance(workflow.get("taskDetails", {}), dict):
+        raise HTTPException(status_code=400, detail="projectWorkFlow.taskDetails must be an object")
+
+    tags = payload.get("tags", [])
+    if tags is not None and not isinstance(tags, list):
+        raise HTTPException(status_code=400, detail="tags must be a list")
+
+    return payload
+
+
+# ===============================================================
+# GET /project/downloadProject
+# Download 当前 Project 的一条完整业务数据到本地 JSON。
+# 不导出 SQLite id / orderIndex / progress。
+# ===============================================================
+@router.get("/downloadProject")
+def download_project_data(
+    username: str,
+    projectId: int,
+    db: Session = Depends(get_db),
+):
+    project = db.query(Project).filter(Project.id == projectId).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    _ensure_transfer_access(project, username)
+
+    project_info = _load_project_json_field(
+        project.projectInfo,
+        "projectInfo",
+        {},
+    )
+    workflow = _load_project_json_field(
+        project.projectWorkFlow,
+        "projectWorkFlow",
+        {"taskTree": [], "taskDetails": {}},
+    )
+    editors = _load_project_json_field(project.editors, "editors", [])
+    tags = _load_project_json_field(project.tags, "tags", [])
+
+    export_payload = {
+        "format": "PUMA_PROJECT",
+        "version": 1,
+        "exportedAt": datetime.now(timezone.utc).isoformat(),
+        "project": {
+            "projectName": project.projectName,
+            "department": project.department,
+            "projectInfo": project_info,
+            "projectWorkFlow": workflow,
+            "comment": project.comment or "",
+            "tags": tags if isinstance(tags, list) else [],
+            # 这两个字段不是 Import 的必要条件，但保留有助于项目迁移。
+            "owner": project.owner or "",
+            "editors": editors if isinstance(editors, list) else [],
+        },
+    }
+
+    content = json.dumps(export_payload, ensure_ascii=False, indent=2)
+
+    raw_name = str(project.projectName or "Project").strip()
+    ascii_fallback = re.sub(r"[^A-Za-z0-9._-]+", "_", raw_name).strip("._") or "Project"
+    download_name = f"{raw_name or 'Project'}.puma.json"
+    encoded_name = quote(download_name)
+
+    headers = {
+        "Content-Disposition": (
+            f'attachment; filename="{ascii_fallback}.puma.json"; '
+            f"filename*=UTF-8''{encoded_name}"
+        )
+    }
+
+    return Response(
+        content=content.encode("utf-8"),
+        media_type="application/json; charset=utf-8",
+        headers=headers,
+    )
+
+
+# ===============================================================
+# POST /project/importProject
+# 读取 Download 文件并创建一个新的 Project row。
+# SQLite id 始终重新生成。
+# ===============================================================
+@router.post("/importProject")
+async def import_project_data(
+    data: ProjectImportRequest,
+    db: Session = Depends(get_db),
+):
+    importer_name = _get_team_user_name(data.username)
+    if not importer_name:
+        raise HTTPException(status_code=400, detail="User not found in TeamMembers.json")
+
+    source = _validate_import_file(data.projectData)
+
+    project_name = source["projectName"].strip()
+    department = source["department"].strip()
+    project_info = copy.deepcopy(source["projectInfo"])
+    workflow = copy.deepcopy(source["projectWorkFlow"])
+    comment = str(source.get("comment") or "")
+    tags = copy.deepcopy(source.get("tags") or [])
+
+    # 保留原 Owner；如果导入者不是原 Owner，则把导入者加入 Proxies，
+    # 否则导入成功后当前用户可能无法再次打开自己刚导入的 Project。
+    owner_block = project_info.get("owner")
+    if not isinstance(owner_block, dict):
+        owner_block = {"label": "Owner", "value": ""}
+    owner_block.setdefault("label", "Owner")
+
+    source_owner = str(owner_block.get("value") or source.get("owner") or "").strip()
+    if not source_owner:
+        source_owner = importer_name
+    owner_block["value"] = source_owner
+    project_info["owner"] = owner_block
+
+    proxies_block = project_info.get("proxies")
+    if not isinstance(proxies_block, dict):
+        proxies_block = {"label": "Proxies", "value": ""}
+    proxies_block.setdefault("label", "Proxies")
+
+    proxy_names = _normalize_proxy_names(proxies_block.get("value", ""))
+    if importer_name != source_owner and importer_name not in proxy_names:
+        proxy_names.append(importer_name)
+    proxies_block["value"] = ", ".join(proxy_names)
+    project_info["proxies"] = proxies_block
+
+    editors = source.get("editors", [])
+    if not isinstance(editors, list):
+        editors = []
+    editors = [str(item) for item in editors if str(item).strip()]
+    if data.username not in editors:
+        editors.append(data.username)
+
+    try:
+        created = import_project(
+            db=db,
+            username=data.username,
+            department=department,
+            projectName=project_name,
+            projectInfo=project_info,
+            workFlow=workflow,
+            owner=source_owner,
+            editors=editors,
+            comment=comment,
+            tags=tags,
+        )
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to import Project data: {exc}",
+        ) from exc
+
+    await event_bus.publish({
+        "event": "ProjectCreated",
+        "payload": {
+            "projectId": created.id,
+            "projectName": created.projectName,
+            "username": data.username,
+        },
+    })
+
+    return {
+        "success": True,
+        "message": "Project imported",
+        "data": created.to_dict(),
+    }
 
 
 # ===============================================================
@@ -243,7 +507,6 @@ async def update_workflow_api(data: WorkFlowUpdate, db: Session = Depends(get_db
     project = db.query(Project).filter(Project.id == data.projectId).first()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
-
     team_members = load_template("TeamMembers.json")
     account_to_name = {tm["account"]: tm["name"] for tm in team_members}
     user_name = account_to_name.get(data.username)
@@ -295,7 +558,6 @@ def list_projects_api(username: str, db: Session = Depends(get_db)):
 
     if not user_name:
         return {"projects": []}
-
     all_projects = db.query(Project).order_by(Project.orderIndex.asc()).all()
 
     visible_projects = []
@@ -304,7 +566,7 @@ def list_projects_api(username: str, db: Session = Depends(get_db)):
 
         try:
             meta = json.loads(p.projectInfo)
-        except:
+        except Exception:
             meta = {}
 
         owner = meta.get("owner", {}).get("value", "")
@@ -312,7 +574,6 @@ def list_projects_api(username: str, db: Session = Depends(get_db)):
 
         if user_name == owner or (proxies and user_name in proxies):
             project_dict = p.to_dict()
-
             if hasattr(p, "calc_progress"):
                 project_dict["progress"] = p.calc_progress()
             else:
@@ -333,11 +594,9 @@ async def edit_project_meta_api(meta: ProjectMetaUpdate, db: Session = Depends(g
     if not proj:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    # 从 TeamMembers.json 解析用户名 → 显示用
     team_members = load_template("TeamMembers.json")
     account_to_name = {tm["account"]: tm["name"] for tm in team_members}
 
-    # ⚠ 从 meta 里拿不到 username，因此前端必须传 username
     editor_name = account_to_name.get(meta.username, meta.username)
 
     updated = update_project_meta(db, proj, meta)
@@ -348,7 +607,7 @@ async def edit_project_meta_api(meta: ProjectMetaUpdate, db: Session = Depends(g
         "payload": {
             "projectId": meta.projectId,
             "field": "meta",
-            "username": editor_name   # ★ 这里改成正确值
+            "username": editor_name
         }
     })
 
@@ -370,7 +629,7 @@ async def delete_project_api(req: ProjectDeleteRequest, db: Session = Depends(ge
         "event": "ProjectDeleted",
         "payload": {
             "projectId": req.projectId,
-            "username": req.username        # ⭐ 建议加上
+            "username": req.username
         }
     })
 
@@ -390,11 +649,12 @@ async def reorder_projects_api(req: ProjectReorderRequest, db: Session = Depends
         "event": "ProjectReordered",
         "payload": {
             "items": req.items,
-            "username": req.username      # ⭐ 建议加上
+            "username": req.username
         }
     })
 
     return {"message": "Order updated"}
+
 
 # ===============================================================
 # GET /project/getPath
@@ -472,7 +732,6 @@ def create_calibration_workspace_api(
 
     if not calibration_id:
         raise HTTPException(status_code=400, detail="calibrationId is required")
-
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
@@ -529,6 +788,7 @@ def create_calibration_workspace_api(
         "paths": paths,
     }
 
+
 @router.delete("/clearAll")
 def clear_all_projects(db: Session = Depends(get_db)):
 
@@ -561,7 +821,7 @@ def get_all_project_tags(db: Session = Depends(get_db)):
             tags = json.loads(p.tags) if isinstance(p.tags, str) else p.tags
             if not isinstance(tags, list):
                 tags = []
-        except:
+        except Exception:
             tags = []
 
         if not tags:
@@ -584,13 +844,14 @@ def get_all_project_tags(db: Session = Depends(get_db)):
         "SOP": sop,
     }
 
+
 @router.get("/getProjectUUID/{project_id}")
 def get_project_uuid(project_id: int, db: Session = Depends(get_db)):
-    uuid = db.query(func.json_extract(Project.projectInfo, '$.uuid.value')).filter(Project.id == project_id).scalar()
-    if not uuid:
+    uuid_value = db.query(func.json_extract(Project.projectInfo, '$.uuid.value')).filter(Project.id == project_id).scalar()
+    if not uuid_value:
         raise HTTPException(
-            status_code=404, 
+            status_code=404,
             detail=f"Project with ID {project_id} not found or has no UUID"
         )
-        
-    return {"project_id": project_id, "uuid": uuid}
+
+    return {"project_id": project_id, "uuid": uuid_value}

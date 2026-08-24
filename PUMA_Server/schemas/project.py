@@ -1,6 +1,7 @@
 from pydantic import BaseModel
 from typing import Dict, Any, List
 
+
 class ProjectInfoUpdate(BaseModel):
     username: str
     department: str
@@ -8,12 +9,14 @@ class ProjectInfoUpdate(BaseModel):
     projectName: str | None = None   # 兼容旧前端
     projectInfo: Dict[str, Any]
 
+
 class WorkFlowUpdate(BaseModel):
     username: str
     department: str
     projectId: int
     projectName: str | None = None
     workflow: Dict[str, Any]
+
 
 class CreateProjectRequest(BaseModel):
     username: str
@@ -24,6 +27,7 @@ class CreateProjectRequest(BaseModel):
     comment: str = ""
     tags: List[str] = []
 
+
 class ProjectMetaUpdate(BaseModel):
     username: str
     projectId: int
@@ -31,10 +35,18 @@ class ProjectMetaUpdate(BaseModel):
     comment: str = ""
     tags: List[str] = []
 
+
 class ProjectReorderRequest(BaseModel):
     username: str
     items: List[int]   # e.g. [3,1,4,2]
 
+
 class ProjectDeleteRequest(BaseModel):
     username: str
     projectId: int
+
+
+# Transfer Data: local JSON -> new Project row
+class ProjectImportRequest(BaseModel):
+    username: str
+    projectData: Dict[str, Any]

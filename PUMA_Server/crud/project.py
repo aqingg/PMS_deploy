@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import and_
 from typing import List
 
+
 # 查询项目（按 projectId）
 def get_project(db: Session, username: str, projectId: int):
     return (
@@ -12,14 +13,27 @@ def get_project(db: Session, username: str, projectId: int):
         .first()
     )
 
+
 # 按项目名查重（用于创建）
 def project_exists_by_name(db: Session, username: str, projectName: str):
     return db.query(Project).filter(
         and_(Project.username == username, Project.projectName == projectName)
     ).first()
 
+
 # 创建项目
-def create_project(db: Session, username, department, projectName, projectInfo, workFlow, owner, editors, comment: str = "", tags: list[str] | None = None,):
+def create_project(
+    db: Session,
+    username,
+    department,
+    projectName,
+    projectInfo,
+    workFlow,
+    owner,
+    editors,
+    comment: str = "",
+    tags: list[str] | None = None,
+):
     db_project = Project(
         username=username,
         owner=owner,
@@ -36,12 +50,41 @@ def create_project(db: Session, username, department, projectName, projectInfo, 
     db.refresh(db_project)
     return db_project
 
+
+# Transfer Data Import：始终创建一条新的 Project 数据，不复用导出文件中的 DB id。
+def import_project(
+    db: Session,
+    username: str,
+    department: str,
+    projectName: str,
+    projectInfo: dict,
+    workFlow: dict,
+    owner: str,
+    editors: list[str] | None = None,
+    comment: str = "",
+    tags: list[str] | None = None,
+):
+    return create_project(
+        db=db,
+        username=username,
+        department=department,
+        projectName=projectName,
+        projectInfo=projectInfo,
+        workFlow=workFlow,
+        owner=owner,
+        editors=editors or [],
+        comment=comment,
+        tags=tags or [],
+    )
+
+
 # 更新项目信息
 def update_project_info(db, project, projectInfo):
     project.projectInfo = json.dumps(projectInfo)
     db.commit()
     db.refresh(project)
     return project
+
 
 # 更新 Workflow
 def update_workflow(db, project, workflow):
@@ -50,10 +93,11 @@ def update_workflow(db, project, workflow):
     db.refresh(project)
     return project
 
+
 def count_task_nodes(task_tree):
     total = 0
     done = 0
-    
+
     def dfs(node):
         nonlocal total, done
         total += 1
@@ -67,6 +111,7 @@ def count_task_nodes(task_tree):
 
     return total, done
 
+
 # 列出项目
 def list_projects(db: Session, username: str):
     return (
@@ -75,6 +120,7 @@ def list_projects(db: Session, username: str):
         .order_by(Project.orderIndex.asc())
         .all()
     )
+
 
 # 更新项目 Meta（兼容 projectName=None）
 def update_project_meta(db: Session, project: Project, meta):
@@ -87,6 +133,7 @@ def update_project_meta(db: Session, project: Project, meta):
     db.refresh(project)
     return project
 
+
 # 删除
 def delete_project(db: Session, project_id: int):
     proj = db.query(Project).filter(Project.id == project_id).first()
@@ -94,6 +141,7 @@ def delete_project(db: Session, project_id: int):
         db.delete(proj)
         db.commit()
     return proj
+
 
 # 重排
 def reorder_projects(db: Session, ids: List[int]):
