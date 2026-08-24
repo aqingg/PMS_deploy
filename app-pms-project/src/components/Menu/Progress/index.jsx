@@ -1,16 +1,32 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Typography, Tree, Space, message, Button, Modal, Input, Alert } from "antd";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import {
+  Typography,
+  Tree,
+  Space,
+  message,
+  Button,
+  Modal,
+  Input,
+  Alert,
+  notification,
+} from "antd";
 import {
   PauseCircleOutlined,
   SyncOutlined,
   CheckCircleOutlined,
   MinusCircleOutlined,
 } from "@ant-design/icons";
+
 import ProgressBar from "../ProgressBar";
 import { useAppContext } from "../../../context/AppContext";
 
 const { Title, Text } = Typography;
-
 const clone = (obj) => JSON.parse(JSON.stringify(obj || {}));
 
 const makeUuid = () => {
@@ -62,11 +78,13 @@ const getAllKeys = (nodes) => {
 const findNodeById = (nodes, id) => {
   for (const node of nodes || []) {
     if (node.id === id) return node;
+
     if (node.children?.length) {
       const found = findNodeById(node.children, id);
       if (found) return found;
     }
   }
+
   return null;
 };
 
@@ -75,6 +93,7 @@ const findNodeByTaskName = (nodes, taskName) => {
 
   for (const node of nodes || []) {
     const current = String(node.taskName || "").trim().toLowerCase();
+
     if (current === target) return node;
 
     if (node.children?.length) {
@@ -95,14 +114,17 @@ const findCalibrationRoot = (nodes) => {
   const walk = (items) => {
     (items || []).forEach((item) => {
       const name = String(item.taskName || "").trim().toLowerCase();
+
       if (name.includes("calibration")) {
         candidates.push(item);
       }
+
       if (item.children?.length) walk(item.children);
     });
   };
 
   walk(nodes);
+
   return candidates[0] || null;
 };
 
@@ -119,9 +141,11 @@ const removeNodeById = (nodes, id, removedIds = []) => {
           if (item?.id) removedIds.push(item.id);
           (item.children || []).forEach(collect);
         };
+
         collect(node);
         return false;
       }
+
       return true;
     })
     .map((node) => ({
@@ -205,6 +229,7 @@ const cloneCalibrationSubtree = (templateNode, newCalibrationId) => {
   };
 
   const newNode = cloneNode(templateNode, true);
+
   return { newNode, oldToNew };
 };
 
@@ -220,6 +245,7 @@ const fillTaskDetailsFromTree = (workflow, newNode) => {
         status: node.status || "Pending",
       };
     }
+
     (node.children || []).forEach(walk);
   };
 
@@ -233,7 +259,11 @@ const normalizeStatusForIcon = (status) => {
     return "Ongoing";
   }
 
-  if (["done", "finished", "finish", "success", "completed", "complete"].includes(value)) {
+  if (
+    ["done", "finished", "finish", "success", "completed", "complete"].includes(
+      value
+    )
+  ) {
     return "Done";
   }
 
@@ -254,12 +284,18 @@ const renderStatusIcon = (status) => {
     case "Ongoing":
       return <SyncOutlined spin style={{ ...iconStyle, color: "#1677ff" }} />;
     case "Done":
-      return <CheckCircleOutlined style={{ ...iconStyle, color: "#52c41a" }} />;
+      return (
+        <CheckCircleOutlined style={{ ...iconStyle, color: "#52c41a" }} />
+      );
     case "Decline":
-      return <MinusCircleOutlined style={{ ...iconStyle, color: "#8c8c8c" }} />;
+      return (
+        <MinusCircleOutlined style={{ ...iconStyle, color: "#8c8c8c" }} />
+      );
     case "Pending":
     default:
-      return <PauseCircleOutlined style={{ ...iconStyle, color: "#d48806" }} />;
+      return (
+        <PauseCircleOutlined style={{ ...iconStyle, color: "#d48806" }} />
+      );
   }
 };
 
@@ -283,8 +319,10 @@ export default function Progress() {
     projectId,
     createCalibrationWorkspace,
     createLocalFolders,
-  } =
-    useAppContext();
+  } = useAppContext();
+
+  const [notificationApi, notificationContextHolder] =
+    notification.useNotification();
 
   const [localWorkflow, setLocalWorkflow] = useState(() =>
     normalizeWorkflow(projectWorkFlow)
@@ -296,15 +334,62 @@ export default function Progress() {
   const [modalCalibrationId, setModalCalibrationId] = useState("");
   const [status, setStatus] = useState({
     type: "info",
-    text: "Click 'Add CalibrationID', enter a name, and the complete subtree of an existing CalibrationID will be copied."  });
+    text: "Click 'Add CalibrationID', enter a name, and the complete subtree of an existing CalibrationID will be copied.",
+  });
+
+  const undoDeleteRef = useRef(null);
+  const undoNotificationKeyRef = useRef(null);
+  const undoInProgressRef = useRef(false);
+  const previousProjectIdRef = useRef(projectId);
+
+  const destroyUndoNotification = useCallback(() => {
+    if (undoNotificationKeyRef.current) {
+      notificationApi.destroy(undoNotificationKeyRef.current);
+      undoNotificationKeyRef.current = null;
+    }
+  }, [notificationApi]);
+
+  const clearUndoDelete = useCallback(() => {
+    undoDeleteRef.current = null;
+    destroyUndoNotification();
+  }, [destroyUndoNotification]);
 
   useEffect(() => {
     const nextWorkflow = normalizeWorkflow(projectWorkFlow);
+
+    // Keep the current delete undo when this prop update is only the server echo
+    // of the workflow produced by that deletion. Any other workflow change clears it.
+    if (undoDeleteRef.current) {
+      const nextSignature = JSON.stringify(nextWorkflow);
+      if (nextSignature !== undoDeleteRef.current.deletedWorkflowSignature) {
+        clearUndoDelete();
+      }
+    }
+
     setLocalWorkflow(nextWorkflow);
     setExpandedKeys(getAllKeys(nextWorkflow.taskTree));
-  }, [projectWorkFlow]);
+  }, [projectWorkFlow, clearUndoDelete]);
 
-  const taskTree = localWorkflow?.taskTree || [];
+  useEffect(() => {
+    if (previousProjectIdRef.current !== projectId) {
+      clearUndoDelete();
+      previousProjectIdRef.current = projectId;
+    }
+  }, [projectId, clearUndoDelete]);
+
+  useEffect(() => {
+    return () => {
+      undoDeleteRef.current = null;
+      if (undoNotificationKeyRef.current) {
+        notificationApi.destroy(undoNotificationKeyRef.current);
+      }
+    };
+  }, [notificationApi]);
+
+  const taskTree = useMemo(
+    () => localWorkflow?.taskTree || [],
+    [localWorkflow]
+  );
 
   const countTasks = useCallback((node) => {
     let total = 1;
@@ -336,6 +421,7 @@ export default function Progress() {
     });
 
     if (!total) return 0;
+
     return Math.round(((done + decline) / total) * 100);
   }, [taskTree, countTasks]);
 
@@ -401,7 +487,10 @@ export default function Progress() {
     const cid = String(modalCalibrationId || "").trim();
 
     if (!cid) {
-      setStatus({ type: "error", text: "Add failed: CalibrationID cannot be empty." });
+      setStatus({
+        type: "error",
+        text: "Add failed: CalibrationID cannot be empty.",
+      });
       message.error("CalibrationID cannot be empty");
       return;
     }
@@ -417,12 +506,16 @@ export default function Progress() {
     }
 
     if (cid.includes("..")) {
-      setStatus({ type: "error", text: "Add failed: CalibrationID cannot contain '..'." });
+      setStatus({
+        type: "error",
+        text: "Add failed: CalibrationID cannot contain '..'.",
+      });
       message.error("CalibrationID cannot contain '..'");
       return;
     }
 
     const updated = clone(normalizeWorkflow(localWorkflow));
+
     if (!Array.isArray(updated.taskTree)) {
       updated.taskTree = [];
     }
@@ -437,6 +530,7 @@ export default function Progress() {
         status: "Pending",
         children: [],
       };
+
       updated.taskTree.push(calibrationRoot);
       createdRoot = true;
     }
@@ -452,7 +546,10 @@ export default function Progress() {
 
     if (exists) {
       setExpandedKeys(getAllKeys(updated.taskTree));
-      setStatus({ type: "warning", text: `Add failed: CalibrationID already exists: ${cid}` });
+      setStatus({
+        type: "warning",
+        text: `Add failed: CalibrationID already exists: ${cid}`,
+      });
       message.warning(`CalibrationID already exists: ${cid}`);
       return;
     }
@@ -475,6 +572,10 @@ export default function Progress() {
       templateSource = "default template";
     }
 
+    // A valid add operation is a new workflow modification, so the previous
+    // delete is no longer eligible for Undo.
+    clearUndoDelete();
+
     const { newNode } = cloneCalibrationSubtree(templateNode, cid);
     calibrationRoot.children.push(newNode);
 
@@ -482,6 +583,7 @@ export default function Progress() {
       if (!updated.taskDetails || typeof updated.taskDetails !== "object") {
         updated.taskDetails = {};
       }
+
       updated.taskDetails[calibrationRoot.id] = {
         taskName: "C.Calibration",
         status: "Pending",
@@ -490,7 +592,6 @@ export default function Progress() {
 
     fillTaskDetailsFromTree(updated, newNode);
 
-    // 关键：先更新本地树，保证点击确定后马上能看到子树变化。
     setLocalWorkflow(updated);
     setExpandedKeys(getAllKeys(updated.taskTree));
     setSelectedTaskId(newNode.id);
@@ -531,7 +632,11 @@ export default function Progress() {
             workspaceResult?.message || "Unknown error"
           }`,
         });
-        message.warning(`Path calculation failed: ${workspaceResult?.message || "Unknown error"}`);
+        message.warning(
+          `Path calculation failed: ${
+            workspaceResult?.message || "Unknown error"
+          }`
+        );
         setSaving(false);
         return;
       }
@@ -576,7 +681,11 @@ export default function Progress() {
             localFolderResult?.message || "Unknown error"
           }`,
         });
-        message.warning(`Local folder creation failed: ${localFolderResult?.message || "Unknown error"}`);
+        message.warning(
+          `Local folder creation failed: ${
+            localFolderResult?.message || "Unknown error"
+          }`
+        );
       }
     } else {
       setSaving(false);
@@ -588,26 +697,86 @@ export default function Progress() {
     }
   };
 
+  const undoLastDelete = async () => {
+    const undoRecord = undoDeleteRef.current;
+
+    if (!undoRecord || saving || undoInProgressRef.current) {
+      return;
+    }
+
+    undoInProgressRef.current = true;
+    setSaving(true);
+
+    const restoreWorkflow = clone(undoRecord.workflow);
+    const saveResult = await saveWorkflow(restoreWorkflow);
+
+    setSaving(false);
+    undoInProgressRef.current = false;
+
+    if (!saveResult.success) {
+      setStatus({
+        type: "error",
+        text: `Undo failed: ${saveResult.message}`,
+      });
+      message.error(`Undo failed: ${saveResult.message}`);
+      return;
+    }
+
+    setLocalWorkflow(restoreWorkflow);
+    setExpandedKeys(undoRecord.expandedKeys);
+    setSelectedTaskId(undoRecord.selectedTaskId);
+    setStatus({
+      type: "success",
+      text: `Undo completed. ${undoRecord.taskName} and its child nodes were restored.`,
+    });
+
+    clearUndoDelete();
+    message.success("Delete undone successfully");
+  };
+
   const deleteSelectedTask = async () => {
     if (!selectedTaskId) {
-      setStatus({ type: "error", text: "Delete failed: please select a node first." });
+      setStatus({
+        type: "error",
+        text: "Delete failed: please select a node first.",
+      });
       message.warning("Please select a node first");
       return;
     }
 
     const target = findNodeById(taskTree, selectedTaskId);
+
     if (!target) {
-      setStatus({ type: "error", text: "Delete failed: the selected node does not exist." });
+      setStatus({
+        type: "error",
+        text: "Delete failed: the selected node does not exist.",
+      });
       message.error("The selected node does not exist");
       return;
     }
 
-    const confirmed = window.confirm(`Delete this node and all child nodes: ${target.taskName}?`);
+    const confirmed = window.confirm(
+      `Delete this node and all child nodes: ${target.taskName}?`
+    );
+
     if (!confirmed) return;
 
-    const updated = clone(normalizeWorkflow(localWorkflow));
+    // Only the latest successful deletion can be undone.
+    clearUndoDelete();
+
+    // Deep-copy the COMPLETE workflow before touching taskTree/taskDetails.
+    const beforeDeleteWorkflow = clone(normalizeWorkflow(localWorkflow));
+    const beforeDeleteExpandedKeys = [...expandedKeys];
+    const beforeDeleteSelectedTaskId = selectedTaskId;
+
+    const updated = clone(beforeDeleteWorkflow);
     const removedIds = [];
-    updated.taskTree = removeNodeById(updated.taskTree, selectedTaskId, removedIds);
+
+    updated.taskTree = removeNodeById(
+      updated.taskTree,
+      selectedTaskId,
+      removedIds
+    );
 
     if (updated.taskDetails && typeof updated.taskDetails === "object") {
       removedIds.forEach((id) => {
@@ -627,21 +796,66 @@ export default function Progress() {
     const saveResult = await saveWorkflow(updated);
     setSaving(false);
 
-    if (saveResult.success) {
-      setStatus({ type: "success", text: `Deleted ${target.taskName} and saved successfully.` });
-      message.success("Deleted successfully");
-    } else {
+    if (!saveResult.success) {
+      // Server did not accept the deletion: restore the exact pre-delete page state.
+      setLocalWorkflow(beforeDeleteWorkflow);
+      setExpandedKeys(beforeDeleteExpandedKeys);
+      setSelectedTaskId(beforeDeleteSelectedTaskId);
       setStatus({
         type: "error",
-        text: `${target.taskName} has been deleted on this page, but server save failed: ${saveResult.message}`,
+        text: `Delete failed and the page has been restored: ${saveResult.message}`,
       });
       message.error(`Server save failed: ${saveResult.message}`);
+      return;
     }
+
+    const notificationKey = `workflow-delete-undo-${Date.now()}`;
+
+    undoDeleteRef.current = {
+      workflow: beforeDeleteWorkflow,
+      expandedKeys: beforeDeleteExpandedKeys,
+      selectedTaskId: beforeDeleteSelectedTaskId,
+      taskName: target.taskName,
+      projectId,
+      deletedWorkflowSignature: JSON.stringify(updated),
+    };
+    undoNotificationKeyRef.current = notificationKey;
+
+    setStatus({
+      type: "success",
+      text: `Deleted ${target.taskName} and saved successfully. Undo is available for 15 seconds.`,
+    });
+
+    notificationApi.open({
+      key: notificationKey,
+      placement: "topRight",
+      duration: 15,
+      message: "Node deleted",
+      description: `${target.taskName} and its child nodes were deleted.`,
+      actions: (
+        <Button
+          type="link"
+          size="small"
+          onClick={undoLastDelete}
+          disabled={saving}
+        >
+          Undo
+        </Button>
+      ),
+      destroyOnHidden: true,
+      onClose: () => {
+        if (undoNotificationKeyRef.current === notificationKey) {
+          undoNotificationKeyRef.current = null;
+          undoDeleteRef.current = null;
+        }
+      },
+    });
   };
 
   const onSelect = (keys, info) => {
     const id = keys?.[0] || info?.node?.key || null;
     setSelectedTaskId(id);
+
     if (id && projectId) {
       window.location.hash = `#/task/${projectId}/${id}`;
     }
@@ -659,6 +873,8 @@ export default function Progress() {
         overflow: "hidden",
       }}
     >
+      {notificationContextHolder}
+
       <div style={{ flex: "0 0 auto", marginBottom: 10 }}>
         <Space direction="vertical" size={4} style={{ width: "100%" }}>
           <Title level={5} style={{ margin: 0 }}>
@@ -680,7 +896,12 @@ export default function Progress() {
         }}
       >
         <Space size={8} wrap>
-          <Button type="primary" size="small" onClick={openAddModal} disabled={saving}>
+          <Button
+            type="primary"
+            size="small"
+            onClick={openAddModal}
+            disabled={saving}
+          >
             Add CalibrationID
           </Button>
 
@@ -762,7 +983,8 @@ export default function Progress() {
             allowClear
           />
           <Text type="secondary">
-            When adding a new CalibrationID, the complete subtree of an existing CalibrationID under C.Calibration will be copied. 
+            When adding a new CalibrationID, the complete subtree of an existing
+            CalibrationID under C.Calibration will be copied.
           </Text>
         </Space>
       </Modal>
