@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from models.database import get_db
 from models.project import Project
+from services.fill_operation_log import log_successful_fill_operation
 from services.datamerge import (
     apply_project_info_overrides,
     fetch_single_project_details,
@@ -38,6 +39,7 @@ router = APIRouter(prefix="/report", tags=["Report"])
 class TCD09PathReportRequest(BaseModel):
     projectid: str = ""
     template_paths: list[str] = Field(default_factory=list)
+    username: str = ""
 
 
 def _to_int(value: Any) -> Optional[int]:
@@ -119,11 +121,17 @@ def _safe_tcd09_filename_part(value: Any) -> str:
 
 
 def _get_tcd09_output_filename(profile: dict[str, Any]) -> str:
+    oem = _safe_tcd09_filename_part(
+        profile.get("oem") or profile.get("customer")
+    )
     project_name = _safe_tcd09_filename_part(
         profile.get("projectName") or profile.get("project")
     )
     date_stamp = datetime.now().strftime("%Y%m%d")
-    return f"{project_name}_TCD09_{date_stamp}.docx"
+    return (
+        f"{oem}_{project_name}_Instruction_Airbag-ECU_and_"
+        f"Sensor_installation_{date_stamp}.docx"
+    )
 
 
 def _build_local_fallback_profile(
@@ -298,6 +306,7 @@ def _tcd09_response(
 @router.post("/fillTCD09Report")
 async def fill_tcd09_report(
     projectid: str = Form(""),
+    username: str = Form(""),
     files: list[UploadFile] = File(...),
     db: Session = Depends(get_db),
 ):
@@ -344,6 +353,7 @@ async def fill_tcd09_report(
         excel_content,
         db,
     )
+    log_successful_fill_operation(username, "Fill TCD09")
     return _tcd09_response(filled_stream, output_filename, projectid)
 
 
@@ -389,6 +399,7 @@ async def fill_tcd09_report_by_path(
         excel_content,
         db,
     )
+    log_successful_fill_operation(request.username, "Fill TCD09")
     return _tcd09_response(
         filled_stream,
         output_filename,

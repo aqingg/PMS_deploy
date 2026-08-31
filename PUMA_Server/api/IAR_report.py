@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from models.database import get_db
 from models.project import Project
+from services.fill_operation_log import log_successful_fill_operation
 from services.IAR_fill import fill_excel_by_placeholders
 from services.datamerge import apply_project_info_overrides, fetch_single_project_details
 from services.path_resolver import PathResolverError, get_mapping_entry, resolve_path
@@ -620,6 +621,7 @@ async def fill_iar_documents(
     uuid: str = Form(""),
     projectId: str = Form(""),
     project_id: str = Form(""),
+    username: str = Form(""),
     files: list[UploadFile] = File(...),
     db: Session = Depends(get_db),
 ):
@@ -683,6 +685,7 @@ async def fill_iar_documents(
 
     filled_stream = fill_excel_by_placeholders(profile_dict, io.BytesIO(content))
     output_name = _output_filename(profile_dict)
+    log_successful_fill_operation(username, "Fill IAR")
 
     headers = {
         "Content-Disposition": f'attachment; filename="{output_name}"',

@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from starlette.background import BackgroundTask
 
 from models.database import get_db
+from services.fill_operation_log import log_successful_fill_operation
 from services.tcd08.report import generate_tcd08_report
 from services.path_resolver import PathResolverError, resolve_path
 from services.sensormap_service import (
@@ -298,6 +299,8 @@ async def fill_tcd08_report(
             forced_output_dir=str(server_output_dir),
             copy_to_final_output=False,
         )
+
+        log_successful_fill_operation(data.get("username"), "Fill TCD08")
 
         generated_files = _collect_generated_files(result)
         if not generated_files:
@@ -715,6 +718,8 @@ async def generate_sensor_map_report(request: Request):
         project_name=project_name,
         overwrite=True,
 )
+
+        log_successful_fill_operation(data.get("username"), "Generate Sensor Map")
 
         return {
             "status": "success",

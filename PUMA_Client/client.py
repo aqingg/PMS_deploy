@@ -210,6 +210,7 @@ class ReportRequest(BaseModel):
     url: str
     template_paths: List[str]
     save_path: str
+    username: str = ""
 
 
 class CreateFoldersRequest(BaseModel):
@@ -1171,7 +1172,7 @@ def save_report_on_server(request: ReportRequest):
         proxies = {"http": None, "https": None}
         response = requests.post(
             request.url,
-            data={"projectid": request.projectid},
+            data={"projectid": request.projectid, "username": request.username},
             files=files_to_upload,
             proxies=proxies,
             verify=False,
@@ -1578,7 +1579,7 @@ def client_fill_tcd09_report(payload: dict = Body(...)):
         # TCD09 模板和 Excel 路径由 8086 Path Resolver 根据 projectid 统一解析。
         response = _post_json_to_report_server(
             server_report_url,
-            {"projectid": projectid},
+            {"projectid": projectid, "username": str(payload.get("username") or "")},
         )
         if response.status_code < 200 or response.status_code >= 300:
             detail = response.text[:2000] if response.text else response.reason

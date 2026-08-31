@@ -541,6 +541,7 @@ export default function TaskDetailPage() {
     // 1. 构建最终请求体
     let { url, method, body } = operation_detail;
     const finalBody = JSON.parse(JSON.stringify(body || {}));
+    finalBody.username = user?.username || "";
 
     // 将获取到的所有参数写入 finalBody
     parameterNames.forEach((name, index) => {
