@@ -130,17 +130,18 @@ export default class Item extends Component {
       return { finished, total };
     };
 
-    const isMultiAssigned =
-      isCreator &&
-      Array.isArray(todo.assignee_ids) &&
-      todo.assignee_ids.length > 1;
+    const assigneeIds = Array.isArray(todo.assignee_ids)
+      ? todo.assignee_ids
+      : [];
+    const { finished, total } = calcFinishedCount(todo.progress, assigneeIds);
 
-    const { finished, total } = isMultiAssigned
-      ? calcFinishedCount(todo.progress, todo.assignee_ids)
-      : { finished: 0, total: 0 };
+    const completionMode = todo.completion_mode === "OR" ? "OR" : "AND";
+    const isTodoFinished = total > 0 && (
+      completionMode === "OR" ? finished > 0 : finished === total
+    );
 
     const showFinishedSummary =
-      isMultiAssigned && total > 0;
+      isCreator && total > 1;
 
     return (
       <div
@@ -247,9 +248,13 @@ export default class Item extends Component {
             )}
 
             {showFinishedSummary && (
-              <Tag color={finished === total ? "green" : "geekblue"}>
+              <Tag color={isTodoFinished ? "green" : "geekblue"}>
                 {finished} / {total} Finished
               </Tag>
+            )}
+
+            {!showFinishedSummary && isTodoFinished && (
+              <Tag color="green">Finished</Tag>
             )}
 
           </Col>

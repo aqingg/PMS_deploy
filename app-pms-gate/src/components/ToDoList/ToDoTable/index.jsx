@@ -15,6 +15,7 @@ import {
   Button,
   Select,
   Progress,
+  Radio,
 } from "antd";
 import { PlusOutlined } from "@ant-design/icons";
 import "./index.css";
@@ -141,6 +142,7 @@ export default function ToDoTable({ searchText }) {
             tags: todo.tags?.join(", "),
             link: todo.link,
             assignee_ids: todo.assignee_ids,
+            completion_mode: todo.completion_mode || "AND",
           });
         }, 0);
         break;
@@ -274,6 +276,7 @@ export default function ToDoTable({ searchText }) {
               operator_id: user.username,
               link: values.link || "",
               assignee_ids: values.assignee_ids,
+              completion_mode: values.completion_mode || "AND",
             });
             setShowEdit(false);
           }}
@@ -370,6 +373,19 @@ export default function ToDoTable({ searchText }) {
                 );
               }}
             />
+          </Form.Item>
+
+          <Form.Item
+            name="completion_mode"
+            label="Finish when"
+            initialValue="AND"
+          >
+            <Radio.Group>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                <Radio value="AND">AND — All assignees must finish</Radio>
+                <Radio value="OR">OR — Any assignee can finish</Radio>
+              </div>
+            </Radio.Group>
           </Form.Item>
 
           <Form.Item name="link" label="Link">

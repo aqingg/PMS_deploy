@@ -1,4 +1,9 @@
-from typing import List
+import json
+import os
+from pathlib import Path
+from tempfile import NamedTemporaryFile
+from typing import Dict, List
+
 from sqlalchemy.orm import Session
 from sqlalchemy import func, update, exists, select, or_
 from models.todo import Todo
@@ -8,6 +13,63 @@ from schemas.todo_v2 import (
     TodoUpdateV2,
     TodoReorderItem,
 )
+from utils.path_config import BASE_RUNTIME_DIR
+
+
+TODO_COMPLETION_MODES_PATH = BASE_RUNTIME_DIR / "todo_completion_modes.json"
+
+
+def _load_completion_modes() -> Dict[str, str]:
+    """Return valid persisted completion modes; old or missing data defaults to AND."""
+    try:
+        with TODO_COMPLETION_MODES_PATH.open("r", encoding="utf-8") as file:
+            data = json.load(file)
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return {}
+
+    if not isinstance(data, dict):
+        return {}
+
+    return {
+        str(todo_id): mode
+        for todo_id, mode in data.items()
+        if mode in {"AND", "OR"}
+    }
+
+
+def get_completion_mode(todo_id: int) -> str:
+    return _load_completion_modes().get(str(todo_id), "AND")
+
+
+def _write_completion_modes(modes: Dict[str, str]) -> None:
+    """Atomically replace the configuration file after a complete JSON write."""
+    TODO_COMPLETION_MODES_PATH.parent.mkdir(parents=True, exist_ok=True)
+    temporary_path: Path | None = None
+
+    try:
+        with NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=TODO_COMPLETION_MODES_PATH.parent,
+            prefix=f".{TODO_COMPLETION_MODES_PATH.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as file:
+            temporary_path = Path(file.name)
+            json.dump(modes, file, ensure_ascii=False, indent=2, sort_keys=True)
+            file.flush()
+            os.fsync(file.fileno())
+
+        os.replace(temporary_path, TODO_COMPLETION_MODES_PATH)
+    finally:
+        if temporary_path is not None and temporary_path.exists():
+            temporary_path.unlink()
+
+
+def set_completion_mode(todo_id: int, completion_mode: str) -> None:
+    modes = _load_completion_modes()
+    modes[str(todo_id)] = completion_mode
+    _write_completion_modes(modes)
 
 def is_creator_or_assignee(todo: Todo, operator_id: str) -> bool:
     if operator_id == todo.creator_id:
@@ -134,6 +196,9 @@ def update_todo(db: Session, payload: TodoUpdateV2) -> Todo:
 
     print("=== [DEBUG] after commit ===")
     print("todo.progress =", todo.progress, type(todo.progress))
+
+    if payload.completion_mode is not None:
+        set_completion_mode(todo.id, payload.completion_mode)
 
     return todo
 

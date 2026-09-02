@@ -1,5 +1,5 @@
 from datetime import date
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Literal
 from pydantic import BaseModel
 
 
@@ -30,6 +30,7 @@ class TodoUpdateV2(BaseModel):
     progress: Dict[str, int] = None
     link: Optional[str] = None
     assignee_ids: Optional[List[str]] = None
+    completion_mode: Optional[Literal["AND", "OR"]] = None
     
 # =========================
 # Reorder
@@ -68,6 +69,7 @@ class TodoOutV2(BaseModel):
 
     assignee_ids: List[str]
     creator_id: str
+    completion_mode: Literal["AND", "OR"] = "AND"
 
     class Config:
         orm_mode = True

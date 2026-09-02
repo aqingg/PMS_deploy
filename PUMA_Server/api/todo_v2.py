@@ -13,12 +13,29 @@ from schemas.todo_v2 import (
 
 router = APIRouter(prefix="/todo", tags=["TodoV2"])
 
+
+def serialize_todo(todo):
+    """Add JSON-backed configuration without adding a column to the Todo ORM model."""
+    return TodoOutV2(
+        id=todo.id,
+        title=todo.title,
+        due_date=todo.due_date,
+        comment=todo.comment,
+        tags=todo.tags,
+        progress=todo.progress,
+        order_index=todo.order_index,
+        link=todo.link,
+        assignee_ids=todo.assignee_ids,
+        creator_id=todo.creator_id,
+        completion_mode=crud.get_completion_mode(todo.id),
+    )
+
 # =========================
 # List
 # =========================
 @router.get("/list", response_model=list[TodoOutV2])
 def list_todos(operator_id: str, db: Session = Depends(get_db)):
-    return crud.list_todos(db, operator_id)
+    return [serialize_todo(todo) for todo in crud.list_todos(db, operator_id)]
 
 # =========================
 # Create
@@ -37,7 +54,7 @@ async def create_todo(payload: TodoCreateV2, db: Session = Depends(get_db)):
         }
     })
 
-    return todo
+    return serialize_todo(todo)
 
 # =========================
 # Update
@@ -58,7 +75,7 @@ async def update_todo(payload: TodoUpdateV2, db: Session = Depends(get_db)):
         }
     })
 
-    return todo
+    return serialize_todo(todo)
 
 # =========================
 # Reorder
