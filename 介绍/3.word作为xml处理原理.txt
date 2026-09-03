@@ -1,0 +1,241 @@
+python库中处理word的方式，比方说如何替换占位符的。
+1，python-docx库 
+它不需要启动 Word。它直接读取、修改 .docx 文件内部的数据。
+核心代码是 doc=Document(A)， for i in doc.paragraphs。
+最简单例子如下：
+from docx import Document
+
+template_path = "template.docx"
+output_path = "output.docx"
+
+doc = Document(template_path)
+
+for paragraph in doc.paragraphs:
+    if "{{PMS.name}}" in paragraph.text:
+        paragraph.text = paragraph.text.replace(
+            "{{PMS.name}}",
+            "abc"
+        )
+doc.save(output_path)
+
+针对表格的：
+for table in doc.tables:
+    for row in table.rows:
+        for cell in row.cells:
+            if "{{PMS.name}}" in cell.text:
+                cell.text = cell.text.replace(
+                    "{{PMS.name}}",
+                    "abc"
+                )
+
+
+针对单个run的：
+for run in paragraph.runs:
+    run.text = run.text.replace("{{PMS.name}}", "abc")
+
+
+2.Word.Application库 通过 pywin32 控制电脑上真正安装的 Microsoft Word。
+它启动Word进程。模拟人类操作word，例如操作替换功能。
+核心代码是 word=win32com.Dispatch(A)， doc=word.Document.open(),  doc.Content.Find(..)
+最简单例子如下：
+word = win32com.client.DispatchEx("Word.Application")
+word.Visible = False
+
+doc = word.Documents.Open(template_path)
+
+doc.Content.Find.Execute(
+    FindText="{{PMS.name}}",
+    ReplaceWith="abc",
+    Replace=2
+)
+实际流程是类似人类打开了word，执行了Ctrl+H 的操作：
+Python启动一个Word.Application → Word打开template.docx → 调用Word自带的查找替换功能 → 把{{PMS.name}}替换为abc
+
+2的好处是什么呢？ 在TCD08里面需要又更新目录的操作，在word中手动点击“更新域”，可以使用Word.Application进行toc操作。（table of content）
+
+
+Word XML 处理逻辑原理
+1. 删除整个章节
+
+Word 的 .docm 本质上是一个 zip 包，正文主要在 word/document.xml。
+
+删除章节不是按页码删，也不是模拟鼠标选择文字。
+程序会先扫描 document.xml，找到所有标题，比如 3.2、3.3、3.4。
+
+找到目标标题后，例如 3.4：
+从 3.4 标题开始，一直删到下一个同级或上级标题之前。
+
+简单理解：
+删除章节 = 找到章节标题，然后删除这个标题下面的一整块 XML 积木。
+
+相关函数：
+collect_headings()
+find_delete_span()
+delete_sections_in_xml()
+remove_word_sections()
+
+
+2. 删除红色段落组
+
+删除红色段落组不是删除整个章节。
+它会先进入指定章节，例如 3.2，然后只扫描这个章节里的红色字体段落。
+
+模板里经常是：
+英文红字段落
+中文红字段落
+
+程序会把紧挨着的“英文 + 中文”合成一个组。
+然后按出现顺序自动编号：
+第1组、第2组、第3组……
+
+如果规则说删除 [2, 4]：
+程序就删除第2组和第4组对应的整段 XML。
+
+简单理解：
+删除红色段落组 = 进入某章节，找到所有红字段落，英文+中文配成组，然后按组号删除。
+
+相关函数：
+collect_red_paragraphs()
+collect_red_paragraph_groups()
+delete_red_paragraph_groups_in_xml()
+remove_red_paragraph_groups()
+
+
+3. 段落内局部删词/改写
+
+这个不是删除章节，也不是删除整段。
+它只改某个红色段落组里面的几个词。
+
+例如原文：
+UFS and RCS are used
+前碰传感器及后碰传感器
+
+可以改成：
+RCS is used
+后碰传感器
+
+程序会先找到指定章节，再找到指定红色段落组。
+然后在这个段落组的文字节点里搜索指定内容，把旧文字替换成新文字。
+
+这里的“搜索关键词”不是调用 Word 自带 Ctrl+F。
+程序是直接读取 word/document.xml，然后用 Python 自己查找字符串。
+
+Word 里的一个普通句子，XML 里可能被拆成多个文本节点：
+
+<w:t>UFS and </w:t>
+<w:t>RCS are </w:t>
+<w:t>used</w:t>
+
+用户看起来是一句：
+
+UFS and RCS are used
+
+但程序看到的是多个 <w:t>。
+所以不能简单用 paragraph.text.replace()。
+
+关键函数 1：
+paragraph_text_nodes(paragraph)
+
+作用：
+遍历这个段落下面所有 XML 节点，找到真正存文字的 <w:t>。
+
+核心代码：
+
+return [node for node in paragraph.iter() if local_name(node.tag) == "t"]
+
+意思是：
+- paragraph.iter() 遍历段落里的所有子节点
+- local_name(node.tag) == "t" 表示这个节点是 Word 文本节点
+- 返回这个段落里的所有文本节点
+
+关键函数 2：
+replace_text_in_paragraph(paragraph, replacements)
+
+作用：
+在一个段落里执行多组旧词 -> 新词替换。
+
+核心代码：
+
+text_nodes = paragraph_text_nodes(paragraph)
+combined_text = "".join(node.text or "" for node in text_nodes)
+start = combined_text.find(old_text, search_from)
+
+意思是：
+- 先拿到所有 <w:t>
+- 把它们拼成一个完整字符串 combined_text
+- 用 Python 的 .find() 找 old_text 的位置
+- 找不到时返回 -1，就停止
+- 找到时返回起始位置 start
+
+例如：
+
+combined_text = "UFS and RCS are used"
+old_text = "UFS and RCS are used"
+
+start = combined_text.find(old_text)
+
+结果是 0，表示从第 0 个字符开始命中。
+
+关键函数 3：
+replace_text_span(text_nodes, start, end, replacement)
+
+作用：
+把找到的字符范围写回原来的 <w:t> 节点。
+
+为什么需要它：
+因为 old_text 可能跨多个 <w:t>。
+不能只改一个节点，否则会漏改或破坏文字。
+
+它会先计算每个 <w:t> 在合并字符串里的范围：
+
+offsets.append((cursor, cursor + len(text)))
+
+例如：
+
+<w:t>UFS and </w:t>      范围 0 - 8
+<w:t>RCS are </w:t>      范围 8 - 16
+<w:t>used</w:t>          范围 16 - 20
+
+如果要替换 0 - 20：
+- 第一个节点写入 replacement
+- 中间节点清空
+- 最后节点只保留替换范围之后的后缀
+
+如果替换内容完全在同一个 <w:t> 里：
+
+text_nodes[first_index].text = prefix + replacement + suffix
+
+如果跨多个 <w:t>：
+
+text_nodes[first_index].text = prefix + replacement
+中间节点 text = ""
+text_nodes[last_index].text = suffix
+
+这样做的好处：
+- 段落本身不删除
+- 段落格式尽量保留
+- 可以替换跨 run 的文字
+- 替换范围被限制在指定章节、指定红色段落组内
+
+简单理解：
+段落内局部改写 = 先把多个 <w:t> 拼成一句话，用 .find() 找关键词，再把替换结果写回原来的 XML 节点。
+
+相关函数：
+paragraph_text_nodes()
+replace_text_span()
+replace_text_in_paragraph()
+rewrite_red_paragraph_text_in_xml()
+rewrite_red_paragraph_text()
+
+
+补充：更新目录和保护宏
+
+删除或改写完成后，程序会用 Word COM 更新目录和字段。
+由于 .docm 里有宏，更新后还要保护 word/vbaProject.bin。
+
+现在的逻辑只恢复宏相关内容，不会错误恢复旧的页眉页脚关系。
+
+相关函数：
+update_toc_with_word()
+read_macro_support_members()
+restore_zip_members()

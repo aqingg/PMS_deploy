@@ -1,0 +1,12 @@
+实际链路是这三段：
+
+前端按钮入口在 index.jsx:36
+这里的 Tooltip 直接写着“下载客户端 Client.exe”，点击头像按钮会触发 downloadClient。
+
+具体下载动作在 AppContext.js:449
+这里用 axios 去请求 API.DOWNLOAD_CLIENT，
+并把返回内容当作 blob 下载，文件名固定成 Client.exe。
+
+后端真正提供文件的是 download.py:11
+它从 DOWNLOADS_DIR / "Client.exe" 读取文件，
+再通过 FileResponse 返回给前端；如果文件不存在，就返回“Client.exe 未找到，请联系管理员”。

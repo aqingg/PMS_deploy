@@ -1,0 +1,63 @@
+APP  PMS
+	后端仓库地址：
+		https://github.boschdevcloud.com/CIC4SZH/PUMA_Server
+		https://github.boschdevcloud.com/CIC4SZH/PUMA_Client
+  前端仓库地址：
+		https://bdo-repo.apac.bosch.com/bdo-scms/oss-cn-dt/app-pms-gate
+		https://bdo-repo.apac.bosch.com/bdo-scms/oss-cn-dt/app-pms-project
+  前端统一部署地址：
+    https://bdo-repo.apac.bosch.com/bdo-scms/oss-cn-dt/oss_eng_hub
+
+重要：
+`后端部署方法：`
+    在服务器（远程连接SZH6-V-00071）里面桌面有PUMA_Server文件夹。 
+    通过github更新它，然后控制台执行conda activate puma，运行main函数，检查8086端口。强烈建议不要在服务器修改，所有修改通过git覆盖
+补充github操作方法：
+    1，提交。git stuatus查看修改文件 
+            git add .确认添加        
+            git commit -m "内容介绍"
+            git push   提交后前往仓库检查是否提交成功
+    2，拉取。git remote -v 确保分支正确
+            git fetch   这是拉取新消息但不合并
+            git pull --rebase origin main  这是拉取并合并，保留本地修改
+            git reset --hard origin/main   重置本地分支到和远程main一致，丢弃本地修改
+补充任务管理器检查进程运行情况命令：
+Get-NetTCPConnection -LocalPort 8086 | Select-Object LocalAddress,LocalPort,State,OwningProcess
+
+
+`前端部署方法：`
+    包括gate和project两个页面。
+    修改好的成品，先在本地npm run build,将打包好的dist里面的内容，复制到oss_enghub里面的Public中，将该ossenghub提交到仓库并提醒aiur。
+`数据库部署方法：`
+    当前在32Application.template中，如果有IPO的调整就修改它。 在项目彻底完成后，将DB放置到服务器不再裸露公盘。
+`client客户端部署方法：`
+    修改好的成品，先在本地pyinstaller client.spec，将打包好的dist放到ETC的handbook的公盘文件夹下，并修改配置文件。
+补充ETC的下载：
+\\bosch.com\dfsrb\DfsCN\DIV\CC\Prj\PS\32_Application\EPD5-CN-Tools-Mgmt\01.AppETC\20250915 复制到本地。右击AppPMS的UserManual
+
+
+程序运行方法和端口情况：
+8086
+cd PUMA_Server-main/PUMA_Server-main
+python main.py
+
+7175
+cd PUMA_Client-main
+python client.py
+
+3000
+cd app-pms-gate-main
+npm start
+  "homepage": "https://cccn.apac.bosch.com/oss_eng_hub/APP-PMS-GATE/",
+
+
+3001
+cd app-pms-project-main
+npm start
+  "homepage": "https://cccn.apac.bosch.com/oss_eng_hub/#/APP-PMS-Project",
+
+8088-弃用
+将8088端口的datamerge文件单独提出，不再需要该端口。
+
+建议自己写一个bat的启动脚本。
+

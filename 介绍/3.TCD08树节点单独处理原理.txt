@@ -1,0 +1,287 @@
+PMS_deploy：CalibrationID 工作区 + TCD08 报告生成修改教程
+总目标
+
+原来的系统中，TCD08 的 email 和 report 路径比较固定，容易多个 CalibrationID 混在一起。
+
+现在的目标是：
+
+每新增一个 CalibrationID，就自动生成一套独立工作区：
+
+Local Link/
+└─ 40.Application/
+   └─ C.Calibration/
+      └─ {CalibrationID}/
+         ├─ 03_Results/
+         │  └─ Customer_Approval_Email/
+         └─ 06_Official_Release/
+            └─ TCD08_Report/
+
+最终效果：
+
+1. 前端 workflow 树可以新增一个 CalibrationID 子树。
+2. 新增后会保存到 workflow。
+3. 后端会在 C 盘 Local Link 下创建对应目录。
+4. TCD08 生成报告时，会读取当前 CalibrationID 下的 email。
+5. TCD08 报告会保存到当前 CalibrationID 下的 TCD08_Report。
+第 1 步：后端新增“本地工作区路径生成函数”
+修改文件
+PUMA_Server/utils/file_loader.py
+修改目的
+
+让后端知道：
+
+给我一个 projectInfo 和 CalibrationID，
+我就能拼出这个 CalibrationID 的本地工作区路径。
+核心新增内容
+
+新增函数：
+
+build_local_workspace_paths(projectInfo, calibration_id, create=True)
+
+它负责：
+
+1. 从 projectInfo 中读取 Local Link。
+2. 校验 CalibrationID 是否为空、是否包含非法路径字符。
+3. 拼出 CalibrationID 根目录。
+4. 拼出 email 目录。
+5. 拼出 TCD08 report 目录。
+6. create=True 时自动 mkdir 创建目录。
+
+核心路径：
+
+calibration_root = local_root / "40.Application" / "C.Calibration" / cid
+
+email_dir = calibration_root / "03_Results" / "Customer_Approval_Email"
+
+tcd08_report_dir = calibration_root / "06_Official_Release" / "TCD08_Report"
+这一步解决的问题
+
+解决“后端不知道每个 CalibrationID 应该创建到哪里”的问题。
+
+第 2 步：后端新增创建 CalibrationID 工作区接口
+修改文件
+PUMA_Server/api/project.py
+修改目的
+
+让前端点击“新增 CalibrationID”后，可以通知后端创建 C 盘目录。
+
+核心新增接口
+POST /project/createCalibrationWorkspace
+
+请求体示例：
+
+{
+  "projectId": 365,
+  "username": "WUE7SZH",
+  "department": "VM-OSS/EPD5-CN-Full",
+  "calibrationId": "ACQ_AAAA-BBBB-CC"
+}
+
+后端逻辑：
+
+1. 检查 projectId 是否存在。
+2. 检查 username 是否存在。
+3. 检查 calibrationId 是否存在。
+4. 读取项目 projectInfo。
+5. 校验当前用户是否是 owner 或 proxies。
+6. 调用 build_local_workspace_paths(..., create=True) 创建目录。
+7. 返回创建出来的路径。
+这一步解决的问题
+
+解决“前端新增树以后，后端也能同步创建本地目录”的问题。
+
+第 3 步：前端 AppContext 增加调用接口的方法
+修改文件
+app-pms-project/src/context/AppContext.js
+修改目的
+
+让前端组件不用自己拼接口地址，而是通过统一的 Context 方法调用后端。
+
+核心新增内容
+
+新增 API：
+
+PROJECT_CREATE_CALIBRATION_WORKSPACE: "/project/createCalibrationWorkspace"
+
+新增方法：
+
+createCalibrationWorkspace(calibrationId)
+
+这个方法会发送：
+
+{
+  projectId,
+  username: user.username,
+  department: user.department,
+  calibrationId
+}
+
+并返回后端创建目录的结果。
+
+这一步解决的问题
+
+解决“Progress/index.jsx 需要调用后端，但没有统一接口方法”的问题。
+
+第 4 步：前端 workflow 树支持新增 CalibrationID 子树
+修改文件
+app-pms-project/src/components/Menu/Progress/index.jsx
+修改目的
+
+让左侧 workflow 树可以新增一个 CalibrationID 节点，并复制已有 CalibrationID 的完整子树。
+
+核心功能
+
+新增按钮：
+
+新增 CalibrationID
+
+点击后流程：
+
+1. 弹窗输入新的 CalibrationID。
+2. 校验是否为空。
+3. 校验是否包含非法路径字符。
+4. 找到 C.Calibration 节点。
+5. 优先复制当前选中的 CalibrationID 子树。
+6. 如果没选中，就复制第一个已有 CalibrationID 子树。
+7. 给复制出来的所有节点生成新 UUID。
+8. 把根节点 taskName 改成新的 CalibrationID。
+9. 插入到 C.Calibration.children。
+10. setLocalWorkflow(updated)，页面立即显示新树。
+11. updateWorkFlow(updated)，保存到后端数据库。
+12. createCalibrationWorkspace(cid)，创建 C 盘目录。
+这一步解决的问题
+
+解决“用户只能手动改 JSON，不能在页面上新增 CalibrationID 子树”的问题。
+
+第 5 步：TCD08 填充逻辑支持从指定 email_dir 读取邮件
+修改文件
+PUMA_Server/services/datamerge.py
+修改目的
+
+让 TCD08 填充 Word 模板时，不再只读取固定的全局 EMAIL_DIR，而是可以读取当前 CalibrationID 的 email 目录。
+
+核心修改
+
+原来逻辑类似：
+
+email_map = parse_email_pair(EMAIL_DIR)
+
+现在改成：
+
+def fill_docx_by_placeholders(profile_dict, source, email_dir=None):
+    actual_email_dir = Path(email_dir) if email_dir else EMAIL_DIR
+    email_map = parse_email_pair(actual_email_dir)
+
+意思是：
+
+如果传了 email_dir：
+    就读当前 CalibrationID 的 Customer_Approval_Email。
+
+如果没传 email_dir：
+    继续使用旧的 EMAIL_DIR，保证旧逻辑不坏。
+这一步解决的问题
+
+解决“不同 CalibrationID 的 email 混用”的问题。
+
+第 6 步：TCD08 报告生成优先使用当前 CalibrationID 工作区
+修改文件
+PUMA_Server/services/tcd08/report.py
+修改目的
+
+让 TCD08 生成报告时，自动根据当前点击的 workflow 节点找到它所属的 CalibrationID，然后使用对应的本地工作区。
+
+核心逻辑
+
+TCD08 生成时，后端会做：
+
+1. 根据 projectId 读取 projectWorkFlow。
+2. 根据 taskId 找到当前 ONETCD&TCD08 节点。
+3. 找到它的父节点，也就是当前 CalibrationID。
+4. 使用这个 CalibrationID 调用 build_local_workspace_paths。
+5. 得到 email_dir。
+6. 得到 tcd08_report_dir。
+7. 从 email_dir 读取客户邮件。
+8. 把报告保存到 tcd08_report_dir。
+
+关键效果：
+
+模板路径：
+仍然来自 ONETCD&TCD08_Template 的 AbsolutePath。
+
+email 路径：
+来自 Local Link/40.Application/C.Calibration/{CalibrationID}/03_Results/Customer_Approval_Email。
+
+报告输出路径：
+来自 Local Link/40.Application/C.Calibration/{CalibrationID}/06_Official_Release/TCD08_Report。
+这一步解决的问题
+
+解决“TCD08 生成报告时不知道当前属于哪个 CalibrationID”的问题。
+
+六步整体调用链
+
+完整流程如下：
+
+前端点击 新增 CalibrationID
+↓
+Progress/index.jsx 复制已有 CalibrationID 子树
+↓
+updateWorkFlow 保存 workflow
+↓
+AppContext.js 调用 createCalibrationWorkspace()
+↓
+project.py 接收请求
+↓
+file_loader.py 创建 C 盘目录
+↓
+用户把 email 放到 03_Results/Customer_Approval_Email
+↓
+用户点击 ONETCD&TCD08 的 Fill 按钮
+↓
+report.py 根据 taskId 找到父级 CalibrationID
+↓
+report.py 得到当前 CalibrationID 的 email_dir 和 output_dir
+↓
+datamerge.py 从 email_dir 解析邮件
+↓
+report.py 填充模板并保存到 TCD08_Report
+每一步对应文件汇总
+步骤	修改文件	作用
+第 1 步	PUMA_Server/utils/file_loader.py	拼出并创建 CalibrationID 本地工作区路径
+第 2 步	PUMA_Server/api/project.py	新增 /project/createCalibrationWorkspace 接口
+第 3 步	app-pms-project/src/context/AppContext.js	前端封装 createCalibrationWorkspace()
+第 4 步	app-pms-project/src/components/Menu/Progress/index.jsx	前端新增 CalibrationID 子树并保存 workflow
+第 5 步	PUMA_Server/services/datamerge.py	TCD08 填充时支持指定 email_dir
+第 6 步	PUMA_Server/services/tcd08/report.py	TCD08 根据 taskId 找到 CalibrationID，并使用对应工作区
+需要额外注意的文件
+TaskDetailPage/index.jsx
+app-pms-project/src/components/pages/TaskDetailPage/index.jsx
+
+这个文件不是“新增 workflow 子树”的核心文件，但它和点击 Fill_ONETCD&TCD08 有关。
+
+它负责：
+
+1. 点击 operation 按钮。
+2. 调用 TCD08 后端接口。
+3. 传 projectInfo / projectId / taskId。
+4. 显示等待弹窗，提示不要重复点击。
+
+所以：
+
+只做 workflow 新增子树：
+    不一定需要改 TaskDetailPage。
+
+做完整 TCD08 自动生成：
+    需要改 TaskDetailPage。
+最终结论
+
+这六步完成以后，系统就从：
+
+所有 TCD08 共用固定目录
+
+变成：
+
+每个 CalibrationID 拥有独立 email 目录和独立 TCD08 report 输出目录
+
+也就是：
+
+新增树节点 → 保存 workflow → 创建本地目录 → 读取当前 ID 邮件 → 生成当前 ID 报告

@@ -1,0 +1,805 @@
+# SSE 教程：在 PMS 项目里它是怎么运行的
+
+
+## 1. 什么是 SSE
+
+SSE 全称是 **Server-Sent Events**，中文可以理解成：
+
+**服务器主动持续往前端推送消息的一种方式。**
+
+它最适合的场景是：
+
+- 页面已经打开
+- 前端不想一直轮询
+- 但又希望后端一有变化就立刻通知页面
+
+比如：
+
+- Todo 被别人改了
+- Project 被别人编辑了
+- Workflow 被更新了
+
+这时候后端可以主动告诉前端：
+
+> “有新事件了，你刷新一下。”
+
+---
+
+## 2. SSE 和普通 HTTP 请求的区别
+
+普通请求是：
+
+```text
+前端发一次请求
+  -> 后端返回一次结果
+  -> 请求结束
+```
+
+SSE 是：
+
+```text
+前端发一次连接请求
+  -> 后端不立刻关掉
+  -> 保持这条连接一直开着
+  -> 以后有新消息就继续往这条连接里写
+```
+
+所以你可以把 SSE 理解成：
+
+- 普通 HTTP 是“一问一答”
+- SSE 是“先接通电话，后面有事就继续讲话”
+
+---
+
+## 3. 最简单的 SSE 案例
+
+下面给你一个最小概念版。
+
+### 3.1 后端
+
+```python
+from fastapi import FastAPI
+from starlette.responses import StreamingResponse
+import asyncio
+
+app = FastAPI()
+
+async def event_generator():
+    count = 0
+    while True:
+        await asyncio.sleep(1)
+        count += 1
+        yield f"data: hello {count}\n\n"
+
+@app.get("/stream")
+async def stream():
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream"
+    )
+```
+
+这段代码做的事情很简单：
+
+- 浏览器请求 `/stream`
+- 后端不结束连接
+- 每隔 1 秒发一次：
+  - `data: hello 1`
+  - `data: hello 2`
+  - `data: hello 3`
+
+注意这里最关键的格式是：
+
+```text
+data: 消息内容
+
+```
+
+也就是：
+
+- 每条消息前面有 `data:`
+- 末尾要有两个换行 `\n\n`
+
+这是 SSE 协议本身要求的固定格式。
+
+### 3.2 前端
+
+```javascript
+const es = new EventSource("/stream");
+
+es.onmessage = (event) => {
+  console.log("收到消息：", event.data);
+};
+
+es.onerror = () => {
+  console.log("连接出错了");
+};
+```
+
+这段前端做的事情是：
+
+- 用 `EventSource` 连到 `/stream`
+- 后端每推一次，`onmessage` 就触发一次
+
+---
+
+## 4. 用最直白的话理解 SSE 的运行过程
+
+你可以把 SSE 想成这样：
+
+```text
+前端：
+  “我先跟服务器建立一条长连接，你先别挂电话。”
+
+后端：
+  “好，我先记住你这个连接。”
+
+后面只要有业务变化：
+  “Todo 更新了”
+  “Project 更新了”
+  “Project 删除了”
+
+后端：
+  “我现在把这个消息推给所有还在线的前端连接。”
+
+前端：
+  “我收到消息了，然后决定刷新页面某一部分。”
+```
+
+这就是这个项目里 SSE 的核心思想：
+
+- **后端负责广播事件**
+- **前端收到事件后自己决定做什么**
+
+这个项目里并不是“后端直接推完整数据给前端”，而是更多地在推：
+
+- 事件名
+- 少量 payload
+
+然后前端再自己去：
+
+- `loadTodosV2()`
+- `loadProjects()`
+- `initApp()`
+
+也就是说，它更像：
+
+```text
+SSE = 提醒器
+不是完整数据传输器
+```
+
+---
+
+## 5. 这个项目里 SSE 的后端是怎么做的
+
+### 5.1 第一步：先有一个事件总线 EventBus
+
+项目里后端先写了一个全局事件总线：
+
+- `PUMA_Server/api/sse.py`
+
+核心作用是：
+
+- 记录所有在线 listener
+- 每个 listener 都有一个队列 `queue`
+- 有新事件时，把消息塞进每个 listener 的队列里
+
+对应代码：
+
+```1:48:PUMA_Server/api/sse.py
+# api/sse.py
+import asyncio
+from typing import Dict, List, Any, Callable
+from fastapi import Request
+from starlette.responses import StreamingResponse
+from dataclasses import dataclass
+
+@dataclass
+class Listener:
+    queue: asyncio.Queue
+    active: bool = True
+
+class EventBus:
+    def __init__(self):
+        self.listeners: List[Listener] = []
+
+    async def subscribe(self) -> asyncio.Queue:
+        queue = asyncio.Queue(maxsize=100)
+        listener = Listener(queue=queue)
+        self.listeners.append(listener)
+        return listener
+```
+
+这一步你可以理解成：
+
+```text
+后端先准备一个“在线用户列表”
+每个在线连接都有自己的消息队列
+```
+
+---
+
+### 5.2 第二步：提供一个真正的 SSE 流接口
+
+项目里 SSE 流接口在：
+
+- `PUMA_Server/api/sse_stream.py`
+
+它做的事情是：
+
+1. 用户访问 `/stream`
+2. 先向 `event_bus` 注册一个 listener
+3. 循环等待 `queue.get()`
+4. 只要有消息就 `yield "data: ...\n\n"`
+5. 浏览器断开后，把 listener 清掉
+
+对应代码：
+
+```1:34:PUMA_Server/api/sse_stream.py
+from fastapi import APIRouter, Request
+from starlette.responses import StreamingResponse
+from .sse import event_bus
+import json
+import asyncio
+
+router = APIRouter()
+
+@router.get("/stream")
+async def sse_stream(request: Request):
+
+    listener = await event_bus.subscribe()
+    queue = listener.queue
+
+    async def event_generator():
+        try:
+            while True:
+                if await request.is_disconnected():
+                    break
+
+                try:
+                    message = await queue.get()
+                    data = json.dumps(message)
+                    yield f"data: {data}\n\n"
+```
+
+这里最重要的两行是：
+
+- `message = await queue.get()`
+- `yield f"data: {data}\n\n"`
+
+这就是真正的“持续推送”。
+
+---
+
+### 5.3 第三步：把流接口挂到 FastAPI 应用上
+
+这个项目里 `main.py` 是这样挂载的：
+
+```49:63:PUMA_Server/main.py
+# 注册所有 Routers（不要 prefix，除 SSE 外）
+app.include_router(project_api.router)
+app.include_router(progress_api.router)
+app.include_router(templates_api.router)
+app.include_router(user_api.router)
+app.include_router(download.router)
+app.include_router(pms.router)
+app.include_router(events.router)
+app.include_router(todo_v2_router)
+# ⭐ SSE 独立路由
+app.include_router(sse_stream_router, prefix="/sse")
+app.include_router(database_api.router)
+```
+
+再结合 `root_path="/app-puma"`，最终对外路径就是：
+
+```text
+/app-puma/sse/stream
+```
+
+---
+
+### 5.4 第四步：业务接口在成功后发布事件
+
+SSE 本身不会凭空产生消息。
+
+它必须配合业务接口来用：
+
+- 创建 Todo 成功后，发布 `TodoCreated`
+- 更新 Todo 成功后，发布 `TodoUpdated`
+- 更新 Project 成功后，发布 `ProjectUpdated`
+
+例如 Todo：
+
+```24:40:PUMA_Server/api/todo_v2.py
+@router.post("/create", response_model=TodoOutV2)
+async def create_todo(payload: TodoCreateV2, db: Session = Depends(get_db)):
+
+    todo = crud.create_todo(db, payload)
+
+    await event_bus.publish({
+        "event": "TodoCreated",
+        "payload": {
+            "id": todo.id,
+            "creator_id": todo.creator_id,
+            "assignee_ids": todo.assignee_ids,
+        }
+    })
+```
+
+例如 Project：
+
+```182:190:PUMA_Server/api/project.py
+    # ⭐ SSE 推送（替代 WebSocket）
+    await event_bus.publish({
+        "event": "ProjectCreated",
+        "payload": {
+            "projectName": data.projectName,
+            "username": data.username
+        }
+    })
+```
+
+```217:225:PUMA_Server/api/project.py
+    # ⭐ SSE 推送
+    await event_bus.publish({
+        "event": "ProjectUpdated",
+        "payload": {
+            "projectId": data.projectId,
+            "field": "projectInfo",
+            "username": data.username
+        }
+    })
+```
+
+这里的意思是：
+
+```text
+真正修改数据的是业务接口
+SSE 只是把“刚刚发生了什么”广播出去
+```
+
+---
+
+## 6. 这个项目里前端是怎么接收 SSE 的
+
+这个项目里有两个主要前端：
+
+- `app-pms-gate-main`
+- `app-pms-project-main`
+
+它们都用了 `EventSource`。
+
+---
+
+### 6.1 门户页前端 `app-pms-gate-main`
+
+代码在：
+
+- `app-pms-gate-main/src/context/AppContext.js`
+
+核心逻辑：
+
+1. 当 `userId` 存在时，连接 SSE
+2. 收到消息后解析 JSON
+3. 如果事件名以 `Todo` 开头，就刷新 Todo
+4. 如果事件名以 `Project` 开头，就刷新项目列表
+
+对应代码：
+
+```313:350:app-pms-gate-main/src/context/AppContext.js
+    // 四、SSE（统一用 refresh，不做数据直推）
+    useEffect(() => {
+        if (!userId) return;
+
+        const es = new EventSource(`${API.BASE}${API.SSE}?user=${userId}`);
+
+        es.onmessage = (event) => {
+            if (!event.data) return;
+
+            try {
+                const msg = JSON.parse(event.data);
+
+                if (msg.event?.startsWith("Todo")) {
+                    loadTodosV2();
+                }
+
+                if (msg.event?.startsWith("Project")) {
+                    setProjectRefreshFlag(v => v + 1);
+                }
+            } catch {}
+        };
+```
+
+这里要特别注意一件事：
+
+这个前端收到事件后，不是直接把 `payload` 塞进页面，而是：
+
+- Todo 事件 -> `loadTodosV2()`
+- Project 事件 -> 触发项目列表刷新
+
+这就是前面说的：
+
+```text
+SSE 在这个项目里主要是“通知刷新”
+不是“直接推完整数据”
+```
+
+---
+
+### 6.2 项目详情前端 `app-pms-project-main`
+
+代码在：
+
+- `app-pms-project-main/src/context/AppContext.js`
+
+它的逻辑更细一点：
+
+1. 建立 `EventSource`
+2. 解析事件
+3. 如果当前项目被更新，就 `setRefreshFlag`
+4. 再通过 `initApp()` 重新拉项目数据
+5. 如果项目被删除，则回首页
+
+对应代码：
+
+```175:253:app-pms-project-main/src/context/AppContext.js
+  const connectSSE = useCallback(() => {
+    if (!user.username || user.username === "Unknown") return;
+
+    const url = API.BASE + API.SSE + `?user=${user.username}`;
+    console.log("📡 Connecting SSE:", url);
+
+    const es = new EventSource(url);
+
+    es.onopen = () => console.log("🟢 SSE Connected");
+
+    es.onmessage = (ev) => {
+      if (!ev.data) return;
+
+      let msg = null;
+      try {
+        msg = JSON.parse(ev.data);
+      } catch {
+        return;
+      }
+
+      const { event, payload } = msg;
+
+      const currentPid = projectIdRef.current;
+
+      if (event === "ProjectUpdated" && payload.projectId === currentPid) {
+        setMsgQueue(q => [...q, { evt: "ProjectUpdated", payload }]);
+        setRefreshFlag(v => v + 1);
+        return;
+      }
+
+      if (event === "WorkflowUpdated" && payload.projectId === currentPid) {
+        setMsgQueue(q => [...q, { evt: "WorkflowUpdated", payload }]);
+        setRefreshFlag(v => v + 1);
+        return;
+      }
+```
+
+这个前端的重点是：
+
+- 它会先判断是不是当前项目
+- 只有命中当前 `projectId` 才刷新
+- 删除事件还会触发跳转
+
+这说明项目页比门户页更精细。
+
+---
+
+## 7. 用步骤图看：项目里 SSE 是怎么跑起来的
+
+```text
+前端打开页面
+  ->
+创建 EventSource("/app-puma/sse/stream?user=xxx")
+  ->
+后端 sse_stream 注册 listener
+  ->
+listener 加入 event_bus.listeners
+  ->
+页面保持长连接
+
+后面某个业务请求发生：
+  例如 createTodo / updateProject / deleteProject
+  ->
+后端业务接口成功执行
+  ->
+调用 event_bus.publish({...})
+  ->
+event_bus 把消息放进每个 listener.queue
+  ->
+sse_stream 从 queue.get() 取到消息
+  ->
+yield "data: ...\\n\\n"
+  ->
+浏览器 onmessage 收到事件
+  ->
+前端决定 refresh 哪一块数据
+```
+
+这就是整个项目运行时 SSE 的全链路。
+
+---
+
+## 8. 在这个项目里，SSE 的固定步骤有哪些
+
+这些步骤几乎是固定套路，换项目也差不多：
+
+### 固定步骤 1：后端准备一个事件源
+
+可以是：
+
+- 内存里的 `EventBus`
+- Redis Pub/Sub
+- 消息队列
+
+这个项目里用的是：
+
+- 内存版 `EventBus`
+
+### 固定步骤 2：后端提供一个 `text/event-stream` 接口
+
+必须：
+
+- `StreamingResponse`
+- `media_type="text/event-stream"`
+
+### 固定步骤 3：前端用 `EventSource` 建立长连接
+
+必须：
+
+- `new EventSource(url)`
+- 监听 `onmessage`
+- 最好监听 `onerror`
+
+### 固定步骤 4：业务成功后发布事件
+
+也就是：
+
+- 先完成数据库修改
+- 再 `publish()`
+
+### 固定步骤 5：前端收到事件后刷新页面
+
+通常有两种做法：
+
+1. 直接把消息里的数据塞进 state
+2. 收到事件后重新发一次普通请求
+
+这个项目采用的是第 2 种。
+
+---
+
+## 9. 在这个项目里，哪些地方是手写的，最容易出问题
+
+这部分最重要，因为真正的问题基本都出在“手写约定”上，而不是 SSE 概念本身。
+
+### 9.1 事件名需要前后端手写对齐
+
+这是第一大坑。
+
+后端发什么事件名，前端就得按同样名字判断。
+
+比如后端在 workflow 更新时发的是：
+
+```253:261:PUMA_Server/api/project.py
+    await event_bus.publish({
+        "event": "ProjectUpdated",
+        "payload": {
+            "projectId": data.projectId,
+            "field": "workflow",
+            "username": data.username
+        }
+    })
+```
+
+但是前端项目页里还专门写了一个：
+
+- `WorkflowUpdated`
+
+判断分支：
+
+```208:215:app-pms-project-main/src/context/AppContext.js
+      if (event === "WorkflowUpdated" && payload.projectId === currentPid) {
+        setMsgQueue(q => [...q, { evt: "WorkflowUpdated", payload }]);
+        setRefreshFlag(v => v + 1);
+        return;
+      }
+```
+
+这就会出现：
+
+```text
+前端期待 WorkflowUpdated
+后端实际发 ProjectUpdated
+结果这个分支永远进不去
+```
+
+这就是 SSE 项目里最典型的“手写协议不一致”问题。
+
+---
+
+### 9.2 payload 字段也要前后端手写对齐
+
+不只是事件名，`payload` 里的字段也必须一致，比如：
+
+- `projectId`
+- `username`
+- `field`
+- `id`
+
+如果前端写成：
+
+- `payload.projectId`
+
+但后端发的是：
+
+- `payload.pid`
+
+那前端逻辑就会 silently fail。
+
+---
+
+### 9.3 连接断开后的重连策略是手写逻辑
+
+SSE 本身会有一些浏览器级重连能力，但项目里通常还会自己手写 `onerror`。
+
+例如这里：
+
+```234:238:app-pms-project-main/src/context/AppContext.js
+    es.onerror = () => {
+      console.log("🔴 SSE disconnected, reconnecting...");
+      es.close();
+      setTimeout(connectSSE, 2000);
+    };
+```
+
+这里如果写不好，会出现：
+
+- 无限重连
+- 重复创建连接
+- 多开多个 EventSource
+
+---
+
+### 9.4 用户过滤逻辑是手写的
+
+前端连接时会带：
+
+- `?user=xxx`
+
+但当前后端 `sse_stream.py` 本身并没有真正按用户过滤广播，它只是：
+
+- 谁连上就给谁一个 listener
+- `publish()` 时广播给全部 listener
+
+也就是说，现在更像：
+
+```text
+前端带了 user 参数
+但后端没有真正按 user 分组推送
+前端还是靠自己收到后再判断要不要刷新
+```
+
+这不一定错，但这是一个手写设计选择。
+
+如果以后需求变复杂，就容易变成性能或逻辑问题。
+
+---
+
+### 9.5 SSE 推的是“通知”还是“完整数据”也是手写设计
+
+这个项目的设计是：
+
+- 推事件
+- 然后前端自己刷新
+
+优点：
+
+- 代码简单
+- 不容易让前后端状态漂移
+
+缺点：
+
+- 每次收到事件都要再请求一次接口
+- 如果事件很多，页面会频繁 refresh
+
+这不是协议限制，而是项目自己的设计选择。
+
+---
+
+## 10. 如果你以后自己写 SSE，最小落地步骤
+
+你可以直接照这个顺序写：
+
+### 步骤 1：后端先写一个 `publish()` 入口
+
+先不要管前端，只要保证后端能这样发消息：
+
+```python
+await event_bus.publish({
+    "event": "TodoCreated",
+    "payload": {"id": 1}
+})
+```
+
+### 步骤 2：写一个 `/stream` 接口
+
+要求：
+
+- `StreamingResponse`
+- `text/event-stream`
+- `yield f"data: ...\\n\\n"`
+
+### 步骤 3：前端先连上它
+
+```javascript
+const es = new EventSource("/stream");
+es.onmessage = (e) => console.log(e.data);
+```
+
+只要浏览器控制台能打印消息，说明 SSE 主链路通了。
+
+### 步骤 4：把业务接口接进来
+
+比如：
+
+- 创建成功后 publish
+- 更新成功后 publish
+- 删除成功后 publish
+
+### 步骤 5：前端根据事件名做刷新
+
+例如：
+
+```javascript
+if (msg.event === "TodoCreated") loadTodos();
+if (msg.event === "ProjectUpdated") loadProject();
+```
+
+---
+
+## 11. 一句话总结这个项目里的 SSE
+
+这个 PMS 项目里的 SSE，本质上是这样一套机制：
+
+```text
+后端维护一个内存事件总线 EventBus
+  ->
+前端通过 EventSource 长连到 /app-puma/sse/stream
+  ->
+业务接口成功后 publish 事件
+  ->
+后端把事件广播给所有在线连接
+  ->
+前端收到事件后自行刷新数据
+```
+
+所以它在这个项目中的角色不是“实时传输完整业务数据”，而是：
+
+**一个轻量的“变更通知系统”。**
+
+---
+
+## 12. 最后给你的学习建议
+
+如果你后面想彻底吃透这套 SSE，可以按这个顺序继续看代码：
+
+1. `PUMA_Server/api/sse.py`
+2. `PUMA_Server/api/sse_stream.py`
+3. `PUMA_Server/api/todo_v2.py`
+4. `PUMA_Server/api/project.py`
+5. `app-pms-gate-main/src/context/AppContext.js`
+6. `app-pms-project-main/src/context/AppContext.js`
+
+如果你只想快速抓重点，那就只记住这四句话：
+
+1. 前端用 `EventSource` 连接 SSE。
+2. 后端用 `StreamingResponse` 持续输出 `data: ...\n\n`。
+3. 业务接口成功后调用 `event_bus.publish()`。
+4. 前端收到消息后不直接信任 payload，而是主动 refresh。

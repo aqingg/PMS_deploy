@@ -1,0 +1,58 @@
+所有的新功能在本地localhost进行测试。在部署时候记得改url。
+1. 本地数据库根路径
+文件:
+- `PUMA_Server-main/utils/path_config.py`
+
+当前本地测试配置:
+- 第 18 行: `PROJECT_ROOT = Path(__file__).resolve().parents[2]`
+- 第 32 行: `BASE_RUNTIME_DIR = PROJECT_ROOT / "DB" / "local_mock_runtime"`
+
+
+2. Gate 前端 -> 后端 API 地址
+文件:
+- `app-pms-gate/src/context/AppContext.js`
+
+当前本地测试配置:
+- 第 14 行: `BASE: "http://127.0.0.1:8086/app-puma",`
+- 第 15 行: `//BASE: "https://oss-dthub.apac.bosch.com/app-puma",`
+- 第 16 行: `LOCAL: "http://127.0.0.1:7175",`
+
+
+
+3. Project 前端 -> 后端 API 地址
+文件:
+- `app-pms-project/src/context/AppContext.js`
+
+当前本地测试配置:
+- 第 28 行: `//BASE: "https://oss-dthub.apac.bosch.com/app-puma",`
+- 第 29 行: `BASE: "http://127.0.0.1:8086/app-puma",`
+- 第 25 行: `LOCAL: "http://127.0.0.1:7175",`
+
+
+
+4. Gate 页面点击 Project 后，跳转到哪个 Project 详情页
+文件:
+- `app-pms-gate/src/components/ProjectSummary/ProjectList/index.jsx`
+
+当前本地测试配置:
+- 第 131 行: `//const url = \`https://cccn.apac.bosch.com/APP-PMS-Project/#/edit?projectId=${item.id}\`;`
+- 第 132 行: `const url = \`http://localhost:3001/ASY6SZH/APP-PMS-Project/#/edit?projectId=${item.id}\`;`
+
+
+5.在DB的Workflow中，有IAR和TCD08使用的接口url.
+"url": "http://127.0.0.1:8088/temp/api/v1/puma/projects/documents",是服务器
+          "url": "http://127.0.0.1:8086/report/fillTCD08Report",是本地测试
+
+6，client fillTCD08触发7175. 再调用本地或远程8086
+DEFAULT_SERVER_BASE_URL = os.environ.get(
+    "PUMA_SERVER_BASE_URL",
+    # "https://oss-dthub.apac.bosch.com/app-puma",
+    "http://127.0.0.1:8086"
+).rstrip("/")
+
+7. 当前本地测试的整体链路
+- Gate 前端: `localhost:3000`
+- Project 前端: `localhost:3001`
+- 本地后端: `127.0.0.1:8086/app-puma`
+- 本地客户端: `127.0.0.1:7175`
+

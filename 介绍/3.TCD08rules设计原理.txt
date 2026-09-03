@@ -1,0 +1,125 @@
+TCD08 rules 开发逻辑
+
+一、当前文件分工
+
+1. api/report.py
+只负责接口。
+前端点击 fillTCD08 后，请求进入这里的 /report/fillTCD08Report。
+它不再直接处理规则，只把请求转给 services/tcd08/report.py。
+
+2. services/tcd08/report.py
+负责 TCD08 报告生成主流程。
+它会做这些事：
+- 读取 PMS profile
+- 合并前端 project_info
+- 找到模板文件和输出目录
+- 调用 rules.py 计算“要删什么、要改什么”
+- 调用 word_sections.py 执行 Word 修改
+- 最后统一更新 Word 目录
+
+3. services/tcd08/rules.py
+负责解释 generated_catalog_rules.json。
+它不直接修改 Word，只负责把表单字段和 JSON 规则转换成计划：
+- sections_to_delete：要删除哪些章节
+- red_paragraph_deletions：要删除哪些红色段落组
+- red_paragraph_text_rewrites：要执行哪些段落内文字替换
+
+4. config/generated_catalog_rules.json
+负责保存业务规则。
+例如：
+- Calibration Scope 缺少某功能时删除某章节
+- Peripheral Sensor / Inertial Sensor 满足条件时删除红字段落组
+- UFS/RCS 满足条件时替换 3.3 红字段落中的部分文字
+
+5. services/word_sections.py
+是 Word 处理兼容入口。
+report.py 不直接进入 services/word/ 小文件，而是通过这里调用：
+- remove_word_sections
+- remove_red_paragraph_groups
+- rewrite_red_paragraph_text
+- update_toc_with_word
+
+6. services/word/
+负责真正修改 Word 文件。
+例如：
+- sections.py：删除整个章节
+- red_paragraphs.py：删除红色段落组
+- text_rewrite.py：段落内局部替换文字
+- toc.py：更新 Word 目录
+- package.py：保护 docm 宏
+
+
+二、规则是怎么流动的
+
+前端 fillTCD08
+-> api/report.py
+-> services/tcd08/report.py
+-> services/tcd08/rules.py 读取 generated_catalog_rules.json
+-> 得到删除/改写计划
+-> services/word_sections.py
+-> services/word/ 真实修改 docm
+
+
+三、以后新增规则时怎么判断改哪里
+
+1. 新增已有类型的业务规则：优先只改 JSON
+
+如果需求仍然属于已有三类：
+- 按 Calibration Scope 删除章节
+- 按 Peripheral Sensor / Inertial Sensor 删除红色段落组
+- 按字段条件做段落内文字替换
+
+通常只需要改：
+config/generated_catalog_rules.json
+
+例子：
+新增“如果没有 PCP，就删除 3.8”
+这种只是在 JSON 里加规则，不需要改 Python。
+
+
+2. 新增规则判断语法：改 rules.py
+
+如果 JSON 里需要新的判断方式，才改：
+services/tcd08/rules.py
+
+例子：
+当前已支持：
+- matches_any
+- not_matches_any
+- matches_all
+- only_matches
+- not_only_matches
+
+如果以后想写：
+- count_at_least
+- starts_with
+- equals_any
+- 字段 A 和字段 B 的复杂组合判断
+
+就需要在 rules.py 里新增解析逻辑。
+
+
+3. 新增 Word 处理动作：改 services/word/
+
+如果需求不是“删章节、删红字段落、段落内改字”，而是新的 Word 操作，
+就需要改 services/word/。
+
+例子：
+- 删除表格某一行
+- 删除图片
+- 修改页眉页脚
+- 插入新章节
+- 按非红色字体删除段落
+
+这类需求不是规则解析问题，而是 Word XML 处理能力要扩展。
+
+
+四、最重要的开发口诀
+
+只新增业务规则，先改 JSON。
+新增 JSON 判断语法，再改 rules.py。
+新增 Word 修改动作，才改 services/word/。
+
+rules.py 只负责“算计划”，不直接改 Word。
+services/word/ 只负责“执行 Word 修改”，不理解业务规则。
+services/tcd08/report.py 负责把两边串起来。
