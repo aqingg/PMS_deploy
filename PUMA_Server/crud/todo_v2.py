@@ -108,9 +108,12 @@ def create_todo(db: Session, payload: TodoCreateV2) -> Todo:
         .values(order_index=Todo.order_index + 1)
     )
 
+    # 创建者始终是 assignee；前端选择的是额外分配的成员。
+    assignee_ids = list(dict.fromkeys([payload.operator_id, *payload.assignee_ids]))
+
     # 2️⃣ 初始化 per-user progress
     progress_map = {
-        uid: 0 for uid in payload.assignee_ids
+        uid: 0 for uid in assignee_ids
     }
     # creator 也有自己的视角
     progress_map[payload.operator_id] = 0
@@ -124,13 +127,14 @@ def create_todo(db: Session, payload: TodoCreateV2) -> Todo:
         link=payload.link or "",
         progress=progress_map,
         order_index=1,                    # ⭐ 固定为第一个
-        assignee_ids=payload.assignee_ids,
+        assignee_ids=assignee_ids,
         creator_id=payload.operator_id,
     )
 
     db.add(todo)
     db.commit()
     db.refresh(todo)
+    set_completion_mode(todo.id, payload.completion_mode)
     return todo
 
 # =========================
@@ -162,10 +166,14 @@ def update_todo(db: Session, payload: TodoUpdateV2) -> Todo:
     # =========================
     if payload.assignee_ids is not None:
         old_assignees = set(todo.assignee_ids or [])
-        new_assignees = set(payload.assignee_ids or [])
+        new_assignee_ids = list(dict.fromkeys([
+            todo.creator_id,
+            *payload.assignee_ids,
+        ]))
+        new_assignees = set(new_assignee_ids)
 
-        # 1️⃣ 更新 assignee_ids
-        todo.assignee_ids = list(new_assignees)
+        # 1️⃣ 创建者始终保留在 assignee_ids 中
+        todo.assignee_ids = new_assignee_ids
 
         # 2️⃣ 初始化 progress（兜底）
         if not isinstance(todo.progress, dict):

@@ -74,55 +74,12 @@ export default class Item extends Component {
       }
     };
 
-  const isCreator = todo.creator_id === currentUserId;
-
-  const displayProgress = isCreator
-    ? calcCreatorProgress(todo.progress, todo.assignee_ids, todo.creator_id)
-    : calcAssigneeProgress(todo.progress, currentUserId);
-
-  let statusUI;
-  if (displayProgress >= 100) {
-    statusUI = STATUS_UI.done;
-  } else if (displayProgress > 0) {
-    statusUI = STATUS_UI.ongoing;
-  } else {
-    statusUI = STATUS_UI.pending;
-  }
-    /** =========================
-     * Due / Overdue 计算
-     * ========================= */
-    const today = dayjs().startOf("day");
-    const due = dayjs(todo.due_date);
-    const isOverdue =
-      due.isBefore(today) &&
-      displayProgress < 100;
-      
-    const daysToDue = due.diff(today, "day");
-    const isDueSoon =
-      !isOverdue &&
-      daysToDue >= 0 &&
-      daysToDue <= 2 &&
-      displayProgress < 100;
-
-    const isAssignedFromOthers =
-      todo.creator_id &&
-      todo.creator_id !== currentUserId;
-
-    /** =========================
-     * Hover 样式
-     * ========================= */
-    let bgColor = statusUI.bg;
-    if (hovering) {
-      bgColor = "rgba(230, 247, 255, 0.5)";
-    }
-
     const calcFinishedCount = (progressMap, assigneeIds) => {
       if (!progressMap || !Array.isArray(assigneeIds)) {
         return { finished: 0, total: 0 };
       }
 
       const total = assigneeIds.length;
-
       const finished = assigneeIds.filter(
         uid => progressMap[uid] >= 100
       ).length;
@@ -134,11 +91,47 @@ export default class Item extends Component {
       ? todo.assignee_ids
       : [];
     const { finished, total } = calcFinishedCount(todo.progress, assigneeIds);
-
     const completionMode = todo.completion_mode === "OR" ? "OR" : "AND";
     const isTodoFinished = total > 0 && (
       completionMode === "OR" ? finished > 0 : finished === total
     );
+
+    const isCreator = todo.creator_id === currentUserId;
+    const displayProgress = isCreator
+      ? calcCreatorProgress(todo.progress, assigneeIds, todo.creator_id)
+      : calcAssigneeProgress(todo.progress, currentUserId);
+
+    /** =========================
+     * Due / Overdue 计算
+     * ========================= */
+    const today = dayjs().startOf("day");
+    const due = dayjs(todo.due_date);
+    const isOverdue =
+      due.isBefore(today) &&
+      !isTodoFinished;
+      
+    const daysToDue = due.diff(today, "day");
+    const isDueSoon =
+      !isOverdue &&
+      daysToDue >= 0 &&
+      daysToDue <= 2 &&
+      !isTodoFinished;
+
+    const isAssignedFromOthers =
+      todo.creator_id &&
+      todo.creator_id !== currentUserId;
+
+    /** =========================
+     * Hover 样式
+     * ========================= */
+    let bgColor = isTodoFinished
+      ? STATUS_UI.done.bg
+      : displayProgress > 0
+        ? STATUS_UI.ongoing.bg
+        : STATUS_UI.pending.bg;
+    if (hovering) {
+      bgColor = "rgba(230, 247, 255, 0.5)";
+    }
 
     const showFinishedSummary =
       isCreator && total > 1;
@@ -201,8 +194,8 @@ export default class Item extends Component {
               type="circle"
               percent={displayProgress}
               size={30}
-              status={displayProgress >= 100 ? "success" : "normal"}
-              format={displayProgress >= 100 ? undefined : () => ""}
+              status={isTodoFinished ? "success" : "normal"}
+              format={() => isTodoFinished ? "✓" : ""}
             />
           </Col>
           {/* Comment */}

@@ -141,7 +141,10 @@ export default function ToDoTable({ searchText }) {
             comment: todo.comment,
             tags: todo.tags?.join(", "),
             link: todo.link,
-            assignee_ids: todo.assignee_ids,
+            assignee_ids: Array.from(new Set([
+              todo.creator_id,
+              ...(todo.assignee_ids || []),
+            ])),
             completion_mode: todo.completion_mode || "AND",
           });
         }, 0);
@@ -251,7 +254,11 @@ export default function ToDoTable({ searchText }) {
         <FloatButton
           icon={<PlusOutlined />}
           tooltip="New Todo"
-          onClick={() => setShowAdd(true)}
+          onClick={() => {
+            form.resetFields();
+            form.setFieldsValue({ assignee_ids: [user.username] });
+            setShowAdd(true);
+          }}
         />
       </div>
 
@@ -275,7 +282,10 @@ export default function ToDoTable({ searchText }) {
                 : [],
               operator_id: user.username,
               link: values.link || "",
-              assignee_ids: values.assignee_ids,
+              assignee_ids: Array.from(new Set([
+                editingTodo.creator_id,
+                ...(values.assignee_ids || []),
+              ])),
               completion_mode: values.completion_mode || "AND",
             });
             setShowEdit(false);
@@ -417,10 +427,12 @@ export default function ToDoTable({ searchText }) {
               tags: values.tags
                 ? values.tags.split(",").map((t) => t.trim())
                 : [],
-              assignee_ids: values.assignee_ids?.length
-                ? values.assignee_ids
-                : [user.username],
+              assignee_ids: Array.from(new Set([
+                user.username,
+                ...(values.assignee_ids || []),
+              ])),
               operator_id: user.username,
+              completion_mode: values.completion_mode || "AND",
             });
             setShowAdd(false);
           }}
@@ -472,6 +484,19 @@ export default function ToDoTable({ searchText }) {
             ]}
           />
 
+          </Form.Item>
+
+          <Form.Item
+            name="completion_mode"
+            label="Finish when"
+            initialValue="AND"
+          >
+            <Radio.Group>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                <Radio value="AND">AND — All assignees must finish</Radio>
+                <Radio value="OR">OR — Any assignee can finish</Radio>
+              </div>
+            </Radio.Group>
           </Form.Item>
 
           <Form.Item

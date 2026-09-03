@@ -221,10 +221,13 @@ export function AppProvider({ children }) {
                 ? values.tags.split(",").map(t => t.trim()).filter(Boolean)
                 : [],
             link: values.link || "",              // ⭐⭐ 关键修复点
-            assignee_ids: values.assignee_ids?.length
-            ? values.assignee_ids
-            : [user.username],
+            // 选择的成员是额外 assignee，创建者始终保留在名单中。
+            assignee_ids: Array.from(new Set([
+                userId,
+                ...(values.assignee_ids || []),
+            ])),
             operator_id: userId,
+            completion_mode: values.completion_mode || "AND",
             
         };
 
@@ -270,9 +273,20 @@ export function AppProvider({ children }) {
                 operator_id: userId,
                 ...patch
             }
-        }).catch(() => {
-            message.error("Update Todo failed");
-        });
+        })
+            .then(res => {
+                const updatedTodo = res.data;
+                // 使用服务端确认后的数据立即刷新当前页面，避免依赖 SSE。
+                setTodos(currentTodos =>
+                    currentTodos.map(todo =>
+                        todo.id === id ? updatedTodo : todo
+                    )
+                );
+                return updatedTodo;
+            })
+            .catch(() => {
+                message.error("Update Todo failed");
+            });
     };
 
     /**

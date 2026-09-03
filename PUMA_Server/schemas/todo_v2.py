@@ -15,6 +15,7 @@ class TodoCreateV2(BaseModel):
 
     assignee_ids: List[str]      # ⭐ 核心
     operator_id: str
+    completion_mode: Literal["AND", "OR"] = "AND"
 
 # =========================
 # Update
